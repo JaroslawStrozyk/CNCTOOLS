@@ -1,0 +1,349 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ustawienia - CNC Tools</title>
+    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
+    <style>
+        body { background-color: #f8f9fa; }
+        .tab-content, .card-body {
+             background-color: white;
+        }
+        .category-list-group .list-group-item {
+            cursor: pointer;
+        }
+        .category-list-group .list-group-item.active {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
+            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Ustawienia</span></strong></h2>
+            <div>
+                <a href="{% if request.GET.next %}{{ request.GET.next }}{% else %}{% url 'magazyn' %}{% endif %}" class="btn btn-light shadow-sm" title="Wróć">
+                    <i class="fa-solid fa-arrow-left me-2"></i>Wróć
+                </a>
+            </div>
+        </div>
+
+        <main class="container mt-4">
+            <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="categories-tab" data-bs-toggle="tab" data-bs-target="#categories-panel" type="button" role="tab">Kategorie</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="machines-tab" data-bs-toggle="tab" data-bs-target="#machines-panel" type="button" role="tab">Maszyny</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="locations-tab" data-bs-toggle="tab" data-bs-target="#locations-panel" type="button" role="tab">Lokalizacje</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="suppliers-tab" data-bs-toggle="tab" data-bs-target="#suppliers-panel" type="button" role="tab">Dostawcy</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="employees-tab" data-bs-toggle="tab" data-bs-target="#employees-panel" type="button" role="tab">Pracownicy</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="email-tab" data-bs-toggle="tab" data-bs-target="#email-panel" type="button" role="tab">Poczta</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="settingsTabsContent">
+                <div class="tab-pane fade show active" id="categories-panel" role="tabpanel">
+                     <div class="card shadow-sm" style="border-top-left-radius: 0;">
+                        <div class="card-header">
+                            <h3 class="mb-0">Zarządzaj Kategoriami i Podkategoriami</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-5">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h5 class="mb-0">Kategorie Główne</h5>
+                                        <button class="btn btn-primary btn-sm" @click="openModal('kategoria', 'add')"> <i class="fa-solid fa-plus"></i> </button>
+                                    </div>
+                                    <ul class="list-group category-list-group">
+                                        <li v-for="item in kategorie" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center" :class="{ 'active': selectedKategoriaId === item.id }" @click="selectKategoria(item.id)">
+                                            <span>[[ item.nazwa ]] <span class="badge bg-secondary rounded-pill">[[ item.podkategorie.length ]]</span></span>
+                                            <div>
+                                                <button class="btn btn-sm btn-light" @click.stop="openModal('kategoria', 'edit', item)"><i class="fas fa-pencil-alt"></i></button>
+                                                <button class="btn btn-sm btn-danger ms-1" @click.stop="showDeleteModal('kategoria', item.id)"><i class="fas fa-trash"></i></button>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div class="col-md-7">
+                                    <div v-if="!selectedKategoriaId" class="text-center text-muted h-100 d-flex align-items-center justify-content-center"> <p>Wybierz kategorię główną, aby zobaczyć podkategorie.</p> </div>
+                                    <div v-else>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h5 class="mb-0">Podkategorie dla: <strong>[[ selectedKategoriaNazwa ]]</strong></h5>
+                                            <button class="btn btn-primary btn-sm" @click="openModal('podkategoria', 'add')"> <i class="fa-solid fa-plus"></i> </button>
+                                        </div>
+                                        <ul class="list-group">
+                                            <li v-if="podkategorie.length === 0" class="list-group-item text-muted">Brak podkategorii.</li>
+                                            <li v-for="item in podkategorie" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center">
+                                                [[ item.nazwa ]]
+                                                <div>
+                                                    <button class="btn btn-sm btn-secondary" @click="openModal('podkategoria', 'edit', item)"><i class="fas fa-pencil-alt"></i></button>
+                                                    <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('podkategoria', item.id)"><i class="fas fa-trash"></i></button>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="machines-panel" role="tabpanel">
+                     <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Maszynami</h3> <button class="btn btn-primary" @click="openModal('machine', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nową</button> </div> <div class="card-body"> <ul class="list-group"> <li v-for="item in machines" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center"> [[ item.nazwa ]] <div> <button class="btn btn-sm btn-secondary" @click="openModal('machine', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('machine', item.id)"><i class="fas fa-trash"></i></button> </div> </li> </ul> </div> </div>
+                </div>
+                <div class="tab-pane fade" id="locations-panel" role="tabpanel">
+                    <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Lokalizacjami</h3> <div> <button class="btn btn-primary" @click="openModal('location', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nową</button> <button class="btn btn-success ms-2" @click="openBulkAddModal()"><i class="fa-solid fa-layer-group me-2"></i>Dodaj seryjnie</button> </div> </div> <div class="card-body"> <table class="table table-striped table-hover"> <thead> <tr><th>Szafa</th><th>Kolumna</th><th>Półka</th><th class="text-end">Akcje</th></tr> </thead> <tbody> <tr v-for="item in locations" :key="item.id"> <td>[[ item.szafa ]]</td> <td>[[ item.kolumna ]]</td> <td>[[ item.polka ]]</td> <td class="text-end"> <button class="btn btn-sm btn-secondary" @click="openModal('location', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('location', item.id)"><i class="fas fa-trash"></i></button> </td> </tr> </tbody> </table> </div> </div>
+                </div>
+                <div class="tab-pane fade" id="suppliers-panel" role="tabpanel">
+                     <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Dostawcami</h3> <button class="btn btn-primary" @click="openModal('supplier', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nowego</button> </div> <div class="card-body"> <table class="table table-striped table-hover"> <thead> <tr> <th>Kod dostawcy</th> <th>Nazwa Firmy</th> <th>NIP</th> <th>Adres</th> <th>Telefon</th> <th>Email</th> <th class="text-end">Akcje</th> </tr> </thead> <tbody> <tr v-for="item in suppliers" :key="item.id"> <td>[[ item.kod_dostawcy ]]</td> <td>[[ item.nazwa_firmy ]]</td> <td>[[ item.nip ]]</td> <td>[[ item.adres ]]</td> <td>[[ item.telefon ]]</td> <td>[[ item.email ]]</td> <td class="text-end"> <button class="btn btn-sm btn-secondary" @click="openModal('supplier', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('supplier', item.id)"><i class="fas fa-trash"></i></button> </td> </tr> </tbody> </table> </div> </div>
+                </div>
+
+                <div class="tab-pane fade" id="employees-panel" role="tabpanel">
+                     <div class="card shadow-sm" style="border-top-left-radius: 0;">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h3 class="mb-0">Zarządzaj Pracownikami</h3>
+                            <button class="btn btn-primary" @click="openModal('pracownik', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nowego</button>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Nazwisko</th>
+                                        <th>Imię</th>
+                                        <th>Numer karty</th>
+                                        <th class="text-end">Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="pracownicy.length === 0">
+                                        <td colspan="4" class="text-center text-muted">Brak zdefiniowanych pracowników.</td>
+                                    </tr>
+                                    <tr v-for="item in pracownicy" :key="item.id">
+                                        <td>[[ item.nazwisko ]]</td>
+                                        <td>[[ item.imie ]]</td>
+                                        <td>[[ item.karta ]]</td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-secondary" @click="openModal('pracownik', 'edit', item)"><i class="fas fa-pencil-alt"></i></button>
+                                            <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('pracownik', item.id)"><i class="fas fa-trash"></i></button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel Poczta -->
+                <div class="tab-pane fade" id="email-panel" role="tabpanel">
+                    <div class="card shadow-sm" style="border-top-left-radius: 0;">
+                        <div class="card-header">
+                            <h3 class="mb-0">Konfiguracja Poczty Email</h3>
+                        </div>
+                        <div class="card-body">
+                            <div v-if="emailLoading" class="text-center">
+                                <div class="spinner-border" role="status"></div>
+                                <p class="mt-2">Ładowanie konfiguracji...</p>
+                            </div>
+
+                            <div v-else>
+                                <table class="table table-bordered">
+                                    <tbody>
+                                        <tr>
+                                            <th style="width: 250px;">Serwer SMTP</th>
+                                            <td>[[ emailConfig.email_host ]]</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Port</th>
+                                            <td>[[ emailConfig.email_port ]]</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Użyj SSL</th>
+                                            <td>
+                                                <span v-if="emailConfig.email_use_ssl" class="badge bg-success">TAK</span>
+                                                <span v-else class="badge bg-secondary">NIE</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Użyj TLS</th>
+                                            <td>
+                                                <span v-if="emailConfig.email_use_tls" class="badge bg-success">TAK</span>
+                                                <span v-else class="badge bg-secondary">NIE</span>
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <th>Konto email (użytkownik)</th>
+                                            <td>[[ emailConfig.email_host_user ]]</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Email nadawcy (FROM)</th>
+                                            <td>[[ emailConfig.default_from_email ]]</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Adres testowy</th>
+                                            <td>[[ emailConfig.email_test_address ]]</td>
+                                        </tr>
+                                        <tr>
+                                            <th>Status konfiguracji</th>
+                                            <td>
+                                                <span v-if="emailConfig.email_configured" class="badge bg-success">
+                                                    <i class="fas fa-check"></i> Skonfigurowane
+                                                </span>
+                                                <span v-else class="badge bg-danger">
+                                                    <i class="fas fa-exclamation-triangle"></i> Brak konfiguracji
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+
+                                <div class="mt-4">
+                                    <h5>Test wysyłki email</h5>
+                                    <p class="text-muted">Wyślij testowy email na adres: <strong>[[ emailConfig.email_test_address ]]</strong></p>
+
+                                    <button
+                                        class="btn btn-primary"
+                                        @click="sendTestEmail"
+                                        :disabled="emailTestSending || !emailConfig.email_configured">
+                                        <span v-if="emailTestSending" class="spinner-border spinner-border-sm me-2"></span>
+                                        <i v-else class="fas fa-paper-plane me-2"></i>
+                                        <span v-text="emailTestSending ? 'Wysyłanie...' : 'Test wysyłki'"></span>
+                                    </button>
+
+                                    <div v-if="emailTestResult" class="mt-3">
+                                        <div v-if="emailTestResult.success" class="alert alert-success">
+                                            <i class="fas fa-check-circle me-2"></i>
+                                            <strong>Sukces!</strong> [[ emailTestResult.message ]]
+                                        </div>
+                                        <div v-else class="alert alert-danger">
+                                            <i class="fas fa-exclamation-circle me-2"></i>
+                                            <strong>Błąd!</strong> [[ emailTestResult.message ]]
+                                        </div>
+                                    </div>
+
+                                    <div v-if="!emailConfig.email_configured" class="alert alert-warning mt-3">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Uwaga:</strong> Skonfiguruj konto email w pliku <code>settings.py</code> aby móc wysyłać wiadomości.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <div class="modal fade" tabindex="-1" ref="itemModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">[[ modal.title ]]</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+
+                        <div v-if="modal.errorMessage" class="alert alert-danger" role="alert">
+                            <strong>Błąd:</strong> [[ modal.errorMessage ]]
+                        </div>
+
+                        <div v-if="modal.type === 'kategoria'">
+                             <div class="mb-3"> <label class="form-label">Nazwa Kategorii Głównej</label> <input type="text" class="form-control" v-model="modal.currentItem.nazwa"> </div>
+                        </div>
+                        <div v-if="modal.type === 'podkategoria'">
+                            <div class="mb-3"> <label class="form-label">Kategoria Nadrzędna</label> <select class="form-select" v-model="modal.currentItem.kategoria" :disabled="modal.mode === 'add'"> <option v-for="kat in kategorie" :value="kat.id">[[ kat.nazwa ]]</option> </select> </div> <div class="mb-3"> <label class="form-label">Nazwa Podkategorii</label> <input type="text" class="form-control" v-model="modal.currentItem.nazwa"> </div>
+                        </div>
+                        <div v-if="modal.type === 'machine'" class="mb-3">
+                            <label class="form-label">Nazwa</label> <input type="text" class="form-control" v-model="modal.currentItem.nazwa">
+                        </div>
+                        <div v-if="modal.type === 'location'">
+                            <div class="mb-3"><label class="form-label">Szafa</label><input type="text" class="form-control" v-model="modal.currentItem.szafa"></div> <div class="mb-3"><label class="form-label">Kolumna</label><input type="text" class="form-control" v-model="modal.currentItem.kolumna"></div> <div class="mb-3"><label class="form-label">Półka</label><input type="text" class="form-control" v-model="modal.currentItem.polka"></div>
+                        </div>
+                        <div v-if="modal.type === 'supplier'">
+                            <div class="mb-3"><label class="form-label">Kod dostawcy</label><input type="text" class="form-control" v-model="modal.currentItem.kod_dostawcy"></div> <div class="mb-3"><label class="form-label">Nazwa firmy</label><input type="text" class="form-control" v-model="modal.currentItem.nazwa_firmy"></div> <div class="mb-3"><label class="form-label">NIP</label><input type="text" class="form-control" v-model="modal.currentItem.nip"></div> <div class="mb-3"><label class="form-label">Adres</label><textarea class="form-control" v-model="modal.currentItem.adres" rows="3"></textarea></div> <div class="mb-3"><label class="form-label">Telefon</label><input type="text" class="form-control" v-model="modal.currentItem.telefon"></div> <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" v-model="modal.currentItem.email"></div>
+                        </div>
+                        <div v-if="modal.type === 'pracownik'">
+                             <div class="mb-3">
+                                <label class="form-label">Nazwisko</label>
+                                <input type="text" class="form-control" v-model="modal.currentItem.nazwisko">
+                            </div>
+                             <div class="mb-3">
+                                <label class="form-label">Imię</label>
+                                <input type="text" class="form-control" v-model="modal.currentItem.imie">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Numer karty</label>
+                                <input type="text" class="form-control" v-model="modal.currentItem.karta">
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                        <button type="button" class="btn btn-primary" @click="saveItem">Zapisz</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" tabindex="-1" ref="deleteModal">
+             <div class="modal-dialog">
+                 <div class="modal-content">
+                     <div class="modal-header">
+                         <h5 class="modal-title">Potwierdź usunięcie</h5>
+                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                     </div>
+                     <div class="modal-body">
+                         <p v-text="deleteModal.message"></p>
+                         <p class="text-danger">Tej operacji nie można cofnąć.</p>
+                     </div>
+                     <div class="modal-footer">
+                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                         <button type="button" class="btn btn-danger" @click="confirmDeleteItem">Tak, usuń</button>
+                     </div>
+                 </div>
+             </div>
+        </div>
+
+        <div class="modal fade" tabindex="-1" ref="bulkAddModal">
+             <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Dodaj lokalizacje seryjnie</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label class="form-label">Nazwa/Numer szafy</label> <input type="text" class="form-control" v-model="bulkAddData.szafa" placeholder="np. SZAFA-01"> </div> <div class="mb-3"> <label class="form-label">Liczba kolumn (oś X)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_kolumn" min="1"> </div> <div class="mb-3"> <label class="form-label">Liczba półek (oś Y)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_polek" min="1"> </div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-success" @click="saveBulkItems">Zatwierdź i stwórz</button> </div> </div> </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/vue.global.js' %}"></script>
+    <script src="{% static 'js/axios.min.js' %}"></script>
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+
+    <script>
+        // Debug: sprawdzenie czy wszystkie biblioteki załadowane
+        console.log('Vue:', typeof Vue !== 'undefined' ? 'OK' : 'BRAK');
+        console.log('axios:', typeof axios !== 'undefined' ? 'OK' : 'BRAK');
+        console.log('bootstrap:', typeof bootstrap !== 'undefined' ? 'OK' : 'BRAK');
+    </script>
+
+    <script src="{% static 'js/main_ustawienia.js' %}?v=2.0"></script>
+
+    <script>
+        // Debug: catch błędów mountowania
+        window.addEventListener('error', function(e) {
+            console.error('Błąd JavaScript:', e.message, e.filename, e.lineno);
+        });
+    </script>
+</body>
+</html>
+
+
+

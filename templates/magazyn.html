@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Magazyniera - CNC Tools</title>
+    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main_magazyn.css' %}">
+</head>
+<body>
+    <div id="app">
+        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
+            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Magazyn</span></strong></h2>
+            <div>
+                <div class="btn-group" role="group" aria-label="Basic mixed styles example">
+                    <a href="{% url 'ustawienia' %}?next={% url 'magazyn' %}" class="btn btn-secondary shadow-sm" title="Ustawienia" style="margin-right: 5px;"><i class="fa fa-gear"></i> Ustawienia</a>
+                    <a href="{% url 'zamowienia' %}" class="btn btn-success shadow-sm" title="Zamówienia" style="margin-right: 5px;"><i class="fa fa-file-invoice"></i> Zamówienia</a>
+                    <a href="{% url 'faktury' %}?next={% url 'magazyn' %}" class="btn btn-primary shadow-sm text-white" title="Faktury"><i class="fa fa-file-invoice-dollar"></i> Faktury</a>
+                    <a href="{% url 'zakupy' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Zakupy" style="margin-left: 5px;"><i class="fa fa-truck"></i> Zakupy</a>
+                    <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 5px;"><i class="fa fa-right-from-bracket"></i> Wyjście</a>
+                </div>
+            </div>
+        </div>
+
+        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">
+             <div class="card shadow d-flex flex-column" style="flex-basis: 50%; min-height: 0;">
+                 <div class="card-header d-flex justify-content-between align-items-center">
+                     <div>
+                         <input type="text" class="form-control me-2 shadow-sm" placeholder="Szukaj..." v-model="searchQuery"></div>
+                         <h3 class="flex-grow-1 text-center">Lista typów narzędzi</h3> <div class="d-flex align-items-center">
+                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedKategoriaId" @change="onKategoriaChange">
+                             <option :value="null">Wszystkie kategorie</option>
+                             <option v-for="kategoria in kategorie" :key="kategoria.id" :value="kategoria.id">[[ kategoria.nazwa ]]</option>
+                         </select>
+                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedPodkategoriaId" :disabled="!selectedKategoriaId">
+                             <option :value="null">Wszystkie podkategorie</option>
+                             <option v-for="podkategoria in filteredPodkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ podkategoria.nazwa ]]</option>
+                         </select>
+                     </div>
+                 </div>
+                 <div class="card-body p-0" style="overflow-y: auto;">
+                     <table class="table table-striped table-hover mb-0">
+                         <thead class="bg-light">
+                            <tr>
+                                <th class="ps-3">Kategoria / Podkategoria</th>
+                                <th>Opis / Specyfikacja</th>
+                                <th>Nr katalogowy</th>
+                                <th>Nowe</th>
+                                <th>Używane</th>
+                                <th>W użyciu</th>
+                                <th>Razem</th>
+                                <th class="text-center">
+                                    <button class="btn btn-sm btn-success shadow-sm" @click.stop="openToolModal()" title="Dodaj nowy typ narzędzia"><i class="fas fa-plus"></i></button>
+                                </th>
+                            </tr>
+                         </thead>
+                         <transition-group name="list" tag="tbody">
+                             <tr v-for="tool in filteredTools" :key="tool.id" @click="selectTool(tool)" style="cursor: pointer;" :class="{'table-info': selectedToolForDetails && selectedToolForDetails.id === tool.id}">
+                                 <td class="ps-3"> <span v-if="tool.podkategoria"> <strong>[[ tool.podkategoria.kategoria_nazwa ]]</strong> / [[ tool.podkategoria.nazwa ]] </span> <span v-else class="text-muted">Brak kategorii</span> </td>
+                                 <td>[[ tool.opis ]]</td>
+                                 <td>[[ tool.numer_katalogowy || 'Brak' ]]</td>
+                                 <td>[[ tool.ilosc_nowych ]]</td>
+                                 <td>[[ tool.ilosc_uzywanych_dostepnych ]]</td>
+                                 <td>[[ tool.ilosc_w_uzyciu ]]</td>
+                                 <td><strong>[[ tool.calkowita_ilosc ]]</strong></td> <td class="text-center" style="width: 80px;"><button @click.stop="openToolModal(tool)" class="btn btn-sm btn-secondary shadow-sm" title="Edytuj typ narzędzia"><i class="fas fa-pencil-alt"></i></button></td> </tr> </transition-group> </table> </div> </div>
+
+             <div class="mt-4 d-flex flex-column" style="flex-basis: 50%; min-height: 0;"> <ul class="nav nav-tabs" role="tablist"> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'details'" :class="{ active: activeTab === 'details' }" type="button" :disabled="!selectedToolForDetails">Szczegóły <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'history'" :class="{ active: activeTab === 'history' }" type="button" :disabled="!selectedToolForDetails">Historia użycia <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'inUse'" :class="{ active: activeTab === 'inUse' }" type="button">Narzędzia aktualnie w użyciu</button></li> </ul> <div class="tab-content tab-content-shadow" style="flex: 1; min-height: 0; overflow-y: auto;"> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'details' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0 h-100 d-flex"> <div class="flex-grow-1" style="overflow-y: auto;"> <div v-if="isLoadingDetails" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4 h-100 d-flex align-items-center justify-content-center">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego egzemplarze.</div> <template v-else> <table class="table table-sm mb-0"> <thead class="bg-light"> <tr> <th class="ps-3">Lokalizacja</th><th>Data</th><th>Opakowanie</th><th>Stan</th> <th class="text-center">Akcja</th> <th class="text-center"><button class="btn btn-sm btn-success shadow-sm" @click="openInstanceModal('add')" title="Dodaj nowy egzemplarz" style="width: 50px;"><strong>+</strong></button></th> </tr> </thead> <transition-group name="list" tag="tbody"> <tr v-if="toolInstances.length === 0" key="no-items"><td colspan="6" class="text-center text-muted p-3">Brak egzemplarzy dla tego typu narzędzia.</td></tr> <tr v-for="instance in toolInstances" :key="instance.id"> <td class="ps-3" :title="instance.faktura_zakupu ? `Faktura: ${instance.faktura_zakupu.numer_faktury}` : ''"> [[ instance.lokalizacja ? `${instance.lokalizacja.szafa}/${instance.lokalizacja.kolumna}/${instance.lokalizacja.polka}` : 'Brak' ]] </td> <td>[[ formatCustomDate(instance.data_modyfikacji) ]]</td> <td>[[ instance.jednostka === 'kompl' ? `Komplet (${instance.ilosc_w_komplecie} szt.)` : 'Sztuka' ]]</td> <td><span :class="`badge bg-${getInstanceStatusClass(instance.stan)}`">[[ getInstanceStatusLabel(instance.stan) ]]</span></td> <td class="text-center"> <button v-if="instance.stan === 'nowe' || instance.stan === 'uzywane'" @click="showIssueModal(instance)" class="btn btn-sm btn-primary shadow-sm" :disabled="inUseInstanceIds.has(instance.id)" :title="inUseInstanceIds.has(instance.id) ? 'Egzemplarz jest aktualnie w użyciu' : 'Pobierz ten egzemplarz'"> <i class="fas fa-download"></i> </button> </td> <td class="text-center"> <button class="btn btn-sm btn-secondary shadow-sm" @click="openInstanceModal('edit', instance)" title="Edytuj"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-dark ms-1 shadow-sm" @click="openDeleteInstanceModal(instance)" title="Usuń"><i class="fas fa-trash"></i></button> </td> </tr> </transition-group> </table> </template> </div> <div class="w-25 p-2 d-flex align-items-center justify-content-center details-image-container" style="min-width: 200px;"> <img v-if="selectedToolForDetails && selectedToolForDetails.obraz" :src="selectedToolForDetails.obraz" class="details-image" alt="Obrazek narzędzia"> <img v-else-if="selectedToolForDetails" src="{% static 'images/cnc.png' %}" class="details-image" alt="Domyślny obrazek narzędzia"> <span v-else class="text-muted">Wybierz narzędzie</span> </div> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'history' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0" style="overflow-y: auto;"> <div v-if="isLoadingHistory" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego historię.</div> <table v-else class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Pracownik</th><th>Maszyna</th><th>Data pobrania</th><th>Data zwrotu</th><th>Uwagi</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="toolHistory.length === 0" key="no-history"><td colspan="5" class="text-center text-muted p-3">Brak historii użycia dla tego narzędzia.</td></tr> <tr v-for="usage in toolHistory" :key="usage.id"> <td class="ps-3">[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td><td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><span v-if="usage.data_zwrotu">[[ formatCustomDate(usage.data_zwrotu) ]]</span><span v-else class="badge bg-danger">W użyciu</span></td> <td>[[ usage.uwagi ]]</td> </tr> </transition-group> </table> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'inUse' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-header d-flex justify-content-end align-items-center py-2"><label class="me-2 mb-0">Filtruj po maszynie:</label><select class="form-select w-auto shadow-sm" v-model="selectedMaszynaFilter"><option :value="null">Wszystkie maszyny</option><option v-for="machine in machines" :key="machine.id" :value="machine.id">[[ machine.nazwa ]]</option></select></div> <div class="card-body p-0" style="overflow-y: auto;"> <table class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Narzędzie</th><th>Maszyna</th><th>Pracownik</th><th>Data pobrania</th><th>Akcje</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="filteredUsagesInUse.length === 0" key="no-usage"><td colspan="5" class="text-center text-muted p-3">Brak narzędzi w użyciu.</td></tr> <tr v-for="usage in filteredUsagesInUse" :key="usage.id"> <td class="ps-3"> <span v-if="usage.egzemplarz.narzedzie_typ.podkategoria"> <strong>[[ usage.egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa ]]</strong> / [[ usage.egzemplarz.narzedzie_typ.podkategoria.nazwa ]] - </span> [[ usage.egzemplarz.narzedzie_typ.opis ]] </td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td> <td>[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><button @click="showReturnModal(usage.id)" class="btn btn-sm btn-success shadow-sm" title="Zwróć"><i class="fas fa-undo"></i></button></td> </tr> </transition-group> </table> </div> </div> </div> </div>
+            </div>
+        </main>
+
+        <div class="modal fade" tabindex="-1" ref="issueModal"> <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Pobierz egzemplarz: [[ issueData.instance ? issueData.instance.narzedzie_typ.opis : '' ]] (ID: [[ issueData.instance ? issueData.instance.id : '' ]])</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label for="machine" class="form-label">Wybierz maszynę</label> <select class="form-select" id="machine" v-model="issueData.machine_id"> <option v-for="machine in machines" :value="machine.id">[[ machine.nazwa ]]</option> </select> </div> <div class="mb-3"> <label for="employee" class="form-label">Wybierz pracownika</label> <select class="form-select" id="employee" v-model="issueData.pracownik_id"> <option :value="null" >-- Wybierz --</option> <option v-for="pracownik in pracownicy" :value="pracownik.id"> [[ pracownik.nazwisko ]] [[ pracownik.imie ]] </option> </select> </div> <div v-if="error" class="alert alert-danger">[[ error ]]</div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-primary shadow-sm" @click="issueTool">Pobierz</button> </div> </div> </div> </div>
+        <div class="modal fade" tabindex="-1" ref="returnModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Zwrot narzędzia</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>W jakim stanie technicznym zwracasz narzędzie?</p><div class="form-check"><input class="form-check-input" type="radio" value="uzywane" id="stanUzywane" v-model="returnStatus"><label class="form-check-label" for="stanUzywane">Dobrym (jako używane)</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone" id="stanUszkodzone" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzone">Uszkodzonym</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone_regeneracja" id="stanUszkodzoneRegeneracja" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzoneRegeneracja">Uszkodzonym do regeneracji</label></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-success shadow-sm" @click="confirmReturnTool">Potwierdź zwrot</button></div></div></div></div>
+        <div class="modal fade" tabindex="-1" ref="toolModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">[[ isEditMode ? 'Edytuj typ narzędzia' : 'Dodaj nowy typ narzędzia' ]]</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Kategoria / Podkategoria</label><select class="form-select" v-model="currentTool.podkategoria_id"><option :value="null">Brak (Główne)</option><optgroup v-for="kategoria in kategorie" :key="kategoria.id" :label="kategoria.nazwa"><option v-for="podkategoria in kategoria.podkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ kategoria.nazwa ]] / [[ podkategoria.nazwa ]]</option></optgroup></select></div><div class="mb-3"><label class="form-label">Opis / Specyfikacja</label><input type="text" class="form-control" v-model="currentTool.opis"></div><div class="mb-3"><label class="form-label">Numer katalogowy (opcjonalnie)</label><input type="text" class="form-control" v-model="currentTool.numer_katalogowy"></div><div class="mb-3"><label class="form-label">Domyślna lokalizacja (opcjonalnie)</label><select class="form-select" v-model="currentTool.domyslna_lokalizacja_id"><option :value="null">-- Brak --</option><option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">[[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]</option></select></div><div class="mb-3"><label class="form-label">Opakowanie</label><select class="form-select" v-model="currentTool.opakowanie" @change="onOpakowanieChange"><option value="szt">Sztuka</option><option value="kompl">Komplet</option></select></div><div class="mb-3"><label class="form-label">Ilość w opakowaniu</label><input type="number" class="form-control" v-model.number="currentTool.ilosc_w_opakowaniu" :min="currentTool.opakowanie === 'kompl' ? 2 : 1"></div><div v-if="toolValidationError" class="alert alert-danger">[[toolValidationError]]</div><div class="mb-3"><label for="toolImage" class="form-label">Obraz narzędzia</label><input class="form-control" type="file" id="toolImage" @change="handleToolImageUpload" accept="image/*"></div><div v-if="toolImagePreview" class="mb-3 text-center"><p>Podgląd:</p><img :src="toolImagePreview" class="img-thumbnail tool-image-preview"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-primary shadow-sm" @click="saveTool">[[ isEditMode ? 'Zapisz zmiany' : 'Dodaj typ' ]]</button></div></div></div></div>
+
+        <div class="modal fade" tabindex="-1" ref="instanceModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">[[ instanceModal.title ]]</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div v-if="instanceModal.errorMessage" class="alert alert-danger" role="alert">
+                            <strong>Błąd:</strong> [[ instanceModal.errorMessage ]]
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Typ Narzędzia</label>
+                            <input type="text" class="form-control" :value="selectedToolForDetails ? selectedToolForDetails.opis : ''" readonly disabled>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Stan Techniczny</label>
+                            <select class="form-select" v-model="instanceModal.currentInstance.stan">
+                                <option value="nowe">Nowe</option>
+                                <option value="uzywane">Używane</option>
+                                <option value="uszkodzone">Uszkodzone</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Lokalizacja</label>
+                            <select class="form-select" v-model="instanceModal.currentInstance.lokalizacja_id">
+                                <option :value="null">-- Wybierz lokalizację --</option>
+                                <option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">
+                                    [[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]
+                                </option>
+                            </select>
+                        </div>
+                        <div v-if="instanceModal.mode === 'add'">
+                            <div class="mb-3">
+                                <label for="orderSelect" class="form-label">Zamówienie (opcjonalne)</label>
+                                <select id="orderSelect" class="form-select" v-model="instanceModal.currentInstance.zamowienie_id">
+                                    <option :value="null">-- Brak --</option>
+                                    <option v-for="zamowienie in zamowienia" :key="zamowienie.id" :value="zamowienie.id">
+                                        [[ zamowienie.numer ]] - [[ zamowienie.dostawca.nazwa_firmy ]]
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="quantityInput" class="form-label">Ilość</label>
+                                <input id="quantityInput" type="number" class="form-control" v-model.number="instanceModal.currentInstance.ilosc" min="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal" :disabled="isSavingInstance">Anuluj</button>
+                        <button v-if="!isSavingInstance" type="button" class="btn btn-primary shadow-sm" @click="saveInstance">Zapisz</button>
+                        <button v-else class="btn btn-primary shadow-sm" type="button" disabled>
+                            <span class="spinner-button" role="status" aria-hidden="true"></span> Zapisywanie...
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" tabindex="-1" ref="deleteInstanceModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Potwierdź usunięcie</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p v-html="deleteModalMessage"></p><p class="text-danger">Tej operacji nie można cofnąć.</p></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-danger shadow-sm" @click="confirmDeleteInstance">Tak, usuń</button></div></div></div></div>
+    </div>
+
+    <script src="{% static 'js/vue.global.js' %}"></script>
+    <script src="{% static 'js/axios.min.js' %}"></script>
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'js/main_magazyn.js' %}?v=1.1"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>-->
+<!--{% load static %}-->
+<!--<html lang="pl">-->
+<!--<head>-->
+<!--    <meta charset="UTF-8">-->
+<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+<!--    <title>Panel Magazyniera - CNC Tools</title>-->
+<!--    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">-->
+<!--    <link rel="manifest" href="{% static 'manifest.json' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main_magazyn.css' %}">-->
+<!--</head>-->
+<!--<body>-->
+<!--    <div id="app">-->
+<!--        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">-->
+<!--            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Magazyn</span></strong></h2>-->
+<!--            <div>-->
+<!--                <div class="btn-group" role="group" aria-label="Basic mixed styles example">-->
+<!--                    <a href="{% url 'ustawienia' %}?next={% url 'magazyn' %}" class="btn btn-secondary shadow-sm" title="Ustawienia" style="margin-right: 5px;"><i class="fa fa-gear"></i> Ustawienia</a>-->
+<!--                    <a href="{% url 'zamowienia' %}" class="btn btn-success shadow-sm" title="Zamówienia" style="margin-right: 5px;"><i class="fa fa-file-invoice"></i> Zamówienia</a>-->
+<!--                    <a href="{% url 'faktury' %}?next={% url 'magazyn' %}" class="btn btn-primary shadow-sm text-white" title="Faktury"><i class="fa fa-file-invoice-dollar"></i> Faktury</a>-->
+<!--                    <a href="{% url 'zakupy' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Zakupy" style="margin-left: 5px;"><i class="fa fa-truck"></i> Zakupy</a>-->
+<!--                    <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 5px;"><i class="fa fa-right-from-bracket"></i> Wyjście</a>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">-->
+<!--             <div class="card shadow d-flex flex-column" style="flex-basis: 50%; min-height: 0;">-->
+<!--                 <div class="card-header d-flex justify-content-between align-items-center">-->
+<!--                     <div>-->
+<!--                         <input type="text" class="form-control me-2 shadow-sm" placeholder="Szukaj..." v-model="searchQuery"></div>-->
+<!--                         <h3 class="flex-grow-1 text-center">Lista typów narzędzi</h3> <div class="d-flex align-items-center">-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedKategoriaId" @change="onKategoriaChange">-->
+<!--                             <option :value="null">Wszystkie kategorie</option>-->
+<!--                             <option v-for="kategoria in kategorie" :key="kategoria.id" :value="kategoria.id">[[ kategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedPodkategoriaId" :disabled="!selectedKategoriaId">-->
+<!--                             <option :value="null">Wszystkie podkategorie</option>-->
+<!--                             <option v-for="podkategoria in filteredPodkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ podkategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                     </div>-->
+<!--                 </div>-->
+<!--                 <div class="card-body p-0" style="overflow-y: auto;">-->
+<!--                     <table class="table table-striped table-hover mb-0">-->
+<!--                         <thead class="bg-light">-->
+<!--                            <tr>-->
+<!--                                <th class="ps-3">Kategoria / Podkategoria</th>-->
+<!--                                <th>Opis / Specyfikacja</th>-->
+<!--                                <th>Nr katalogowy</th>-->
+<!--                                <th>Nowe</th>-->
+<!--                                <th>Używane</th>-->
+<!--                                <th>W użyciu</th>-->
+<!--                                <th>Razem</th>-->
+<!--                                <th class="text-center">-->
+<!--                                    <button class="btn btn-sm btn-success shadow-sm" @click.stop="openToolModal()" title="Dodaj nowy typ narzędzia"><i class="fas fa-plus"></i></button>-->
+<!--                                </th>-->
+<!--                            </tr>-->
+<!--                         </thead>-->
+<!--                         <transition-group name="list" tag="tbody">-->
+<!--                             <tr v-for="tool in filteredTools" :key="tool.id" @click="selectTool(tool)" style="cursor: pointer;" :class="{'table-info': selectedToolForDetails && selectedToolForDetails.id === tool.id}">-->
+<!--                                 <td class="ps-3"> <span v-if="tool.podkategoria"> <strong>[[ tool.podkategoria.kategoria_nazwa ]]</strong> / [[ tool.podkategoria.nazwa ]] </span> <span v-else class="text-muted">Brak kategorii</span> </td>-->
+<!--                                 <td>[[ tool.opis ]]</td>-->
+<!--                                 <td>[[ tool.numer_katalogowy || 'Brak' ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_nowych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_uzywanych_dostepnych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_w_uzyciu ]]</td>-->
+<!--                                 <td><strong>[[ tool.calkowita_ilosc ]]</strong></td> <td class="text-center" style="width: 80px;"><button @click.stop="openToolModal(tool)" class="btn btn-sm btn-secondary shadow-sm" title="Edytuj typ narzędzia"><i class="fas fa-pencil-alt"></i></button></td> </tr> </transition-group> </table> </div> </div>-->
+
+<!--             <div class="mt-4 d-flex flex-column" style="flex-basis: 50%; min-height: 0;"> <ul class="nav nav-tabs" role="tablist"> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'details'" :class="{ active: activeTab === 'details' }" type="button" :disabled="!selectedToolForDetails">Szczegóły <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'history'" :class="{ active: activeTab === 'history' }" type="button" :disabled="!selectedToolForDetails">Historia użycia <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'inUse'" :class="{ active: activeTab === 'inUse' }" type="button">Narzędzia aktualnie w użyciu</button></li> </ul> <div class="tab-content tab-content-shadow" style="flex: 1; min-height: 0; overflow-y: auto;"> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'details' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0 h-100 d-flex"> <div class="flex-grow-1" style="overflow-y: auto;"> <div v-if="isLoadingDetails" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4 h-100 d-flex align-items-center justify-content-center">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego egzemplarze.</div> <template v-else> <table class="table table-sm mb-0"> <thead class="bg-light"> <tr> <th class="ps-3">Lokalizacja</th><th>Data</th><th>Opakowanie</th><th>Stan</th> <th class="text-center">Akcja</th> <th class="text-center"><button class="btn btn-sm btn-success shadow-sm" @click="openInstanceModal('add')" title="Dodaj nowy egzemplarz" style="width: 50px;"><strong>+</strong></button></th> </tr> </thead> <transition-group name="list" tag="tbody"> <tr v-if="toolInstances.length === 0" key="no-items"><td colspan="6" class="text-center text-muted p-3">Brak egzemplarzy dla tego typu narzędzia.</td></tr> <tr v-for="instance in toolInstances" :key="instance.id"> <td class="ps-3" :title="instance.faktura_zakupu ? `Faktura: ${instance.faktura_zakupu.numer_faktury}` : ''"> [[ instance.lokalizacja ? `${instance.lokalizacja.szafa}/${instance.lokalizacja.kolumna}/${instance.lokalizacja.polka}` : 'Brak' ]] </td> <td>[[ formatCustomDate(instance.data_modyfikacji) ]]</td> <td>[[ instance.jednostka === 'kompl' ? `Komplet (${instance.ilosc_w_komplecie} szt.)` : 'Sztuka' ]]</td> <td><span :class="`badge bg-${getInstanceStatusClass(instance.stan)}`">[[ instance.stan ]]</span></td> <td class="text-center"> <button v-if="instance.stan === 'nowe' || instance.stan === 'uzywane'" @click="showIssueModal(instance)" class="btn btn-sm btn-primary shadow-sm" :disabled="inUseInstanceIds.has(instance.id)" :title="inUseInstanceIds.has(instance.id) ? 'Egzemplarz jest aktualnie w użyciu' : 'Pobierz ten egzemplarz'"> <i class="fas fa-download"></i> </button> </td> <td class="text-center"> <button class="btn btn-sm btn-secondary shadow-sm" @click="openInstanceModal('edit', instance)" title="Edytuj"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-dark ms-1 shadow-sm" @click="openDeleteInstanceModal(instance)" title="Usuń"><i class="fas fa-trash"></i></button> </td> </tr> </transition-group> </table> </template> </div> <div class="w-25 p-2 d-flex align-items-center justify-content-center details-image-container" style="min-width: 200px;"> <img v-if="selectedToolForDetails && selectedToolForDetails.obraz" :src="selectedToolForDetails.obraz" class="details-image" alt="Obrazek narzędzia"> <img v-else-if="selectedToolForDetails" src="{% static 'images/cnc.png' %}" class="details-image" alt="Domyślny obrazek narzędzia"> <span v-else class="text-muted">Wybierz narzędzie</span> </div> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'history' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0" style="overflow-y: auto;"> <div v-if="isLoadingHistory" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego historię.</div> <table v-else class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Pracownik</th><th>Maszyna</th><th>Data pobrania</th><th>Data zwrotu</th><th>Uwagi</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="toolHistory.length === 0" key="no-history"><td colspan="5" class="text-center text-muted p-3">Brak historii użycia dla tego narzędzia.</td></tr> <tr v-for="usage in toolHistory" :key="usage.id"> <td class="ps-3">[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td><td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><span v-if="usage.data_zwrotu">[[ formatCustomDate(usage.data_zwrotu) ]]</span><span v-else class="badge bg-danger">W użyciu</span></td> <td>[[ usage.uwagi ]]</td> </tr> </transition-group> </table> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'inUse' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-header d-flex justify-content-end align-items-center py-2"><label class="me-2 mb-0">Filtruj po maszynie:</label><select class="form-select w-auto shadow-sm" v-model="selectedMaszynaFilter"><option :value="null">Wszystkie maszyny</option><option v-for="machine in machines" :key="machine.id" :value="machine.id">[[ machine.nazwa ]]</option></select></div> <div class="card-body p-0" style="overflow-y: auto;"> <table class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Narzędzie</th><th>Maszyna</th><th>Pracownik</th><th>Data pobrania</th><th>Akcje</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="filteredUsagesInUse.length === 0" key="no-usage"><td colspan="5" class="text-center text-muted p-3">Brak narzędzi w użyciu.</td></tr> <tr v-for="usage in filteredUsagesInUse" :key="usage.id"> <td class="ps-3"> <span v-if="usage.egzemplarz.narzedzie_typ.podkategoria"> <strong>[[ usage.egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa ]]</strong> / [[ usage.egzemplarz.narzedzie_typ.podkategoria.nazwa ]] - </span> [[ usage.egzemplarz.narzedzie_typ.opis ]] </td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td> <td>[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><button @click="showReturnModal(usage.id)" class="btn btn-sm btn-success shadow-sm" title="Zwróć"><i class="fas fa-undo"></i></button></td> </tr> </transition-group> </table> </div> </div> </div> </div>-->
+<!--            </div>-->
+<!--        </main>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="issueModal"> <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Pobierz egzemplarz: [[ issueData.instance ? issueData.instance.narzedzie_typ.opis : '' ]] (ID: [[ issueData.instance ? issueData.instance.id : '' ]])</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label for="machine" class="form-label">Wybierz maszynę</label> <select class="form-select" id="machine" v-model="issueData.machine_id"> <option v-for="machine in machines" :value="machine.id">[[ machine.nazwa ]]</option> </select> </div> <div class="mb-3"> <label for="employee" class="form-label">Wybierz pracownika</label> <select class="form-select" id="employee" v-model="issueData.pracownik_id"> <option :value="null" >&#45;&#45; Wybierz &#45;&#45;</option> <option v-for="pracownik in pracownicy" :value="pracownik.id"> [[ pracownik.nazwisko ]] [[ pracownik.imie ]] </option> </select> </div> <div v-if="error" class="alert alert-danger">[[ error ]]</div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-primary shadow-sm" @click="issueTool">Pobierz</button> </div> </div> </div> </div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="returnModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Zwrot narzędzia</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>W jakim stanie technicznym zwracasz narzędzie?</p><div class="form-check"><input class="form-check-input" type="radio" value="uzywane" id="stanUzywane" v-model="returnStatus"><label class="form-check-label" for="stanUzywane">Dobrym (jako używane)</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone" id="stanUszkodzone" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzone">Uszkodzonym</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone_regeneracja" id="stanUszkodzoneRegeneracja" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzoneRegeneracja">Uszkodzonym do regeneracji</label></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-success shadow-sm" @click="confirmReturnTool">Potwierdź zwrot</button></div></div></div></div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="toolModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">[[ isEditMode ? 'Edytuj typ narzędzia' : 'Dodaj nowy typ narzędzia' ]]</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Kategoria / Podkategoria</label><select class="form-select" v-model="currentTool.podkategoria_id"><option :value="null">Brak (Główne)</option><optgroup v-for="kategoria in kategorie" :key="kategoria.id" :label="kategoria.nazwa"><option v-for="podkategoria in kategoria.podkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ kategoria.nazwa ]] / [[ podkategoria.nazwa ]]</option></optgroup></select></div><div class="mb-3"><label class="form-label">Opis / Specyfikacja</label><input type="text" class="form-control" v-model="currentTool.opis"></div><div class="mb-3"><label class="form-label">Numer katalogowy (opcjonalnie)</label><input type="text" class="form-control" v-model="currentTool.numer_katalogowy"></div><div class="mb-3"><label class="form-label">Domyślna lokalizacja (opcjonalnie)</label><select class="form-select" v-model="currentTool.domyslna_lokalizacja_id"><option :value="null">&#45;&#45; Brak &#45;&#45;</option><option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">[[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]</option></select></div><div class="mb-3"><label class="form-label">Opakowanie</label><select class="form-select" v-model="currentTool.opakowanie" @change="onOpakowanieChange"><option value="szt">Sztuka</option><option value="kompl">Komplet</option></select></div><div class="mb-3"><label class="form-label">Ilość w opakowaniu</label><input type="number" class="form-control" v-model.number="currentTool.ilosc_w_opakowaniu" :min="currentTool.opakowanie === 'kompl' ? 2 : 1"></div><div v-if="toolValidationError" class="alert alert-danger">[[toolValidationError]]</div><div class="mb-3"><label for="toolImage" class="form-label">Obraz narzędzia</label><input class="form-control" type="file" id="toolImage" @change="handleToolImageUpload" accept="image/*"></div><div v-if="toolImagePreview" class="mb-3 text-center"><p>Podgląd:</p><img :src="toolImagePreview" class="img-thumbnail tool-image-preview"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-primary shadow-sm" @click="saveTool">[[ isEditMode ? 'Zapisz zmiany' : 'Dodaj typ' ]]</button></div></div></div></div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="instanceModal">-->
+<!--            <div class="modal-dialog">-->
+<!--                <div class="modal-content">-->
+<!--                    <div class="modal-header">-->
+<!--                        <h5 class="modal-title">[[ instanceModal.title ]]</h5>-->
+<!--                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>-->
+<!--                    </div>-->
+<!--                    <div class="modal-body">-->
+<!--                        <div v-if="instanceModal.errorMessage" class="alert alert-danger" role="alert">-->
+<!--                            <strong>Błąd:</strong> [[ instanceModal.errorMessage ]]-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Typ Narzędzia</label>-->
+<!--                            <input type="text" class="form-control" :value="selectedToolForDetails ? selectedToolForDetails.opis : ''" readonly disabled>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Stan Techniczny</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.stan">-->
+<!--                                <option value="nowe">Nowe</option>-->
+<!--                                <option value="uzywane">Używane</option>-->
+<!--                                <option value="uszkodzone">Uszkodzone</option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Lokalizacja</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.lokalizacja_id">-->
+<!--                                <option :value="null">&#45;&#45; Wybierz lokalizację &#45;&#45;</option>-->
+<!--                                <option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">-->
+<!--                                    [[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]-->
+<!--                                </option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div v-if="instanceModal.mode === 'add'">-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="orderSelect" class="form-label">Zamówienie (opcjonalne)</label>-->
+<!--                                <select id="orderSelect" class="form-select" v-model="instanceModal.currentInstance.zamowienie_id">-->
+<!--                                    <option :value="null">&#45;&#45; Brak &#45;&#45;</option>-->
+<!--                                    <option v-for="zamowienie in zamowienia" :key="zamowienie.id" :value="zamowienie.id">-->
+<!--                                        [[ zamowienie.numer ]] - [[ zamowienie.dostawca.nazwa_firmy ]]-->
+<!--                                    </option>-->
+<!--                                </select>-->
+<!--                            </div>-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="quantityInput" class="form-label">Ilość</label>-->
+<!--                                <input id="quantityInput" type="number" class="form-control" v-model.number="instanceModal.currentInstance.ilosc" min="1">-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    <div class="modal-footer">-->
+<!--                        <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal" :disabled="isSavingInstance">Anuluj</button>-->
+<!--                        <button v-if="!isSavingInstance" type="button" class="btn btn-primary shadow-sm" @click="saveInstance">Zapisz</button>-->
+<!--                        <button v-else class="btn btn-primary shadow-sm" type="button" disabled>-->
+<!--                            <span class="spinner-button" role="status" aria-hidden="true"></span> Zapisywanie...-->
+<!--                        </button>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="deleteInstanceModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Potwierdź usunięcie</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p v-html="deleteModalMessage"></p><p class="text-danger">Tej operacji nie można cofnąć.</p></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-danger shadow-sm" @click="confirmDeleteInstance">Tak, usuń</button></div></div></div></div>-->
+<!--    </div>-->
+
+<!--    <script src="{% static 'js/vue.global.js' %}"></script>-->
+<!--    <script src="{% static 'js/axios.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/main_magazyn.js' %}?v=1.1"></script>-->
+<!--</body>-->
+<!--</html>-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>-->
+<!--{% load static %}-->
+<!--<html lang="pl">-->
+<!--<head>-->
+<!--    <meta charset="UTF-8">-->
+<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+<!--    <title>Panel Magazyniera - CNC Tools</title>-->
+<!--    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">-->
+<!--    <link rel="manifest" href="{% static 'manifest.json' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main_magazyn.css' %}">-->
+<!--</head>-->
+<!--<body>-->
+<!--    <div id="app">-->
+<!--        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">-->
+<!--            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Magazyn</span></strong></h2>-->
+<!--            <div>-->
+<!--                <div class="btn-group" role="group" aria-label="Basic mixed styles example">-->
+<!--                    <a href="{% url 'ustawienia' %}?next={% url 'magazyn' %}" class="btn btn-secondary shadow-sm" title="Ustawienia" style="margin-right: 5px;"><i class="fa fa-gear"></i> Ustawienia</a>-->
+<!--                    <a href="{% url 'zamowienia' %}" class="btn btn-success shadow-sm" title="Zamówienia" style="margin-right: 5px;"><i class="fa fa-file-invoice"></i> Zamówienia</a>-->
+<!--                    <a href="{% url 'faktury' %}?next={% url 'magazyn' %}" class="btn btn-primary shadow-sm text-white" title="Faktury"><i class="fa fa-file-invoice-dollar"></i> Faktury</a>-->
+<!--                    <a href="{% url 'zakupy' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Zakupy" style="margin-left: 5px;"><i class="fa fa-truck"></i> Zakupy</a>-->
+<!--                    <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 5px;"><i class="fa fa-right-from-bracket"></i> Wyjście</a>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">-->
+<!--             <div class="card shadow d-flex flex-column" style="flex-basis: 50%; min-height: 0;">-->
+<!--                 <div class="card-header d-flex justify-content-between align-items-center">-->
+<!--                     <div>-->
+<!--                         <input type="text" class="form-control me-2 shadow-sm" placeholder="Szukaj..." v-model="searchQuery"></div>-->
+<!--                         <h3 class="flex-grow-1 text-center">Lista typów narzędzi</h3> <div class="d-flex align-items-center">-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedKategoriaId" @change="onKategoriaChange">-->
+<!--                             <option :value="null">Wszystkie kategorie</option>-->
+<!--                             <option v-for="kategoria in kategorie" :key="kategoria.id" :value="kategoria.id">[[ kategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedPodkategoriaId" :disabled="!selectedKategoriaId">-->
+<!--                             <option :value="null">Wszystkie podkategorie</option>-->
+<!--                             <option v-for="podkategoria in filteredPodkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ podkategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                     </div>-->
+<!--                 </div>-->
+<!--                 <div class="card-body p-0" style="overflow-y: auto;">-->
+<!--                     <table class="table table-striped table-hover mb-0">-->
+<!--                         <thead class="bg-light">-->
+<!--                            <tr>-->
+<!--                                <th class="ps-3">Kategoria / Podkategoria</th>-->
+<!--                                <th>Opis / Specyfikacja</th>-->
+<!--                                <th>Nr katalogowy</th>-->
+<!--                                <th>Nowe</th>-->
+<!--                                <th>Używane</th>-->
+<!--                                <th>W użyciu</th>-->
+<!--                                <th>Razem</th>-->
+<!--                                <th class="text-center">-->
+<!--                                    <button class="btn btn-sm btn-success shadow-sm" @click.stop="openToolModal()" title="Dodaj nowy typ narzędzia"><i class="fas fa-plus"></i></button>-->
+<!--                                </th>-->
+<!--                            </tr>-->
+<!--                         </thead>-->
+<!--                         <transition-group name="list" tag="tbody">-->
+<!--                             <tr v-for="tool in filteredTools" :key="tool.id" @click="selectTool(tool)" style="cursor: pointer;" :class="{'table-info': selectedToolForDetails && selectedToolForDetails.id === tool.id}">-->
+<!--                                 <td class="ps-3"> <span v-if="tool.podkategoria"> <strong>[[ tool.podkategoria.kategoria_nazwa ]]</strong> / [[ tool.podkategoria.nazwa ]] </span> <span v-else class="text-muted">Brak kategorii</span> </td>-->
+<!--                                 <td>[[ tool.opis ]]</td>-->
+<!--                                 <td>[[ tool.numer_katalogowy || 'Brak' ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_nowych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_uzywanych_dostepnych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_w_uzyciu ]]</td>-->
+<!--                                 <td><strong>[[ tool.calkowita_ilosc ]]</strong></td> <td class="text-center" style="width: 80px;"><button @click.stop="openToolModal(tool)" class="btn btn-sm btn-secondary shadow-sm" title="Edytuj typ narzędzia"><i class="fas fa-pencil-alt"></i></button></td> </tr> </transition-group> </table> </div> </div>-->
+
+<!--             <div class="mt-4 d-flex flex-column" style="flex-basis: 50%; min-height: 0;"> <ul class="nav nav-tabs" role="tablist"> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'details'" :class="{ active: activeTab === 'details' }" type="button" :disabled="!selectedToolForDetails">Szczegóły <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'history'" :class="{ active: activeTab === 'history' }" type="button" :disabled="!selectedToolForDetails">Historia użycia <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'inUse'" :class="{ active: activeTab === 'inUse' }" type="button">Narzędzia aktualnie w użyciu</button></li> </ul> <div class="tab-content tab-content-shadow" style="flex: 1; min-height: 0; overflow-y: auto;"> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'details' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0 h-100 d-flex"> <div class="flex-grow-1" style="overflow-y: auto;"> <div v-if="isLoadingDetails" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4 h-100 d-flex align-items-center justify-content-center">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego egzemplarze.</div> <template v-else> <table class="table table-sm mb-0"> <thead class="bg-light"> <tr> <th class="ps-3">Lokalizacja</th><th>Data</th><th>Opakowanie</th><th>Stan</th> <th class="text-center">Akcja</th> <th class="text-center"><button class="btn btn-sm btn-success shadow-sm" @click="openInstanceModal('add')" title="Dodaj nowy egzemplarz" style="width: 50px;"><strong>+</strong></button></th> </tr> </thead> <transition-group name="list" tag="tbody"> <tr v-if="toolInstances.length === 0" key="no-items"><td colspan="6" class="text-center text-muted p-3">Brak egzemplarzy dla tego typu narzędzia.</td></tr> <tr v-for="instance in toolInstances" :key="instance.id"> <td class="ps-3" :title="instance.faktura_zakupu ? `Faktura: ${instance.faktura_zakupu.numer_faktury}` : ''"> [[ instance.lokalizacja ? `${instance.lokalizacja.szafa}/${instance.lokalizacja.kolumna}/${instance.lokalizacja.polka}` : 'Brak' ]] </td> <td>[[ formatCustomDate(instance.data_modyfikacji) ]]</td> <td>[[ instance.jednostka === 'kompl' ? `Komplet (${instance.ilosc_w_komplecie} szt.)` : 'Sztuka' ]]</td> <td><span :class="`badge bg-${getInstanceStatusClass(instance.stan)}`">[[ instance.stan ]]</span></td> <td class="text-center"> <button v-if="instance.stan === 'nowe' || instance.stan === 'uzywane'" @click="showIssueModal(instance)" class="btn btn-sm btn-primary shadow-sm" :disabled="inUseInstanceIds.has(instance.id)" :title="inUseInstanceIds.has(instance.id) ? 'Egzemplarz jest aktualnie w użyciu' : 'Pobierz ten egzemplarz'"> <i class="fas fa-download"></i> </button> </td> <td class="text-center"> <button class="btn btn-sm btn-secondary shadow-sm" @click="openInstanceModal('edit', instance)" title="Edytuj"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-dark ms-1 shadow-sm" @click="openDeleteInstanceModal(instance)" title="Usuń"><i class="fas fa-trash"></i></button> </td> </tr> </transition-group> </table> </template> </div> <div class="w-25 p-2 d-flex align-items-center justify-content-center details-image-container" style="min-width: 200px;"> <img v-if="selectedToolForDetails && selectedToolForDetails.obraz" :src="selectedToolForDetails.obraz" class="details-image" alt="Obrazek narzędzia"> <img v-else-if="selectedToolForDetails" src="{% static 'images/cnc.png' %}" class="details-image" alt="Domyślny obrazek narzędzia"> <span v-else class="text-muted">Wybierz narzędzie</span> </div> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'history' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0" style="overflow-y: auto;"> <div v-if="isLoadingHistory" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego historię.</div> <table v-else class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Pracownik</th><th>Maszyna</th><th>Data pobrania</th><th>Data zwrotu</th><th>Uwagi</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="toolHistory.length === 0" key="no-history"><td colspan="5" class="text-center text-muted p-3">Brak historii użycia dla tego narzędzia.</td></tr> <tr v-for="usage in toolHistory" :key="usage.id"> <td class="ps-3">[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td><td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><span v-if="usage.data_zwrotu">[[ formatCustomDate(usage.data_zwrotu) ]]</span><span v-else class="badge bg-danger">W użyciu</span></td> <td>[[ usage.uwagi ]]</td> </tr> </transition-group> </table> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'inUse' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-header d-flex justify-content-end align-items-center py-2"><label class="me-2 mb-0">Filtruj po maszynie:</label><select class="form-select w-auto shadow-sm" v-model="selectedMaszynaFilter"><option :value="null">Wszystkie maszyny</option><option v-for="machine in machines" :key="machine.id" :value="machine.id">[[ machine.nazwa ]]</option></select></div> <div class="card-body p-0" style="overflow-y: auto;"> <table class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Narzędzie</th><th>Maszyna</th><th>Pracownik</th><th>Data pobrania</th><th>Akcje</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="filteredUsagesInUse.length === 0" key="no-usage"><td colspan="5" class="text-center text-muted p-3">Brak narzędzi w użyciu.</td></tr> <tr v-for="usage in filteredUsagesInUse" :key="usage.id"> <td class="ps-3"> <span v-if="usage.egzemplarz.narzedzie_typ.podkategoria"> <strong>[[ usage.egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa ]]</strong> / [[ usage.egzemplarz.narzedzie_typ.podkategoria.nazwa ]] - </span> [[ usage.egzemplarz.narzedzie_typ.opis ]] </td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td> <td>[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><button @click="showReturnModal(usage.id)" class="btn btn-sm btn-success shadow-sm" title="Zwróć"><i class="fas fa-undo"></i></button></td> </tr> </transition-group> </table> </div> </div> </div> </div>-->
+<!--            </div>-->
+<!--        </main>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="issueModal"> <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Pobierz egzemplarz: [[ issueData.instance ? issueData.instance.narzedzie_typ.opis : '' ]] (ID: [[ issueData.instance ? issueData.instance.id : '' ]])</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label for="machine" class="form-label">Wybierz maszynę</label> <select class="form-select" id="machine" v-model="issueData.machine_id"> <option v-for="machine in machines" :value="machine.id">[[ machine.nazwa ]]</option> </select> </div> <div class="mb-3"> <label for="employee" class="form-label">Wybierz pracownika</label> <select class="form-select" id="employee" v-model="issueData.pracownik_id"> <option :value="null" >&#45;&#45; Wybierz &#45;&#45;</option> <option v-for="pracownik in pracownicy" :value="pracownik.id"> [[ pracownik.nazwisko ]] [[ pracownik.imie ]] </option> </select> </div> <div v-if="error" class="alert alert-danger">[[ error ]]</div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-primary shadow-sm" @click="issueTool">Pobierz</button> </div> </div> </div> </div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="returnModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Zwrot narzędzia</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>W jakim stanie technicznym zwracasz narzędzie?</p><div class="form-check"><input class="form-check-input" type="radio" value="uzywane" id="stanUzywane" v-model="returnStatus"><label class="form-check-label" for="stanUzywane">Dobrym (jako używane)</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone" id="stanUszkodzone" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzone">Uszkodzonym</label></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-success shadow-sm" @click="confirmReturnTool">Potwierdź zwrot</button></div></div></div></div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="toolModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">[[ isEditMode ? 'Edytuj typ narzędzia' : 'Dodaj nowy typ narzędzia' ]]</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Kategoria / Podkategoria</label><select class="form-select" v-model="currentTool.podkategoria_id"><option :value="null">Brak (Główne)</option><optgroup v-for="kategoria in kategorie" :key="kategoria.id" :label="kategoria.nazwa"><option v-for="podkategoria in kategoria.podkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ kategoria.nazwa ]] / [[ podkategoria.nazwa ]]</option></optgroup></select></div><div class="mb-3"><label class="form-label">Opis / Specyfikacja</label><input type="text" class="form-control" v-model="currentTool.opis"></div><div class="mb-3"><label class="form-label">Numer katalogowy (opcjonalnie)</label><input type="text" class="form-control" v-model="currentTool.numer_katalogowy"></div><div class="mb-3"><label class="form-label">Domyślna lokalizacja (opcjonalnie)</label><select class="form-select" v-model="currentTool.domyslna_lokalizacja_id"><option :value="null">&#45;&#45; Brak &#45;&#45;</option><option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">[[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]</option></select></div><div class="mb-3"><label class="form-label">Opakowanie</label><select class="form-select" v-model="currentTool.opakowanie" @change="onOpakowanieChange"><option value="szt">Sztuka</option><option value="kompl">Komplet</option></select></div><div class="mb-3"><label class="form-label">Ilość w opakowaniu</label><input type="number" class="form-control" v-model.number="currentTool.ilosc_w_opakowaniu" :min="currentTool.opakowanie === 'kompl' ? 2 : 1"></div><div v-if="toolValidationError" class="alert alert-danger">[[toolValidationError]]</div><div class="mb-3"><label for="toolImage" class="form-label">Obraz narzędzia</label><input class="form-control" type="file" id="toolImage" @change="handleToolImageUpload" accept="image/*"></div><div v-if="toolImagePreview" class="mb-3 text-center"><p>Podgląd:</p><img :src="toolImagePreview" class="img-thumbnail tool-image-preview"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-primary shadow-sm" @click="saveTool">[[ isEditMode ? 'Zapisz zmiany' : 'Dodaj typ' ]]</button></div></div></div></div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="instanceModal">-->
+<!--            <div class="modal-dialog">-->
+<!--                <div class="modal-content">-->
+<!--                    <div class="modal-header">-->
+<!--                        <h5 class="modal-title">[[ instanceModal.title ]]</h5>-->
+<!--                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>-->
+<!--                    </div>-->
+<!--                    <div class="modal-body">-->
+<!--                        <div v-if="instanceModal.errorMessage" class="alert alert-danger" role="alert">-->
+<!--                            <strong>Błąd:</strong> [[ instanceModal.errorMessage ]]-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Typ Narzędzia</label>-->
+<!--                            <input type="text" class="form-control" :value="selectedToolForDetails ? selectedToolForDetails.opis : ''" readonly disabled>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Stan Techniczny</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.stan">-->
+<!--                                <option value="nowe">Nowe</option>-->
+<!--                                <option value="uzywane">Używane</option>-->
+<!--                                <option value="uszkodzone">Uszkodzone</option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Lokalizacja</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.lokalizacja_id">-->
+<!--                                <option :value="null">&#45;&#45; Wybierz lokalizację &#45;&#45;</option>-->
+<!--                                <option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">-->
+<!--                                    [[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]-->
+<!--                                </option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div v-if="instanceModal.mode === 'add'">-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="orderSelect" class="form-label">Zamówienie (opcjonalne)</label>-->
+<!--                                <select id="orderSelect" class="form-select" v-model="instanceModal.currentInstance.zamowienie_id">-->
+<!--                                    <option :value="null">&#45;&#45; Brak &#45;&#45;</option>-->
+<!--                                    <option v-for="zamowienie in zamowienia" :key="zamowienie.id" :value="zamowienie.id">-->
+<!--                                        [[ zamowienie.numer ]] - [[ zamowienie.dostawca.nazwa_firmy ]]-->
+<!--                                    </option>-->
+<!--                                </select>-->
+<!--                            </div>-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="quantityInput" class="form-label">Ilość</label>-->
+<!--                                <input id="quantityInput" type="number" class="form-control" v-model.number="instanceModal.currentInstance.ilosc" min="1">-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    <div class="modal-footer">-->
+<!--                        <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal" :disabled="isSavingInstance">Anuluj</button>-->
+<!--                        <button v-if="!isSavingInstance" type="button" class="btn btn-primary shadow-sm" @click="saveInstance">Zapisz</button>-->
+<!--                        <button v-else class="btn btn-primary shadow-sm" type="button" disabled>-->
+<!--                            <span class="spinner-button" role="status" aria-hidden="true"></span> Zapisywanie...-->
+<!--                        </button>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="deleteInstanceModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Potwierdź usunięcie</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p v-html="deleteModalMessage"></p><p class="text-danger">Tej operacji nie można cofnąć.</p></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-danger shadow-sm" @click="confirmDeleteInstance">Tak, usuń</button></div></div></div></div>-->
+<!--    </div>-->
+
+<!--    <script src="{% static 'js/vue.global.js' %}"></script>-->
+<!--    <script src="{% static 'js/axios.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/main_magazyn.js' %}?v=1.1"></script>-->
+<!--</body>-->
+<!--</html>-->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!--<!DOCTYPE html>-->
+<!--{% load static %}-->
+<!--<html lang="pl">-->
+<!--<head>-->
+<!--    <meta charset="UTF-8">-->
+<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+<!--    <title>Panel Magazyniera - CNC Tools</title>-->
+<!--    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">-->
+<!--    <link rel="manifest" href="{% static 'manifest.json' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main.css' %}">-->
+<!--    <link rel="stylesheet" href="{% static 'css/main_magazyn.css' %}">-->
+<!--</head>-->
+<!--<body>-->
+<!--    <div id="app">-->
+<!--        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">-->
+<!--            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Magazyn</span></strong></h2>-->
+<!--            <div>-->
+<!--                <div class="btn-group" role="group" aria-label="Basic mixed styles example">-->
+<!--                    <a href="{% url 'ustawienia' %}?next={% url 'magazyn' %}" class="btn btn-secondary shadow-sm" title="Ustawienia" style="margin-right: 5px;"><i class="fa fa-gear"></i> Ustawienia</a>-->
+<!--                    <a href="{% url 'zamowienia' %}" class="btn btn-success shadow-sm" title="Zamówienia" style="margin-right: 5px;"><i class="fa fa-file-invoice"></i> Zamówienia</a>-->
+<!--                    <a href="{% url 'faktury' %}?next={% url 'magazyn' %}" class="btn btn-primary shadow-sm text-white" title="Faktury"><i class="fa fa-file-invoice-dollar"></i> Faktury</a>-->
+<!--                    <a href="{% url 'zakupy' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Zakupy" style="margin-left: 5px;"><i class="fa fa-truck"></i> Zakupy</a>-->
+<!--                    <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 5px;"><i class="fa fa-right-from-bracket"></i> Wyjście</a>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">-->
+<!--             <div class="card shadow d-flex flex-column" style="flex-basis: 50%; min-height: 0;">-->
+<!--                 <div class="card-header d-flex justify-content-between align-items-center">-->
+<!--                     <div>-->
+<!--                         <input type="text" class="form-control me-2 shadow-sm" placeholder="Szukaj..." v-model="searchQuery"></div>-->
+<!--                         <h3 class="flex-grow-1 text-center">Lista typów narzędzi</h3> <div class="d-flex align-items-center">-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedKategoriaId" @change="onKategoriaChange">-->
+<!--                             <option :value="null">Wszystkie kategorie</option>-->
+<!--                             <option v-for="kategoria in kategorie" :key="kategoria.id" :value="kategoria.id">[[ kategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                         <select class="form-select w-auto me-2 shadow-sm" v-model="selectedPodkategoriaId" :disabled="!selectedKategoriaId">-->
+<!--                             <option :value="null">Wszystkie podkategorie</option>-->
+<!--                             <option v-for="podkategoria in filteredPodkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ podkategoria.nazwa ]]</option>-->
+<!--                         </select>-->
+<!--                     </div>-->
+<!--                 </div>-->
+<!--                 <div class="card-body p-0" style="overflow-y: auto;">-->
+<!--                     <table class="table table-striped table-hover mb-0">-->
+<!--                         <thead class="bg-light">-->
+<!--                            <tr>-->
+<!--                                <th class="ps-3">Kategoria / Podkategoria</th>-->
+<!--                                <th>Opis / Specyfikacja</th>-->
+<!--                                <th>Nr katalogowy</th>-->
+<!--                                <th>Nowe</th>-->
+<!--                                <th>Używane</th>-->
+<!--                                <th>W użyciu</th>-->
+<!--                                <th>Razem</th>-->
+<!--                                <th class="text-center">-->
+<!--                                    <button class="btn btn-sm btn-success shadow-sm" @click.stop="openToolModal()" title="Dodaj nowy typ narzędzia"><i class="fas fa-plus"></i></button>-->
+<!--                                </th>-->
+<!--                            </tr>-->
+<!--                         </thead>-->
+<!--                         <transition-group name="list" tag="tbody">-->
+<!--                             <tr v-for="tool in filteredTools" :key="tool.id" @click="selectTool(tool)" style="cursor: pointer;" :class="{'table-info': selectedToolForDetails && selectedToolForDetails.id === tool.id}">-->
+<!--                                 <td class="ps-3"> <span v-if="tool.podkategoria"> <strong>[[ tool.podkategoria.kategoria_nazwa ]]</strong> / [[ tool.podkategoria.nazwa ]] </span> <span v-else class="text-muted">Brak kategorii</span> </td>-->
+<!--                                 <td>[[ tool.opis ]]</td>-->
+<!--                                 <td>[[ tool.numer_katalogowy || 'Brak' ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_nowych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_uzywanych_dostepnych ]]</td>-->
+<!--                                 <td>[[ tool.ilosc_w_uzyciu ]]</td>-->
+<!--                                 <td><strong>[[ tool.calkowita_ilosc ]]</strong></td> <td class="text-center" style="width: 80px;"><button @click.stop="openToolModal(tool)" class="btn btn-sm btn-secondary shadow-sm" title="Edytuj typ narzędzia"><i class="fas fa-pencil-alt"></i></button></td> </tr> </transition-group> </table> </div> </div>-->
+
+<!--             <div class="mt-4 d-flex flex-column" style="flex-basis: 50%; min-height: 0;"> <ul class="nav nav-tabs" role="tablist"> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'details'" :class="{ active: activeTab === 'details' }" type="button" :disabled="!selectedToolForDetails">Szczegóły <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'history'" :class="{ active: activeTab === 'history' }" type="button" :disabled="!selectedToolForDetails">Historia użycia <span v-if="selectedToolForDetails" class="badge bg-secondary">[[ selectedToolForDetails.opis ]]</span></button></li> <li class="nav-item" role="presentation"><button class="nav-link" @click="activeTab = 'inUse'" :class="{ active: activeTab === 'inUse' }" type="button">Narzędzia aktualnie w użyciu</button></li> </ul> <div class="tab-content tab-content-shadow" style="flex: 1; min-height: 0; overflow-y: auto;"> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'details' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0 h-100 d-flex"> <div class="flex-grow-1" style="overflow-y: auto;"> <div v-if="isLoadingDetails" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4 h-100 d-flex align-items-center justify-content-center">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego egzemplarze.</div> <template v-else> <table class="table table-sm mb-0"> <thead class="bg-light"> <tr> <th class="ps-3">Lokalizacja</th><th>Data</th><th>Opakowanie</th><th>Stan</th> <th class="text-center">Akcja</th> <th class="text-center"><button class="btn btn-sm btn-success shadow-sm" @click="openInstanceModal('add')" title="Dodaj nowy egzemplarz" style="width: 50px;"><strong>+</strong></button></th> </tr> </thead> <transition-group name="list" tag="tbody"> <tr v-if="toolInstances.length === 0" key="no-items"><td colspan="6" class="text-center text-muted p-3">Brak egzemplarzy dla tego typu narzędzia.</td></tr> <tr v-for="instance in toolInstances" :key="instance.id"> <td class="ps-3" :title="instance.faktura_zakupu ? `Faktura: ${instance.faktura_zakupu.numer_faktury}` : ''"> [[ instance.lokalizacja ? `${instance.lokalizacja.szafa}/${instance.lokalizacja.kolumna}/${instance.lokalizacja.polka}` : 'Brak' ]] </td> <td>[[ formatCustomDate(instance.data_modyfikacji) ]]</td> <td>[[ instance.jednostka === 'kompl' ? `Komplet (${instance.ilosc_w_komplecie} szt.)` : 'Sztuka' ]]</td> <td><span :class="`badge bg-${getInstanceStatusClass(instance.stan)}`">[[ instance.stan ]]</span></td> <td class="text-center"> <button v-if="instance.stan === 'nowe' || instance.stan === 'uzywane'" @click="showIssueModal(instance)" class="btn btn-sm btn-primary shadow-sm" :disabled="inUseInstanceIds.has(instance.id)" :title="inUseInstanceIds.has(instance.id) ? 'Egzemplarz jest aktualnie w użyciu' : 'Pobierz ten egzemplarz'"> <i class="fas fa-download"></i> </button> </td> <td class="text-center"> <button class="btn btn-sm btn-secondary shadow-sm" @click="openInstanceModal('edit', instance)" title="Edytuj"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-dark ms-1 shadow-sm" @click="openDeleteInstanceModal(instance)" title="Usuń"><i class="fas fa-trash"></i></button> </td> </tr> </transition-group> </table> </template> </div> <div class="w-25 p-2 d-flex align-items-center justify-content-center details-image-container" style="min-width: 200px;"> <img v-if="selectedToolForDetails && selectedToolForDetails.obraz" :src="selectedToolForDetails.obraz" class="details-image" alt="Obrazek narzędzia"> <img v-else-if="selectedToolForDetails" src="{% static 'images/cnc.png' %}" class="details-image" alt="Domyślny obrazek narzędzia"> <span v-else class="text-muted">Wybierz narzędzie</span> </div> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'history' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-body p-0" style="overflow-y: auto;"> <div v-if="isLoadingHistory" class="text-center p-4"><div class="spinner-border" role="status"></div></div> <div v-else-if="!selectedToolForDetails" class="text-center text-muted p-4">Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego historię.</div> <table v-else class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Pracownik</th><th>Maszyna</th><th>Data pobrania</th><th>Data zwrotu</th><th>Uwagi</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="toolHistory.length === 0" key="no-history"><td colspan="5" class="text-center text-muted p-3">Brak historii użycia dla tego narzędzia.</td></tr> <tr v-for="usage in toolHistory" :key="usage.id"> <td class="ps-3">[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td><td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><span v-if="usage.data_zwrotu">[[ formatCustomDate(usage.data_zwrotu) ]]</span><span v-else class="badge bg-danger">W użyciu</span></td> <td>[[ usage.uwagi ]]</td> </tr> </transition-group> </table> </div> </div> </div> <div class="tab-pane fade h-100" :class="{ 'show active': activeTab === 'inUse' }" role="tabpanel"> <div class="card h-100" style="border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;"> <div class="card-header d-flex justify-content-end align-items-center py-2"><label class="me-2 mb-0">Filtruj po maszynie:</label><select class="form-select w-auto shadow-sm" v-model="selectedMaszynaFilter"><option :value="null">Wszystkie maszyny</option><option v-for="machine in machines" :key="machine.id" :value="machine.id">[[ machine.nazwa ]]</option></select></div> <div class="card-body p-0" style="overflow-y: auto;"> <table class="table mb-0"> <thead class="bg-light"><tr><th class="ps-3">Narzędzie</th><th>Maszyna</th><th>Pracownik</th><th>Data pobrania</th><th>Akcje</th></tr></thead> <transition-group name="list" tag="tbody"> <tr v-if="filteredUsagesInUse.length === 0" key="no-usage"><td colspan="5" class="text-center text-muted p-3">Brak narzędzi w użyciu.</td></tr> <tr v-for="usage in filteredUsagesInUse" :key="usage.id"> <td class="ps-3"> <span v-if="usage.egzemplarz.narzedzie_typ.podkategoria"> [[ usage.egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa ]] / [[ usage.egzemplarz.narzedzie_typ.podkategoria.nazwa ]]: </span> [[ usage.egzemplarz.narzedzie_typ.opis ]] </td> <td>[[ usage.maszyna?.nazwa || 'Brak' ]]</td> <td>[[ usage.pracownik ? `${usage.pracownik.nazwisko} ${usage.pracownik.imie}` : 'Brak' ]]</td> <td>[[ formatCustomDate(usage.data_wydania) ]]</td> <td><button @click="showReturnModal(usage.id)" class="btn btn-sm btn-success shadow-sm" title="Zwróć"><i class="fas fa-undo"></i></button></td> </tr> </transition-group> </table> </div> </div> </div> </div>-->
+<!--            </div>-->
+<!--        </main>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="issueModal"> <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Pobierz egzemplarz: [[ issueData.instance ? issueData.instance.narzedzie_typ.opis : '' ]] (ID: [[ issueData.instance ? issueData.instance.id : '' ]])</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label for="machine" class="form-label">Wybierz maszynę</label> <select class="form-select" id="machine" v-model="issueData.machine_id"> <option v-for="machine in machines" :value="machine.id">[[ machine.nazwa ]]</option> </select> </div> <div class="mb-3"> <label for="employee" class="form-label">Wybierz pracownika</label> <select class="form-select" id="employee" v-model="issueData.pracownik_id"> <option :value="null" >&#45;&#45; Wybierz &#45;&#45;</option> <option v-for="pracownik in pracownicy" :value="pracownik.id"> [[ pracownik.nazwisko ]] [[ pracownik.imie ]] </option> </select> </div> <div v-if="error" class="alert alert-danger">[[ error ]]</div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-primary shadow-sm" @click="issueTool">Pobierz</button> </div> </div> </div> </div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="returnModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Zwrot narzędzia</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>W jakim stanie technicznym zwracasz narzędzie?</p><div class="form-check"><input class="form-check-input" type="radio" value="uzywane" id="stanUzywane" v-model="returnStatus"><label class="form-check-label" for="stanUzywane">Dobrym (jako używane)</label></div><div class="form-check"><input class="form-check-input" type="radio" value="uszkodzone" id="stanUszkodzone" v-model="returnStatus"><label class="form-check-label" for="stanUszkodzone">Uszkodzonym</label></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-success shadow-sm" @click="confirmReturnTool">Potwierdź zwrot</button></div></div></div></div>-->
+<!--        <div class="modal fade" tabindex="-1" ref="toolModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">[[ isEditMode ? 'Edytuj typ narzędzia' : 'Dodaj nowy typ narzędzia' ]]</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label class="form-label">Kategoria / Podkategoria</label><select class="form-select" v-model="currentTool.podkategoria_id"><option :value="null">Brak (Główne)</option><optgroup v-for="kategoria in kategorie" :key="kategoria.id" :label="kategoria.nazwa"><option v-for="podkategoria in kategoria.podkategorie" :key="podkategoria.id" :value="podkategoria.id">[[ kategoria.nazwa ]] / [[ podkategoria.nazwa ]]</option></optgroup></select></div><div class="mb-3"><label class="form-label">Opis / Specyfikacja</label><input type="text" class="form-control" v-model="currentTool.opis"></div><div class="mb-3"><label class="form-label">Numer katalogowy (opcjonalnie)</label><input type="text" class="form-control" v-model="currentTool.numer_katalogowy"></div><div class="mb-3"><label class="form-label">Domyślna lokalizacja (opcjonalnie)</label><select class="form-select" v-model="currentTool.domyslna_lokalizacja_id"><option :value="null">&#45;&#45; Brak &#45;&#45;</option><option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">[[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]</option></select></div><div class="mb-3"><label class="form-label">Opakowanie</label><select class="form-select" v-model="currentTool.opakowanie" @change="onOpakowanieChange"><option value="szt">Sztuka</option><option value="kompl">Komplet</option></select></div><div class="mb-3"><label class="form-label">Ilość w opakowaniu</label><input type="number" class="form-control" v-model.number="currentTool.ilosc_w_opakowaniu" :min="currentTool.opakowanie === 'kompl' ? 2 : 1"></div><div v-if="toolValidationError" class="alert alert-danger">[[toolValidationError]]</div><div class="mb-3"><label for="toolImage" class="form-label">Obraz narzędzia</label><input class="form-control" type="file" id="toolImage" @change="handleToolImageUpload" accept="image/*"></div><div v-if="toolImagePreview" class="mb-3 text-center"><p>Podgląd:</p><img :src="toolImagePreview" class="img-thumbnail tool-image-preview"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-primary shadow-sm" @click="saveTool">[[ isEditMode ? 'Zapisz zmiany' : 'Dodaj typ' ]]</button></div></div></div></div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="instanceModal">-->
+<!--            <div class="modal-dialog">-->
+<!--                <div class="modal-content">-->
+<!--                    <div class="modal-header">-->
+<!--                        <h5 class="modal-title">[[ instanceModal.title ]]</h5>-->
+<!--                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>-->
+<!--                    </div>-->
+<!--                    <div class="modal-body">-->
+<!--                        <div v-if="instanceModal.errorMessage" class="alert alert-danger" role="alert">-->
+<!--                            <strong>Błąd:</strong> [[ instanceModal.errorMessage ]]-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Typ Narzędzia</label>-->
+<!--                            <input type="text" class="form-control" :value="selectedToolForDetails ? selectedToolForDetails.opis : ''" readonly disabled>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Stan Techniczny</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.stan">-->
+<!--                                <option value="nowe">Nowe</option>-->
+<!--                                <option value="uzywane">Używane</option>-->
+<!--                                <option value="uszkodzone">Uszkodzone</option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div class="mb-3">-->
+<!--                            <label class="form-label">Lokalizacja</label>-->
+<!--                            <select class="form-select" v-model="instanceModal.currentInstance.lokalizacja_id">-->
+<!--                                <option :value="null">&#45;&#45; Wybierz lokalizację &#45;&#45;</option>-->
+<!--                                <option v-for="loc in sortedLocations" :key="loc.id" :value="loc.id">-->
+<!--                                    [[ loc.szafa ]] / [[ loc.kolumna ]] / [[ loc.polka ]]-->
+<!--                                </option>-->
+<!--                            </select>-->
+<!--                        </div>-->
+<!--                        <div v-if="instanceModal.mode === 'add'">-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="orderSelect" class="form-label">Zamówienie (opcjonalne)</label>-->
+<!--                                <select id="orderSelect" class="form-select" v-model="instanceModal.currentInstance.zamowienie_id">-->
+<!--                                    <option :value="null">&#45;&#45; Brak &#45;&#45;</option>-->
+<!--                                    <option v-for="zamowienie in zamowienia" :key="zamowienie.id" :value="zamowienie.id">-->
+<!--                                        [[ zamowienie.numer ]] - [[ zamowienie.dostawca.nazwa_firmy ]]-->
+<!--                                    </option>-->
+<!--                                </select>-->
+<!--                            </div>-->
+<!--                            <div class="mb-3">-->
+<!--                                <label for="quantityInput" class="form-label">Ilość</label>-->
+<!--                                <input id="quantityInput" type="number" class="form-control" v-model.number="instanceModal.currentInstance.ilosc" min="1">-->
+<!--                            </div>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    <div class="modal-footer">-->
+<!--                        <button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal" :disabled="isSavingInstance">Anuluj</button>-->
+<!--                        <button v-if="!isSavingInstance" type="button" class="btn btn-primary shadow-sm" @click="saveInstance">Zapisz</button>-->
+<!--                        <button v-else class="btn btn-primary shadow-sm" type="button" disabled>-->
+<!--                            <span class="spinner-button" role="status" aria-hidden="true"></span> Zapisywanie...-->
+<!--                        </button>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </div>-->
+<!--        </div>-->
+
+<!--        <div class="modal fade" tabindex="-1" ref="deleteInstanceModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Potwierdź usunięcie</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p v-html="deleteModalMessage"></p><p class="text-danger">Tej operacji nie można cofnąć.</p></div><div class="modal-footer"><button type="button" class="btn btn-secondary shadow-sm" data-bs-dismiss="modal">Anuluj</button><button type="button" class="btn btn-danger shadow-sm" @click="confirmDeleteInstance">Tak, usuń</button></div></div></div></div>-->
+<!--    </div>-->
+
+<!--    <script src="{% static 'js/vue.global.js' %}"></script>-->
+<!--    <script src="{% static 'js/axios.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>-->
+<!--    <script src="{% static 'js/main_magazyn.js' %}?v=1.1"></script>-->
+<!--</body>-->
+<!--</html>-->
