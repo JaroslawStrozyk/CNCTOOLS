@@ -1,0 +1,23 @@
+{
+    "name": "Narzędzia CNC",
+    "short_name": "CNCTools",
+    "scope": "/",
+    "start_url": "/login/",
+    "display": "standalone",
+    "background_color": "#495057",
+    "theme_color": "#212529",
+    "description": "Aplikacja do zarządzania narzędziami CNC.",
+    "icons": [
+        {
+            "src": "/static/images/cnc-logo.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/static/images/cnc-logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
+

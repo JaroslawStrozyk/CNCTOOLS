@@ -84,12 +84,6 @@ coverage.xml
 # */migrations/*.py
 # !*/migrations/__init__.py
 
-# Static files (jeśli generujesz je lokalnie)
-/static/
-
-# Media files (pliki uploadowane przez użytkowników)
-/media/
-
 # Certificates and keys
 *.pem
 *.key
