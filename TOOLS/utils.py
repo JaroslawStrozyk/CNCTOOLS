@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def send_html_email(recipient_email, subject, html_content, attachments=None):
+def send_html_email(recipient_email, subject, html_content, attachments=None, cc_email=None):
     """
     Wysyła email HTML na wskazany adres.
 
@@ -19,6 +19,7 @@ def send_html_email(recipient_email, subject, html_content, attachments=None):
         subject (str): Temat wiadomości
         html_content (str): Treść HTML wiadomości
         attachments (list, optional): Lista plików do załączenia [(filename, content, mimetype), ...]
+        cc_email (str, optional): Adres email DW (kopia wiadomości)
 
     Returns:
         dict: {'success': bool, 'message': str}
@@ -27,7 +28,8 @@ def send_html_email(recipient_email, subject, html_content, attachments=None):
         result = send_html_email(
             recipient_email='test@example.com',
             subject='Test Email',
-            html_content='<h1>Hello</h1><p>This is a test.</p>'
+            html_content='<h1>Hello</h1><p>This is a test.</p>',
+            cc_email='dw@example.com'
         )
         if result['success']:
             print("Email wysłany!")
@@ -61,12 +63,21 @@ def send_html_email(recipient_email, subject, html_content, attachments=None):
                 'message': 'Brak konfiguracji konta email w settings.py'
             }
 
+        # Przygotuj listę odbiorców
+        to_list = [recipient_email]
+        cc_list = []
+
+        # Dodaj kopię DW jeśli podano
+        if cc_email:
+            cc_list.append(cc_email)
+
         # Tworzenie wiadomości email
         email = EmailMessage(
             subject=subject,
             body=html_content,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[recipient_email],
+            to=to_list,
+            cc=cc_list if cc_list else None,
         )
 
         # Ustawienie typu treści jako HTML
@@ -80,11 +91,15 @@ def send_html_email(recipient_email, subject, html_content, attachments=None):
         # Wysyłka
         email.send(fail_silently=False)
 
-        logger.info(f"Email wysłany pomyślnie do: {recipient_email}")
+        recipients_info = recipient_email
+        if cc_email:
+            recipients_info += f" (DW: {cc_email})"
+
+        logger.info(f"Email wysłany pomyślnie do: {recipients_info}")
 
         return {
             'success': True,
-            'message': f'Email wysłany pomyślnie na adres: {recipient_email}'
+            'message': f'Email wysłany pomyślnie na adres: {recipients_info}'
         }
 
     except Exception as e:
@@ -99,7 +114,7 @@ def send_html_email(recipient_email, subject, html_content, attachments=None):
 
 def send_test_email(recipient_email=None):
     """
-    Wysyła testowy email HTML.
+    Wysyła testowy email HTML z kopią DW.
 
     Args:
         recipient_email (str, optional): Adres testowy. Jeśli None, używa EMAIL_TEST_ADDRESS z settings.
@@ -107,6 +122,8 @@ def send_test_email(recipient_email=None):
     Returns:
         dict: {'success': bool, 'message': str}
     """
+    from django.utils import timezone
+
     if not recipient_email:
         recipient_email = getattr(settings, 'EMAIL_TEST_ADDRESS', None)
 
@@ -116,51 +133,72 @@ def send_test_email(recipient_email=None):
             'message': 'Brak adresu testowego w konfiguracji.'
         }
 
+    # Pobierz adres DW z settings
+    cc_email = getattr(settings, 'EMAIL_DW', None)
+
     subject = "Test Email - CNC Tools"
 
-    html_content = """
+    # Pobierz aktualną datę i czas
+    now = timezone.now()
+    data_wyslania = now.strftime('%Y-%m-%d %H:%M:%S')
+
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="pl">
     <head>
         <meta charset="UTF-8">
         <style>
-            body {
+            body {{
                 font-family: Arial, sans-serif;
                 background-color: #f4f4f4;
                 padding: 20px;
-            }
-            .email-container {
+            }}
+            .email-container {{
                 background-color: white;
                 padding: 30px;
                 border-radius: 10px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                 max-width: 600px;
                 margin: 0 auto;
-            }
-            h1 {
+            }}
+            h1 {{
                 color: #007bff;
                 border-bottom: 3px solid #007bff;
                 padding-bottom: 10px;
-            }
-            .info-box {
+            }}
+            .info-box {{
                 background-color: #e7f3ff;
                 border-left: 4px solid #007bff;
                 padding: 15px;
                 margin: 20px 0;
-            }
-            .footer {
+            }}
+            .date-time {{
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 15px 0;
+                text-align: center;
+                font-size: 0.95em;
+                color: #495057;
+            }}
+            .footer {{
                 margin-top: 30px;
                 padding-top: 20px;
                 border-top: 1px solid #ddd;
                 color: #777;
                 font-size: 0.9em;
                 text-align: center;
-            }
+            }}
         </style>
     </head>
     <body>
         <div class="email-container">
             <h1>🔧 CNC Tools - Test Email</h1>
+
+            <div class="date-time">
+                <strong>📅 Data i godzina wysłania:</strong><br>
+                {data_wyslania}
+            </div>
 
             <p>To jest <strong>testowa wiadomość email</strong> z systemu CNC Tools.</p>
 
@@ -188,5 +226,201 @@ def send_test_email(recipient_email=None):
     return send_html_email(
         recipient_email=recipient_email,
         subject=subject,
-        html_content=html_content
+        html_content=html_content,
+        cc_email=cc_email
+    )
+
+
+def send_zamowienie_email(zamowienie):
+    """
+    Wysyła email z zamówieniem do dostawcy (+ kopia DW).
+
+    Args:
+        zamowienie: Obiekt Zamowienie z powiązanymi pozycjami
+
+    Returns:
+        dict: {'success': bool, 'message': str}
+    """
+    from django.utils import timezone
+
+    # Pobierz email DW z settings
+    cc_email = getattr(settings, 'EMAIL_DW', None)
+
+    # Przygotuj dane
+    dostawca = zamowienie.dostawca
+    pozycje = zamowienie.pozycje.all()
+
+    # Data i godzina wysłania
+    now = timezone.now()
+    data_wyslania = now.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Tytuł emaila
+    subject = f"Zamówienie nr {zamowienie.numer} - CNC Milling"
+
+    # Generuj wiersze tabeli pozycji
+    pozycje_html = ''
+    for poz in pozycje:
+        jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
+
+        pozycje_html += f"""
+        <tr>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.kategoria_nazwa}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.podkategoria_nazwa}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{jednostka_display}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;">{poz.cena_jednostkowa} zł</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;"><strong>{poz.wartosc_pozycji} zł</strong></td>
+        </tr>
+        """
+
+    # Uwagi (jeśli są)
+    uwagi_html = ''
+    if zamowienie.uwagi:
+        uwagi_html = f"""
+        <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+            <strong style="color: #856404;">📝 Uwagi do zamówienia:</strong><br>
+            <p style="margin: 10px 0 0 0; color: #856404;">{zamowienie.uwagi}</p>
+        </div>
+        """
+
+    # Szablon HTML emaila
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+                margin: 0;
+            }}
+            .email-container {{
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                max-width: 900px;
+                margin: 0 auto;
+            }}
+            .header {{
+                background: linear-gradient(to right, #007bff, #0056b3);
+                color: white;
+                padding: 20px;
+                border-radius: 8px 8px 0 0;
+                margin: -30px -30px 20px -30px;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 24px;
+            }}
+            .info-box {{
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 20px 0;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                line-height: 1.6;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }}
+            th {{
+                background-color: #007bff;
+                color: white;
+                padding: 12px;
+                text-align: left;
+                font-weight: bold;
+            }}
+            .total-row {{
+                background-color: #e7f3ff;
+                font-weight: bold;
+            }}
+            .footer {{
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 2px solid #007bff;
+                color: #666;
+                font-size: 0.9em;
+            }}
+            .date-time {{
+                background-color: #f8f9fa;
+                padding: 10px;
+                border-radius: 5px;
+                margin: 15px 0;
+                text-align: center;
+                font-size: 0.95em;
+                color: #495057;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <h1>🔧 Zamówienie Narzędzi dla CNC Milling</h1>
+            </div>
+
+            <div class="date-time">
+                <strong>📅 Data i godzina wysłania:</strong> {data_wyslania}
+            </div>
+
+            <div class="info-box">
+                <p><strong>Numer zamówienia:</strong> {zamowienie.numer}</p>
+                <p><strong>Dostawca:</strong> {dostawca.nazwa_firmy}</p>
+                <p><strong>NIP:</strong> {dostawca.nip or '-'}</p>
+                <p><strong>Email:</strong> {zamowienie.email_docelowy}</p>
+            </div>
+
+            {uwagi_html}
+
+            <h3 style="color: #007bff; margin-top: 30px;">Pozycje zamówienia:</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Kategoria</th>
+                        <th>Podkategoria</th>
+                        <th>Narzędzie</th>
+                        <th>Nr katalogowy</th>
+                        <th style="text-align: center;">Ilość</th>
+                        <th style="text-align: center;">Jednostka</th>
+                        <th style="text-align: right;">Cena jedn.</th>
+                        <th style="text-align: right;">Wartość</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {pozycje_html}
+                    <tr class="total-row">
+                        <td colspan="7" style="padding: 15px; text-align: right;">WARTOŚĆ CAŁKOWITA:</td>
+                        <td style="padding: 15px; text-align: right;"><strong style="font-size: 1.2em;">{zamowienie.wartosc_zamowienia} zł</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="footer">
+                <p><strong>CNC Milling</strong></p>
+                <p>Email: zakupy@cncmilling.pl</p>
+                <p>Ten email został wygenerowany automatycznie przez system CNC Tools.</p>
+                <p style="margin-top: 15px; font-size: 0.85em; color: #999;">
+                    W razie pytań prosimy o kontakt: t.olejniczak@cncmilling.pl
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_html_email(
+        recipient_email=zamowienie.email_docelowy,
+        subject=subject,
+        html_content=html_content,
+        cc_email=cc_email
     )

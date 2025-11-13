@@ -37,8 +37,20 @@ urlpatterns = [
     path('faktury/', views.faktury_view, name='faktury'),
     path('ustawienia/', views.ustawienia_view, name='ustawienia'),
     path('zamowienia/', views.zamowienia_view, name='zamowienia'),
+    path('generator/', views.generator_view, name='generator'),
+
+    # API endpoints
+    path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),
+    path('api/generator-zamowien/add/', views.generator_zamowien_add_api, name='generator-zamowien-add'),
+    path('api/generator-zamowien/gotowe/', views.generator_zamowien_gotowe_api, name='generator-zamowien-gotowe'),
+    path('api/generator-zamowien/<int:narzedzie_id>/update/', views.generator_zamowien_update_api,
+         name='generator-zamowien-update'),
+    path('api/generator-zamowien/<int:narzedzie_id>/delete/', views.generator_zamowien_delete_api,
+         name='generator-zamowien-delete'),
 
     # Email endpoints
     path('api/email/test/', views.test_email_view, name='test_email'),
     path('api/email/config/', views.email_config_view, name='email_config'),
+    path('api/zamowienia/<int:zamowienie_id>/wyslij-email/', views.wyslij_email_zamowienie_api,
+         name='zamowienia-wyslij-email'),
 ]

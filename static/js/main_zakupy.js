@@ -136,6 +136,20 @@ createApp({
             });
         },
 
+        getStatusClass(tool) {
+            const iloscCalkowita = tool.calkowita_ilosc;
+            const limitMin = tool.stan_minimalny !== undefined ? tool.stan_minimalny : 0;
+            const limitMax = tool.stan_maksymalny !== undefined ? tool.stan_maksymalny : 10;
+
+            if (iloscCalkowita >= limitMax) {
+                return 'bg-success'; // Zielony - ilość >= limit maksymalny
+            } else if (iloscCalkowita > limitMin && iloscCalkowita < limitMax) {
+                return 'bg-warning-dark'; // Ciemno pomarańczowy - ilość między limitami
+            } else {
+                return 'bg-danger'; // Czerwony - ilość <= limit minimalny
+            }
+        },
+
         formatCustomDate(dateString) {
             if (!dateString) {
                 return '';
@@ -321,6 +335,3 @@ createApp({
         }
     }
 }).mount('#app');
-
-
-

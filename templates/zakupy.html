@@ -20,6 +20,7 @@
         /* Usunięto style list-enter/leave */
         .tool-image-preview { max-width: 150px; margin-top: 10px; border-radius: 5px; }
         .required-label::after { content: " *"; color: red; }
+        .bg-warning-dark { background-color: #d97706 !important; } /* Ciemno pomarańczowy */
     </style>
 </head>
 <body>
@@ -78,7 +79,7 @@
                                 style="cursor: pointer;"
                                 :class="{ 'table-info': selectedTool && selectedTool.id === tool.id, }">
 
-                                <td :class="{ 'bg-success': tool.calkowita_ilosc > tool.stan_minimalny, 'bg-danger': tool.calkowita_ilosc <= tool.stan_minimalny }"></td>
+                                <td :class="getStatusClass(tool)"></td>
                                 <td class="ps-3">
                                     <span v-if="tool.podkategoria">
                                         <strong>[[ tool.podkategoria.kategoria.nazwa ]]</strong> / [[ tool.podkategoria.nazwa ]]
@@ -188,12 +189,3 @@
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-

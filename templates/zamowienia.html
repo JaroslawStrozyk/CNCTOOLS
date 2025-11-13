@@ -40,11 +40,8 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h3 class="mb-0">Lista zamówień</h3>
                     <div>
-                        <button class="btn btn-success shadow-sm me-2" @click="generujAutomatyczne" title="Generuj zamówienia automatycznie">
-                            <i class="fas fa-magic"></i> Generuj automatycznie
-                        </button>
-                        <button class="btn btn-primary shadow-sm" @click="openZamowienieModal('add')" title="Dodaj nowe zamówienie">
-                            <i class="fas fa-plus"></i> Nowe zamówienie
+                        <button class="btn btn-success shadow-sm" @click="generujAutomatyczne" title="Generuj zamówienia z generatora">
+                            <i class="fas fa-magic"></i> Generuj nowe
                         </button>
                     </div>
                 </div>
@@ -58,99 +55,120 @@
                                 <th>Data wysłania</th>
                                 <th>Status</th>
                                 <th>Pozycje</th>
+                                <th class="text-center">Uwagi</th>
                                 <th class="text-center">Akcje</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-if="zamowienia.length === 0">
-                                <td colspan="7" class="text-center text-muted p-3">Brak zamówień</td>
+                                <td colspan="8" class="text-center text-muted p-3">Brak zamówień</td>
                             </tr>
-                            <tr v-for="zamowienie in zamowienia" :key="zamowienie.id" style="cursor: pointer;" @click="selectZamowienie(zamowienie)">
-                                <td><strong>[[ zamowienie.numer ]]</strong></td>
+                            <tr v-for="zamowienie in zamowienia" :key="zamowienie.id">
+                                <td @click="selectZamowienie(zamowienie)" style="cursor: pointer;"><strong>[[ zamowienie.numer ]]</strong></td>
                                 <td>[[ zamowienie.dostawca.nazwa_firmy ]]</td>
                                 <td>[[ formatDate(zamowienie.data_utworzenia) ]]</td>
                                 <td>[[ zamowienie.data_wyslania ? formatDate(zamowienie.data_wyslania) : '-' ]]</td>
                                 <td><span :class="'badge status-' + zamowienie.status">[[ getStatusLabel(zamowienie.status) ]]</span></td>
                                 <td>[[ zamowienie.pozycje.length ]]</td>
                                 <td class="text-center">
-                                    <button v-if="zamowienie.status === 'draft' || zamowienie.status === 'verified'"
-                                            class="btn btn-sm btn-info shadow-sm me-1"
-                                            @click.stop="wyslijEmail(zamowienie.id)"
+                                    <button v-if="zamowienie.uwagi"
+                                            @click.stop="showUwagi(zamowienie)"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            title="Zobacz uwagi">
+                                        <i class="fas fa-comment"></i>
+                                    </button>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-success shadow-sm me-1"
+                                            @click.stop="openEmailConfirmModal(zamowienie)"
                                             title="Wyślij e-mail">
                                         <i class="fas fa-envelope"></i>
                                     </button>
-                                    <button v-if="zamowienie.status === 'sent' || zamowienie.status === 'partially_received'"
-                                            class="btn btn-sm btn-warning shadow-sm me-1"
-                                            @click.stop="rozpocznijRealizacje(zamowienie.id)"
-                                            title="Rozpocznij realizację">
-                                        <i class="fas fa-clipboard-check"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-secondary shadow-sm"
+                                    <button class="btn btn-sm btn-secondary shadow-sm me-1"
                                             @click.stop="openZamowienieModal('edit', zamowienie)"
-                                            title="Edytuj">
+                                            title="Edytuj zamówienie">
                                         <i class="fas fa-edit"></i>
                                     </button>
+                                    <button class="btn btn-sm btn-danger shadow-sm"
+                                            @click.stop="openDeleteConfirmModal(zamowienie)"
+                                            title="Usuń zamówienie">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
-                </div>
-            </div>
-
-            <!-- Szczegóły wybranego zamówienia -->
-            <div v-if="selectedZamowienie" class="card shadow">
-                <div class="card-header">
-                    <h4 class="mb-0">Szczegóły zamówienia: [[ selectedZamowienie.numer ]]</h4>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <strong>Dostawca:</strong> [[ selectedZamowienie.dostawca.nazwa_firmy ]]<br>
-                            <strong>NIP:</strong> [[ selectedZamowienie.dostawca.nip || '-' ]]<br>
-                            <strong>Email:</strong> [[ selectedZamowienie.dostawca.email || '-' ]]
-                        </div>
-                        <div class="col-md-6">
-                            <strong>Status:</strong> <span :class="'badge status-' + selectedZamowienie.status">[[ getStatusLabel(selectedZamowienie.status) ]]</span><br>
-                            <strong>Data utworzenia:</strong> [[ formatDate(selectedZamowienie.data_utworzenia) ]]<br>
-                            <strong>Data wysłania:</strong> [[ selectedZamowienie.data_wyslania ? formatDate(selectedZamowienie.data_wyslania) : '-' ]]
-                        </div>
-                    </div>
-
-                    <h5>Pozycje zamówienia:</h5>
-                    <table class="table table-sm table-bordered">
-                        <thead class="bg-light">
-                            <tr>
-                                <th>Narzędzie</th>
-                                <th>Ilość zamówiona</th>
-                                <th>Jednostka</th>
-                                <th>Szt. w komplecie</th>
-                                <th>Cena jedn.</th>
-                                <th>Dostarczone</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="pozycja in selectedZamowienie.pozycje" :key="pozycja.id">
-                                <td>[[ pozycja.narzedzie_typ.opis ]]</td>
-                                <td>[[ pozycja.ilosc_zamowiona ]]</td>
-                                <td>[[ pozycja.jednostka ]]</td>
-                                <td>[[ pozycja.ilosc_w_komplecie ]]</td>
-                                <td>[[ pozycja.cena_jednostkowa ? pozycja.cena_jednostkowa + ' zł' : '-' ]]</td>
-                                <td>[[ pozycja.ilosc_dostarczona ]]</td>
-                                <td>
-                                    <span v-if="pozycja.zrealizowane" class="badge bg-success">Zrealizowane</span>
-                                    <span v-else class="badge bg-secondary">Oczekuje</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div v-if="selectedZamowienie.uwagi" class="alert alert-info">
-                        <strong>Uwagi:</strong> [[ selectedZamowienie.uwagi ]]
-                    </div>
                 </div>
             </div>
         </main>
+
+        <!-- Modal Szczegółów Zamówienia -->
+        <div class="modal fade" tabindex="-1" ref="detailsModal">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-file-invoice me-2"></i>
+                            Szczegóły zamówienia: [[ selectedZamowienie?.numer ]]
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div v-if="selectedZamowienie" class="mb-3">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Dostawca:</strong> [[ selectedZamowienie.dostawca.nazwa_firmy ]]</p>
+                                    <p><strong>Data utworzenia:</strong> [[ formatDate(selectedZamowienie.data_utworzenia) ]]</p>
+                                    <p><strong>Data wysłania:</strong> [[ selectedZamowienie.data_wyslania ? formatDate(selectedZamowienie.data_wyslania) : 'Nie wysłano' ]]</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Status:</strong> <span :class="'badge status-' + selectedZamowienie.status">[[ getStatusLabel(selectedZamowienie.status) ]]</span></p>
+                                    <p><strong>Wartość:</strong> [[ selectedZamowienie.wartosc_zamowienia ]] zł</p>
+                                    <p><strong>Email:</strong> [[ selectedZamowienie.email_docelowy || 'brak' ]]</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h6 class="mb-3">Pozycje zamówienia:</h6>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="table table-sm table-bordered table-hover">
+                                <thead class="bg-light sticky-top">
+                                    <tr>
+                                        <th>Kategoria</th>
+                                        <th>Podkategoria</th>
+                                        <th>Narzędzie</th>
+                                        <th>Nr katalogowy</th>
+                                        <th>Ilość</th>
+                                        <th>Jednostka</th>
+                                        <th>Cena jedn.</th>
+                                        <th>Wartość</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="pozycja in selectedZamowienie?.pozycje" :key="pozycja.id">
+                                        <td>[[ pozycja.kategoria_nazwa ]]</td>
+                                        <td>[[ pozycja.podkategoria_nazwa ]]</td>
+                                        <td>[[ pozycja.narzedzie_opis ]]</td>
+                                        <td>[[ pozycja.numer_katalogowy ]]</td>
+                                        <td>[[ pozycja.ilosc_zamowiona ]]</td>
+                                        <td>[[ pozycja.jednostka === 'kompl' ? 'kompl. (' + pozycja.ilosc_w_komplecie + ' szt.)' : 'szt.' ]]</td>
+                                        <td>[[ pozycja.cena_jednostkowa ]] zł</td>
+                                        <td><strong>[[ pozycja.wartosc_pozycji ]] zł</strong></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div v-if="selectedZamowienie?.uwagi" class="alert alert-info mt-3 mb-0">
+                            <strong>Uwagi:</strong> [[ selectedZamowienie.uwagi ]]
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Modal dodawania/edycji zamówienia -->
         <div class="modal fade" tabindex="-1" ref="zamowienieModal">
@@ -192,6 +210,112 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal Uwagi -->
+        <div class="modal fade" tabindex="-1" ref="uwagiModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-comment me-2"></i>
+                            Uwagi do zamówienia
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p><strong>Numer zamówienia:</strong> [[ selectedUwagiZamowienie?.numer ]]</p>
+                        <hr>
+                        <p class="mb-0">[[ selectedUwagiZamowienie?.uwagi ]]</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Potwierdzenia Wysyłki Email -->
+        <div class="modal fade" tabindex="-1" ref="emailConfirmModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-envelope me-2"></i>
+                            Potwierdzenie wysyłki e-mail
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Czy na pewno chcesz wysłać to zamówienie e-mailem do dostawcy?</p>
+                        <div class="alert alert-info mb-0">
+                            <strong>Numer zamówienia:</strong> [[ selectedEmailZamowienie?.numer ]]<br>
+                            <strong>Dostawca:</strong> [[ selectedEmailZamowienie?.dostawca?.nazwa_firmy ]]<br>
+                            <strong>Email:</strong> [[ selectedEmailZamowienie?.email_docelowy || 'brak' ]]
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                        <button type="button" class="btn btn-success" @click="confirmWyslijEmail" :disabled="isSendingEmail">
+                            <span v-if="isSendingEmail" class="spinner-border spinner-border-sm me-2"></span>
+                            <i v-else class="fas fa-paper-plane me-2"></i>
+                            Wyślij e-mail
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Wyniku Wysyłki Email -->
+        <div class="modal fade" tabindex="-1" ref="emailResultModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header" :class="emailResult.success ? 'bg-success text-white' : 'bg-danger text-white'">
+                        <h5 class="modal-title">
+                            <i :class="emailResult.success ? 'fas fa-check-circle me-2' : 'fas fa-exclamation-circle me-2'"></i>
+                            [[ emailResult.success ? 'Sukces' : 'Błąd' ]]
+                        </h5>
+                        <button type="button" class="btn-close" :class="emailResult.success ? 'btn-close-white' : 'btn-close-white'" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-0">[[ emailResult.message ]]</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Potwierdzenia Usunięcia -->
+        <div class="modal fade" tabindex="-1" ref="deleteConfirmModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-trash me-2"></i>
+                            Potwierdzenie usunięcia
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Czy na pewno chcesz usunąć to zamówienie?</p>
+                        <div class="alert alert-danger mb-0">
+                            <strong>Numer zamówienia:</strong> [[ selectedDeleteZamowienie?.numer ]]<br>
+                            <strong>Dostawca:</strong> [[ selectedDeleteZamowienie?.dostawca?.nazwa_firmy ]]<br>
+                            <strong>Uwaga:</strong> Ta operacja jest nieodwracalna!
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                        <button type="button" class="btn btn-danger" @click="confirmDeleteZamowienie" :disabled="isDeleting">
+                            <span v-if="isDeleting" class="spinner-border spinner-border-sm me-2"></span>
+                            <i v-else class="fas fa-trash me-2"></i>
+                            Usuń zamówienie
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="{% static 'js/vue.global.js' %}"></script>
@@ -201,239 +325,3 @@
 </body>
 </html>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<!--{% load static %}-->
-<!--<!DOCTYPE html>-->
-<!--<html lang="pl">-->
-<!--<head>-->
-<!--    <meta charset="UTF-8">-->
-<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
-<!--    <title>Panel Zamówień - CNC Tools</title>-->
-<!--    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">-->
-<!--    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">-->
-<!--    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">-->
-<!--    <link rel="stylesheet" href="{% static 'css/main.css' %}">-->
-<!--    <style>-->
-<!--        html, body { height: 100%; overflow: hidden; background-color: #f8f9fa; margin: 0; }-->
-<!--        #app { height: 100%; display: flex; flex-direction: column; }-->
-<!--        .table-hover tbody tr:hover { background-color: #e9ecef; }-->
-<!--        .badge { font-size: 0.85rem; }-->
-<!--        .status-draft { background-color: #6c757d; }-->
-<!--        .status-verified { background-color: #0dcaf0; }-->
-<!--        .status-sent { background-color: #0d6efd; }-->
-<!--        .status-partially_received { background-color: #ffc107; }-->
-<!--        .status-completed { background-color: #198754; }-->
-<!--    </style>-->
-<!--</head>-->
-<!--<body>-->
-<!--    <div id="app">-->
-<!--        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">-->
-<!--            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Zamówienia</span></strong></h2>-->
-<!--            <div>-->
-<!--                <a href="{% url 'magazyn' %}" class="btn btn-light shadow-sm" title="Magazyn" style="margin-right: 30px;"><i class="fa-solid fa-warehouse"></i></a>-->
-<!--                <a href="{% url 'zakupy' %}" class="btn btn-primary shadow-sm text-white" title="Panel Zakupy"><i class="fa-solid fa-truck"></i></a>-->
-<!--                <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 30px;"><i class="fa-solid fa-right-from-bracket"></i></a>-->
-<!--            </div>-->
-<!--        </div>-->
-
-<!--        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">-->
-<!--            &lt;!&ndash; Lista zamówień &ndash;&gt;-->
-<!--            <div class="card shadow mb-4">-->
-<!--                <div class="card-header d-flex justify-content-between align-items-center">-->
-<!--                    <h3 class="mb-0">Lista zamówień</h3>-->
-<!--                    <div>-->
-<!--                        <button class="btn btn-success shadow-sm me-2" @click="generujAutomatyczne" title="Generuj zamówienia automatycznie">-->
-<!--                            <i class="fas fa-magic"></i> Generuj automatycznie-->
-<!--                        </button>-->
-<!--                        <button class="btn btn-primary shadow-sm" @click="openZamowienieModal('add')" title="Dodaj nowe zamówienie">-->
-<!--                            <i class="fas fa-plus"></i> Nowe zamówienie-->
-<!--                        </button>-->
-<!--                    </div>-->
-<!--                </div>-->
-<!--                <div class="card-body p-0" style="overflow-y: auto; max-height: 400px;">-->
-<!--                    <table class="table table-hover mb-0">-->
-<!--                        <thead class="bg-light sticky-top">-->
-<!--                            <tr>-->
-<!--                                <th>Numer</th>-->
-<!--                                <th>Dostawca</th>-->
-<!--                                <th>Data utworzenia</th>-->
-<!--                                <th>Data wysłania</th>-->
-<!--                                <th>Status</th>-->
-<!--                                <th>Pozycje</th>-->
-<!--                                <th class="text-center">Akcje</th>-->
-<!--                            </tr>-->
-<!--                        </thead>-->
-<!--                        <tbody>-->
-<!--                            <tr v-if="zamowienia.length === 0">-->
-<!--                                <td colspan="7" class="text-center text-muted p-3">Brak zamówień</td>-->
-<!--                            </tr>-->
-<!--                            <tr v-for="zamowienie in zamowienia" :key="zamowienie.id" style="cursor: pointer;" @click="selectZamowienie(zamowienie)">-->
-<!--                                <td><strong>[[ zamowienie.numer ]]</strong></td>-->
-<!--                                <td>[[ zamowienie.dostawca.nazwa_firmy ]]</td>-->
-<!--                                <td>[[ formatDate(zamowienie.data_utworzenia) ]]</td>-->
-<!--                                <td>[[ zamowienie.data_wyslania ? formatDate(zamowienie.data_wyslania) : '-' ]]</td>-->
-<!--                                <td><span :class="'badge status-' + zamowienie.status">[[ getStatusLabel(zamowienie.status) ]]</span></td>-->
-<!--                                <td>[[ zamowienie.pozycje.length ]]</td>-->
-<!--                                <td class="text-center">-->
-<!--                                    <button v-if="zamowienie.status === 'draft' || zamowienie.status === 'verified'"-->
-<!--                                            class="btn btn-sm btn-info shadow-sm me-1"-->
-<!--                                            @click.stop="wyslijEmail(zamowienie.id)"-->
-<!--                                            title="Wyślij e-mail">-->
-<!--                                        <i class="fas fa-envelope"></i>-->
-<!--                                    </button>-->
-<!--                                    <button v-if="zamowienie.status === 'sent' || zamowienie.status === 'partially_received'"-->
-<!--                                            class="btn btn-sm btn-warning shadow-sm me-1"-->
-<!--                                            @click.stop="rozpocznijRealizacje(zamowienie.id)"-->
-<!--                                            title="Rozpocznij realizację">-->
-<!--                                        <i class="fas fa-clipboard-check"></i>-->
-<!--                                    </button>-->
-<!--                                    <button class="btn btn-sm btn-secondary shadow-sm"-->
-<!--                                            @click.stop="openZamowienieModal('edit', zamowienie)"-->
-<!--                                            title="Edytuj">-->
-<!--                                        <i class="fas fa-edit"></i>-->
-<!--                                    </button>-->
-<!--                                </td>-->
-<!--                            </tr>-->
-<!--                        </tbody>-->
-<!--                    </table>-->
-<!--                </div>-->
-<!--            </div>-->
-
-<!--            &lt;!&ndash; Szczegóły wybranego zamówienia &ndash;&gt;-->
-<!--            <div v-if="selectedZamowienie" class="card shadow">-->
-<!--                <div class="card-header">-->
-<!--                    <h4 class="mb-0">Szczegóły zamówienia: [[ selectedZamowienie.numer ]]</h4>-->
-<!--                </div>-->
-<!--                <div class="card-body">-->
-<!--                    <div class="row mb-3">-->
-<!--                        <div class="col-md-6">-->
-<!--                            <strong>Dostawca:</strong> [[ selectedZamowienie.dostawca.nazwa_firmy ]]<br>-->
-<!--                            <strong>NIP:</strong> [[ selectedZamowienie.dostawca.nip || '-' ]]<br>-->
-<!--                            <strong>Email:</strong> [[ selectedZamowienie.dostawca.email || '-' ]]-->
-<!--                        </div>-->
-<!--                        <div class="col-md-6">-->
-<!--                            <strong>Status:</strong> <span :class="'badge status-' + selectedZamowienie.status">[[ getStatusLabel(selectedZamowienie.status) ]]</span><br>-->
-<!--                            <strong>Data utworzenia:</strong> [[ formatDate(selectedZamowienie.data_utworzenia) ]]<br>-->
-<!--                            <strong>Data wysłania:</strong> [[ selectedZamowienie.data_wyslania ? formatDate(selectedZamowienie.data_wyslania) : '-' ]]-->
-<!--                        </div>-->
-<!--                    </div>-->
-
-<!--                    <h5>Pozycje zamówienia:</h5>-->
-<!--                    <table class="table table-sm table-bordered">-->
-<!--                        <thead class="bg-light">-->
-<!--                            <tr>-->
-<!--                                <th>Narzędzie</th>-->
-<!--                                <th>Ilość zamówiona</th>-->
-<!--                                <th>Jednostka</th>-->
-<!--                                <th>Szt. w komplecie</th>-->
-<!--                                <th>Cena jedn.</th>-->
-<!--                                <th>Dostarczone</th>-->
-<!--                                <th>Status</th>-->
-<!--                            </tr>-->
-<!--                        </thead>-->
-<!--                        <tbody>-->
-<!--                            <tr v-for="pozycja in selectedZamowienie.pozycje" :key="pozycja.id">-->
-<!--                                <td>[[ pozycja.narzedzie_typ.opis ]]</td>-->
-<!--                                <td>[[ pozycja.ilosc_zamowiona ]]</td>-->
-<!--                                <td>[[ pozycja.jednostka ]]</td>-->
-<!--                                <td>[[ pozycja.ilosc_w_komplecie ]]</td>-->
-<!--                                <td>[[ pozycja.cena_jednostkowa ? pozycja.cena_jednostkowa + ' zł' : '-' ]]</td>-->
-<!--                                <td>[[ pozycja.ilosc_dostarczona ]]</td>-->
-<!--                                <td>-->
-<!--                                    <span v-if="pozycja.zrealizowane" class="badge bg-success">Zrealizowane</span>-->
-<!--                                    <span v-else class="badge bg-secondary">Oczekuje</span>-->
-<!--                                </td>-->
-<!--                            </tr>-->
-<!--                        </tbody>-->
-<!--                    </table>-->
-
-<!--                    <div v-if="selectedZamowienie.uwagi" class="alert alert-info">-->
-<!--                        <strong>Uwagi:</strong> [[ selectedZamowienie.uwagi ]]-->
-<!--                    </div>-->
-<!--                </div>-->
-<!--            </div>-->
-<!--        </main>-->
-
-<!--        &lt;!&ndash; Modal dodawania/edycji zamówienia &ndash;&gt;-->
-<!--        <div class="modal fade" tabindex="-1" ref="zamowienieModal">-->
-<!--            <div class="modal-dialog modal-lg">-->
-<!--                <div class="modal-content">-->
-<!--                    <div class="modal-header">-->
-<!--                        <h5 class="modal-title">[[ zamowienieModal.title ]]</h5>-->
-<!--                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>-->
-<!--                    </div>-->
-<!--                    <div class="modal-body">-->
-<!--                        <div v-if="zamowienieModal.errorMessage" class="alert alert-danger">-->
-<!--                            [[ zamowienieModal.errorMessage ]]-->
-<!--                        </div>-->
-<!--                        <div class="mb-3">-->
-<!--                            <label class="form-label">Numer zamówienia</label>-->
-<!--                            <input type="text" class="form-control" v-model="zamowienieModal.currentItem.numer">-->
-<!--                        </div>-->
-<!--                        <div class="mb-3">-->
-<!--                            <label class="form-label">Dostawca</label>-->
-<!--                            <select class="form-select" v-model="zamowienieModal.currentItem.dostawca_id">-->
-<!--                                <option :value="null">&#45;&#45; Wybierz dostawcę &#45;&#45;</option>-->
-<!--                                <option v-for="dostawca in dostawcy" :key="dostawca.id" :value="dostawca.id">-->
-<!--                                    [[ dostawca.nazwa_firmy ]]-->
-<!--                                </option>-->
-<!--                            </select>-->
-<!--                        </div>-->
-<!--                        <div class="mb-3">-->
-<!--                            <label class="form-label">Uwagi</label>-->
-<!--                            <textarea class="form-control" rows="3" v-model="zamowienieModal.currentItem.uwagi"></textarea>-->
-<!--                        </div>-->
-<!--                    </div>-->
-<!--                    <div class="modal-footer">-->
-<!--                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>-->
-<!--                        <button type="button" class="btn btn-primary" @click="saveZamowienie" :disabled="isSaving">-->
-<!--                            <span v-if="isSaving" class="spinner-border spinner-border-sm me-1"></span>-->
-<!--                            Zapisz-->
-<!--                        </button>-->
-<!--                    </div>-->
-<!--                </div>-->
-<!--            </div>-->
-<!--        </div>-->
-<!--    </div>-->
-
-<!--    <script src="{% static 'js/vue.global.js' %}"></script>-->
-<!--    <script src="{% static 'js/axios.min.js' %}"></script>-->
-<!--    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>-->
-<!--    <script src="{% static 'js/main_zamowienia.js' %}?v=1.0"></script>-->
-<!--</body>-->
-<!--</html>-->

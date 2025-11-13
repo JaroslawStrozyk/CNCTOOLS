@@ -197,6 +197,10 @@
                                             <td>[[ emailConfig.email_test_address ]]</td>
                                         </tr>
                                         <tr>
+                                            <th>Adres DW (kopia)</th>
+                                            <td>[[ emailConfig.email_dw || '-' ]]</td>
+                                        </tr>
+                                        <tr>
                                             <th>Status konfiguracji</th>
                                             <td>
                                                 <span v-if="emailConfig.email_configured" class="badge bg-success">
@@ -344,6 +348,3 @@
     </script>
 </body>
 </html>
-
-
-

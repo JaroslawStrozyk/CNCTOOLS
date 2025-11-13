@@ -15,8 +15,20 @@ createApp({
             dostawcy: [],
             narzedzia: [],
             selectedZamowienie: null,
+            selectedUwagiZamowienie: null,
+            selectedEmailZamowienie: null,
+            selectedDeleteZamowienie: null,
 
             isSaving: false,
+            isSendingEmail: false,
+            isDeleting: false,
+
+            emailResult: {
+                success: false,
+                message: ''
+            },
+
+            modals: {},
 
             zamowienieModal: {
                 instance: null,
@@ -46,6 +58,21 @@ createApp({
             if (this.$refs.zamowienieModal) {
                 this.zamowienieModal.instance = new bootstrap.Modal(this.$refs.zamowienieModal);
             }
+            if (this.$refs.detailsModal) {
+                this.modals.detailsModal = new bootstrap.Modal(this.$refs.detailsModal);
+            }
+            if (this.$refs.uwagiModal) {
+                this.modals.uwagiModal = new bootstrap.Modal(this.$refs.uwagiModal);
+            }
+            if (this.$refs.emailConfirmModal) {
+                this.modals.emailConfirmModal = new bootstrap.Modal(this.$refs.emailConfirmModal);
+            }
+            if (this.$refs.emailResultModal) {
+                this.modals.emailResultModal = new bootstrap.Modal(this.$refs.emailResultModal);
+            }
+            if (this.$refs.deleteConfirmModal) {
+                this.modals.deleteConfirmModal = new bootstrap.Modal(this.$refs.deleteConfirmModal);
+            }
         },
 
         async fetchInitialData() {
@@ -65,8 +92,112 @@ createApp({
             }
         },
 
+        async fetchZamowienia() {
+            try {
+                const response = await axios.get(`${API_URL}/zamowienia/`);
+                this.zamowienia = response.data;
+            } catch (error) {
+                console.error("Błąd ładowania zamówień:", error);
+            }
+        },
+
         selectZamowienie(zamowienie) {
             this.selectedZamowienie = zamowienie;
+            if (this.modals.detailsModal) {
+                this.modals.detailsModal.show();
+            }
+        },
+
+        showUwagi(zamowienie) {
+            this.selectedUwagiZamowienie = zamowienie;
+            if (this.modals.uwagiModal) {
+                this.modals.uwagiModal.show();
+            }
+        },
+
+        openEmailConfirmModal(zamowienie) {
+            this.selectedEmailZamowienie = zamowienie;
+            if (this.modals.emailConfirmModal) {
+                this.modals.emailConfirmModal.show();
+            }
+        },
+
+        async confirmWyslijEmail() {
+            this.isSendingEmail = true;
+
+            try {
+                // TODO: Endpoint do wysyłki email
+                const response = await axios.post(`${API_URL}/zamowienia/${this.selectedEmailZamowienie.id}/wyslij-email/`);
+
+                if (this.modals.emailConfirmModal) {
+                    this.modals.emailConfirmModal.hide();
+                }
+
+                this.emailResult = {
+                    success: true,
+                    message: 'Email został wysłany pomyślnie!'
+                };
+
+                if (this.modals.emailResultModal) {
+                    this.modals.emailResultModal.show();
+                }
+
+                await this.fetchZamowienia();
+
+            } catch (error) {
+                console.error("Błąd wysyłki email:", error);
+
+                if (this.modals.emailConfirmModal) {
+                    this.modals.emailConfirmModal.hide();
+                }
+
+                this.emailResult = {
+                    success: false,
+                    message: error.response?.data?.error || 'Wystąpił błąd podczas wysyłki email'
+                };
+
+                if (this.modals.emailResultModal) {
+                    this.modals.emailResultModal.show();
+                }
+            } finally {
+                this.isSendingEmail = false;
+            }
+        },
+
+        openDeleteConfirmModal(zamowienie) {
+            this.selectedDeleteZamowienie = zamowienie;
+            if (this.modals.deleteConfirmModal) {
+                this.modals.deleteConfirmModal.show();
+            }
+        },
+
+        async confirmDeleteZamowienie() {
+            this.isDeleting = true;
+
+            try {
+                await axios.delete(`${API_URL}/zamowienia/${this.selectedDeleteZamowienie.id}/`);
+
+                if (this.modals.deleteConfirmModal) {
+                    this.modals.deleteConfirmModal.hide();
+                }
+
+                await this.fetchZamowienia();
+
+            } catch (error) {
+                console.error("Błąd usuwania:", error);
+
+                this.emailResult = {
+                    success: false,
+                    message: 'Wystąpił błąd podczas usuwania: ' + (error.response?.data?.error || error.message)
+                };
+
+                if (this.modals.emailResultModal) {
+                    this.modals.emailResultModal.show();
+                }
+            } finally {
+                this.isDeleting = false;
+                this.selectedDeleteZamowienie = null;
+            }
         },
 
         openZamowienieModal(mode, zamowienie = null) {
@@ -137,20 +268,9 @@ createApp({
             }
         },
 
-        async generujAutomatyczne() {
-            if (!confirm('Czy na pewno chcesz wygenerować zamówienia automatycznie dla narzędzi poniżej stanu minimalnego?')) {
-                return;
-            }
-
-            try {
-                await axios.post(`${API_URL}/zamowienia/generuj_automatyczne/`);
-                alert('Zamówienia zostały wygenerowane automatycznie.');
-                await this.fetchInitialData();
-            } catch (error) {
-                console.error("Błąd generowania zamówień:", error);
-                alert('Wystąpił błąd podczas generowania zamówień: ' +
-                    (error.response?.data?.detail || error.message));
-            }
+        generujAutomatyczne() {
+            // Przekieruj do strony generatora
+            window.location.href = '/generator/';
         },
 
         async wyslijEmail(zamowienieId) {

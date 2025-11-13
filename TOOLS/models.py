@@ -286,8 +286,16 @@ class Zamowienie(models.Model):
         on_delete=models.PROTECT,
         related_name='zamowienia'
     )
+    email_docelowy = models.EmailField(blank=True, null=True,
+                                       help_text="Email dostawcy w momencie tworzenia zamówienia")
     data_utworzenia = models.DateTimeField(auto_now_add=True)
     data_wyslania = models.DateTimeField(null=True, blank=True)
+    wartosc_zamowienia = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Łączna wartość zamówienia"
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     uwagi = models.TextField(blank=True)
 
@@ -315,6 +323,12 @@ class PozycjaZamowienia(models.Model):
         on_delete=models.PROTECT,
         related_name='pozycje_zamowien'
     )
+    # Spłaszczone dane z generatora (snapshot w momencie tworzenia)
+    kategoria_nazwa = models.CharField(max_length=200, blank=True)
+    podkategoria_nazwa = models.CharField(max_length=200, blank=True)
+    narzedzie_opis = models.TextField(blank=True)
+    numer_katalogowy = models.CharField(max_length=100, blank=True)
+
     ilosc_zamowiona = models.PositiveIntegerField()
     jednostka = models.CharField(max_length=10, choices=JEDNOSTKA_CHOICES, default='szt')
     ilosc_w_komplecie = models.PositiveIntegerField(default=1)
@@ -324,6 +338,12 @@ class PozycjaZamowienia(models.Model):
         null=True,
         blank=True
     )
+    wartosc_pozycji = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Wartość pozycji = ilość * cena jednostkowa"
+    )
     ilosc_dostarczona = models.PositiveIntegerField(default=0)
     zrealizowane = models.BooleanField(default=False)
 
@@ -332,7 +352,7 @@ class PozycjaZamowienia(models.Model):
         ordering = ['zamowienie', 'id']
 
     def __str__(self):
-        return f"{self.zamowienie.numer} - {self.narzedzie_typ.opis} x{self.ilosc_zamowiona}"
+        return f"{self.zamowienie.numer} - {self.narzedzie_opis} x{self.ilosc_zamowiona}"
 
 
 class RealizacjaZamowienia(models.Model):
@@ -386,3 +406,40 @@ class PozycjaRealizacji(models.Model):
         return f"{self.realizacja} - {self.pozycja_zamowienia.narzedzie_typ.opis} x{self.ilosc_przyjeta}"
 
 
+class PozycjaGeneratora(models.Model):
+    """
+    Model tymczasowy przechowujący pozycje z generatora zamówień.
+    Zawiera edytowalne pola: dostawca, cena jednostkowa, ilość.
+    """
+    narzedzie_typ = models.OneToOneField(
+        NarzedzieMagazynowe,
+        on_delete=models.CASCADE,
+        related_name='pozycja_generatora',
+        unique=True
+    )
+    dostawca = models.ForeignKey(
+        Dostawca,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pozycje_generatora'
+    )
+    cena_jednostkowa = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        help_text="Cena jednostkowa w PLN"
+    )
+    ilosc_do_zamowienia = models.PositiveIntegerField(
+        default=0,
+        help_text="Obliczona lub ręcznie edytowana ilość"
+    )
+    data_utworzenia = models.DateTimeField(auto_now_add=True)
+    data_modyfikacji = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Pozycje generatora zamówień"
+        ordering = ['narzedzie_typ__podkategoria__kategoria__nazwa', 'narzedzie_typ__opis']
+
+    def __str__(self):
+        return f"Generator: {self.narzedzie_typ.opis} - {self.ilosc_do_zamowienia} szt."
