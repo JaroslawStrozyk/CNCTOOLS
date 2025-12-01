@@ -33,6 +33,7 @@ urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('magazyn/', views.magazyn_view, name='magazyn'),
+    path('odpady/', views.odpady_view, name='odpady'),
     path('zakupy/', views.zakupy_view, name='zakupy'),
     path('faktury/', views.faktury_view, name='faktury'),
     path('ustawienia/', views.ustawienia_view, name='ustawienia'),

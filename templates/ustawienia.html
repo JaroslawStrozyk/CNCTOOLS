@@ -1,16 +1,18 @@
-{% load static %}
 <!DOCTYPE html>
+{% load static %}
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ustawienia - CNC Tools</title>
+    <title>CNC Tools</title>
     <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
     <link rel="manifest" href="{% static 'manifest.json' %}">
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
     <style>
-        body { background-color: #f8f9fa; }
+        body {
+             background-color: #f8f9fa;
+        }
         .tab-content, .card-body {
              background-color: white;
         }
@@ -26,9 +28,9 @@
 <body>
     <div id="app">
         <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
-            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Ustawienia</span></strong></h2>
+            <h2 class="mb-0"><strong><span style="color: yellow;">USTAWIENIA</span></strong></h2>
             <div>
-                <a href="{% if request.GET.next %}{{ request.GET.next }}{% else %}{% url 'magazyn' %}{% endif %}" class="btn btn-light shadow-sm" title="Wróć">
+                <a href="{% if request.GET.next %}{{ request.GET.next }}{% else %}{% url 'magazyn' %}{% endif %}" class="btn btn-danger shadow-sm" title="Wróć">
                     <i class="fa-solid fa-arrow-left me-2"></i>Wróć
                 </a>
             </div>
@@ -106,7 +108,7 @@
                      <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Maszynami</h3> <button class="btn btn-primary" @click="openModal('machine', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nową</button> </div> <div class="card-body"> <ul class="list-group"> <li v-for="item in machines" :key="item.id" class="list-group-item d-flex justify-content-between align-items-center"> [[ item.nazwa ]] <div> <button class="btn btn-sm btn-secondary" @click="openModal('machine', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('machine', item.id)"><i class="fas fa-trash"></i></button> </div> </li> </ul> </div> </div>
                 </div>
                 <div class="tab-pane fade" id="locations-panel" role="tabpanel">
-                    <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Lokalizacjami</h3> <div> <button class="btn btn-primary" @click="openModal('location', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nową</button> <button class="btn btn-success ms-2" @click="openBulkAddModal()"><i class="fa-solid fa-layer-group me-2"></i>Dodaj seryjnie</button> </div> </div> <div class="card-body"> <table class="table table-striped table-hover"> <thead> <tr><th>Szafa</th><th>Kolumna</th><th>Półka</th><th class="text-end">Akcje</th></tr> </thead> <tbody> <tr v-for="item in locations" :key="item.id"> <td>[[ item.szafa ]]</td> <td>[[ item.kolumna ]]</td> <td>[[ item.polka ]]</td> <td class="text-end"> <button class="btn btn-sm btn-secondary" @click="openModal('location', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('location', item.id)"><i class="fas fa-trash"></i></button> </td> </tr> </tbody> </table> </div> </div>
+                    <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Lokalizacjami</h3> <div> <button class="btn btn-primary" @click="openModal('location', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nową</button> <button class="btn btn-success ms-2" @click="openBulkAddModal()"><i class="fa-solid fa-layer-group me-2"></i>Dodaj seryjnie</button> </div> </div> <div class="card-body"> <table class="table table-striped table-hover"> <thead> <tr><th>Szafa</th><th>Półka</th><th>Pozycja</th><th class="text-end">Akcje</th></tr> </thead> <tbody> <tr v-for="item in locations" :key="item.id"> <td>[[ item.szafa ]]</td> <td>[[ item.polka ]]</td> <td>[[ item.kolumna ]]</td> <td class="text-end"> <button class="btn btn-sm btn-secondary" @click="openModal('location', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('location', item.id)"><i class="fas fa-trash"></i></button> </td> </tr> </tbody> </table> </div> </div>
                 </div>
                 <div class="tab-pane fade" id="suppliers-panel" role="tabpanel">
                      <div class="card shadow-sm" style="border-top-left-radius: 0;"> <div class="card-header d-flex justify-content-between align-items-center"> <h3 class="mb-0">Zarządzaj Dostawcami</h3> <button class="btn btn-primary" @click="openModal('supplier', 'add')"><i class="fa-solid fa-plus me-2"></i>Dodaj nowego</button> </div> <div class="card-body"> <table class="table table-striped table-hover"> <thead> <tr> <th>Kod dostawcy</th> <th>Nazwa Firmy</th> <th>NIP</th> <th>Adres</th> <th>Telefon</th> <th>Email</th> <th class="text-end">Akcje</th> </tr> </thead> <tbody> <tr v-for="item in suppliers" :key="item.id"> <td>[[ item.kod_dostawcy ]]</td> <td>[[ item.nazwa_firmy ]]</td> <td>[[ item.nip ]]</td> <td>[[ item.adres ]]</td> <td>[[ item.telefon ]]</td> <td>[[ item.email ]]</td> <td class="text-end"> <button class="btn btn-sm btn-secondary" @click="openModal('supplier', 'edit', item)"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-sm btn-danger ms-1" @click="showDeleteModal('supplier', item.id)"><i class="fas fa-trash"></i></button> </td> </tr> </tbody> </table> </div> </div>
@@ -274,7 +276,7 @@
                             <label class="form-label">Nazwa</label> <input type="text" class="form-control" v-model="modal.currentItem.nazwa">
                         </div>
                         <div v-if="modal.type === 'location'">
-                            <div class="mb-3"><label class="form-label">Szafa</label><input type="text" class="form-control" v-model="modal.currentItem.szafa"></div> <div class="mb-3"><label class="form-label">Kolumna</label><input type="text" class="form-control" v-model="modal.currentItem.kolumna"></div> <div class="mb-3"><label class="form-label">Półka</label><input type="text" class="form-control" v-model="modal.currentItem.polka"></div>
+                            <div class="mb-3"><label class="form-label">Szafa</label><input type="text" class="form-control" v-model="modal.currentItem.szafa"></div> <div class="mb-3"><label class="form-label">Półka</label><input type="text" class="form-control" v-model="modal.currentItem.polka"></div> <div class="mb-3"><label class="form-label">Pozycja</label><input type="text" class="form-control" v-model="modal.currentItem.kolumna"></div>
                         </div>
                         <div v-if="modal.type === 'supplier'">
                             <div class="mb-3"><label class="form-label">Kod dostawcy</label><input type="text" class="form-control" v-model="modal.currentItem.kod_dostawcy"></div> <div class="mb-3"><label class="form-label">Nazwa firmy</label><input type="text" class="form-control" v-model="modal.currentItem.nazwa_firmy"></div> <div class="mb-3"><label class="form-label">NIP</label><input type="text" class="form-control" v-model="modal.currentItem.nip"></div> <div class="mb-3"><label class="form-label">Adres</label><textarea class="form-control" v-model="modal.currentItem.adres" rows="3"></textarea></div> <div class="mb-3"><label class="form-label">Telefon</label><input type="text" class="form-control" v-model="modal.currentItem.telefon"></div> <div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" v-model="modal.currentItem.email"></div>
@@ -323,7 +325,7 @@
         </div>
 
         <div class="modal fade" tabindex="-1" ref="bulkAddModal">
-             <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Dodaj lokalizacje seryjnie</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label class="form-label">Nazwa/Numer szafy</label> <input type="text" class="form-control" v-model="bulkAddData.szafa" placeholder="np. SZAFA-01"> </div> <div class="mb-3"> <label class="form-label">Liczba kolumn (oś X)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_kolumn" min="1"> </div> <div class="mb-3"> <label class="form-label">Liczba półek (oś Y)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_polek" min="1"> </div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-success" @click="saveBulkItems">Zatwierdź i stwórz</button> </div> </div> </div>
+             <div class="modal-dialog"> <div class="modal-content"> <div class="modal-header"> <h5 class="modal-title">Dodaj lokalizacje seryjnie</h5> <button type="button" class="btn-close" data-bs-dismiss="modal"></button> </div> <div class="modal-body"> <div class="mb-3"> <label class="form-label">Nazwa/Numer szafy</label> <input type="text" class="form-control" v-model="bulkAddData.szafa" placeholder="np. SZAFA-01"> </div> <div class="mb-3"> <label class="form-label">Liczba półek (oś Y)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_polek" min="1"> </div> <div class="mb-3"> <label class="form-label">Liczba pozycji (oś X)</label> <input type="number" class="form-control" v-model.number="bulkAddData.liczba_kolumn" min="1"> </div> </div> <div class="modal-footer"> <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button> <button type="button" class="btn btn-success" @click="saveBulkItems">Zatwierdź i stwórz</button> </div> </div> </div>
         </div>
     </div>
 

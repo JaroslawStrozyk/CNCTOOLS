@@ -12,7 +12,7 @@ createApp({
             tools: [],
             kategorie: [],
             podkategorie: [],
-            invoices: [], // Zawsze inicjuj jako pusta tablica
+            orders: [], // Zamówienia powiązane z narzędziem
             damages: [],
 
             selectedKategoriaId: null,
@@ -20,7 +20,7 @@ createApp({
 
             selectedTool: null,
             searchQuery: '',
-            isLoadingInvoices: false,
+            isLoadingOrders: false,
             modals: {},
             isEditMode: false,
             currentTool: {},
@@ -179,72 +179,84 @@ createApp({
         async selectTool(tool) {
             if (this.selectedTool && this.selectedTool.id === tool.id) {
                 this.selectedTool = null;
-                this.invoices = [];
+                this.orders = [];
                 return;
             }
 
             this.selectedTool = tool;
 
             try {
-                await this.getToolInvoices(tool);
+                await this.getToolOrders(tool);
             } catch (error) {
-                console.error("Błąd w selectTool po wywołaniu getToolInvoices:", error);
+                console.error("Błąd w selectTool po wywołaniu getToolOrders:", error);
             }
         },
 
-        async getToolInvoices(tool) {
+        async getToolOrders(tool) {
             if (!tool || !tool.id) {
-                console.warn("getToolInvoices wywołane bez poprawnego narzędzia.");
-                this.invoices = [];
-                this.isLoadingInvoices = false;
+                console.warn("getToolOrders wywołane bez poprawnego narzędzia.");
+                this.orders = [];
+                this.isLoadingOrders = false;
                 return;
             }
 
-            console.log(`Pobieranie faktur dla narzędzia ID: ${tool.id}`);
-            this.isLoadingInvoices = true;
-            this.invoices = [];
+            console.log(`Pobieranie zamówień dla narzędzia ID: ${tool.id}`);
+            this.isLoadingOrders = true;
+            this.orders = [];
 
             try {
-                const url = `${API_URL}/faktury/?narzedzie_id=${tool.id}`;
+                const url = `${API_URL}/zamowienia/?narzedzie_id=${tool.id}`;
                 console.log(`Wysyłanie zapytania GET na: ${url}`);
                 const response = await axios.get(url);
-                console.log("Otrzymano odpowiedź dla faktur:", JSON.parse(JSON.stringify(response.data)));
+                console.log("Otrzymano odpowiedź dla zamówień:", JSON.parse(JSON.stringify(response.data)));
 
-                let results = this.extractInvoicesFromResponse(response.data);
-                console.log("Wyniki po przetworzeniu i filtrowaniu:", JSON.parse(JSON.stringify(results)));
+                let results = response.data.results || response.data;
+                if (!Array.isArray(results)) {
+                    results = [];
+                }
 
-                this.invoices = results.sort((a, b) =>
-                    new Date(b.data_wystawienia) - new Date(a.data_wystawienia)
+                // Sortowanie od najnowszych do najstarszych
+                this.orders = results.sort((a, b) =>
+                    new Date(b.data_utworzenia) - new Date(a.data_utworzenia)
                 );
 
-                console.log("Stan this.invoices tuż po przypisaniu:", JSON.parse(JSON.stringify(this.invoices)));
+                console.log("Stan this.orders po przypisaniu:", JSON.parse(JSON.stringify(this.orders)));
 
                 await nextTick();
-                console.log("Stan this.invoices po nextTick:", JSON.parse(JSON.stringify(this.invoices)));
 
             } catch (error) {
-                console.error(`Błąd ładowania faktur dla narzędzia ${tool.id}:`, error.response?.data || error.message);
-                this.invoices = [];
+                console.error(`Błąd ładowania zamówień dla narzędzia ${tool.id}:`, error.response?.data || error.message);
+                this.orders = [];
             } finally {
-                console.log("Zakończono ładowanie faktur, isLoadingInvoices = false");
-                this.isLoadingInvoices = false;
+                console.log("Zakończono ładowanie zamówień, isLoadingOrders = false");
+                this.isLoadingOrders = false;
             }
         },
 
-        extractInvoicesFromResponse(data) {
-            let results = [];
+        getStatusLabel(status) {
+            const labels = {
+                'draft': 'Szkic',
+                'verified': 'Zweryfikowane',
+                'sent': 'Wysłane',
+                'partially_received': 'Częściowo zrealizowane',
+                'completed': 'Zrealizowane'
+            };
+            return labels[status] || status;
+        },
 
-            if (data && typeof data === 'object' && 'results' in data) {
-                results = Array.isArray(data.results) ?
-                    data.results.filter(item => item !== null) : [];
-            } else if (Array.isArray(data)) {
-                results = data.filter(item => item !== null);
-            } else {
-                console.warn("Otrzymano nieoczekiwaną strukturę danych dla faktur:", data);
-                results = [];
+        formatDateOnly(dateString) {
+            if (!dateString) return '-';
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return '-';
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+            } catch (e) {
+                console.error("Błąd formatowania daty:", dateString, e);
+                return '-';
             }
-
-            return results;
         },
 
         openToolModal(tool = null) {

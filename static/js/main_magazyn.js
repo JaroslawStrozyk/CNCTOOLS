@@ -30,6 +30,7 @@ createApp({
             selectedPodkategoriaId: null,
             selectedToolForDetails: null,
             selectedMaszynaFilter: null,
+            inUseSearchQuery: '',
 
             activeTab: 'details',
             isLoadingDetails: false,
@@ -45,6 +46,7 @@ createApp({
             },
             currentTool: {},
             returnStatus: 'uzywane',
+            returnPracownikId: null,
             usageToReturnId: null,
             modals: {},
             searchQuery: '',
@@ -127,13 +129,42 @@ createApp({
         },
 
         filteredUsagesInUse() {
-            if (!this.selectedMaszynaFilter) {
-                return this.usagesInUse;
+            let filtered = this.usagesInUse;
+
+            // Filtr po maszynie
+            if (this.selectedMaszynaFilter) {
+                filtered = filtered.filter(usage => {
+                    return usage.maszyna && usage.maszyna.id === this.selectedMaszynaFilter;
+                });
             }
 
-            return this.usagesInUse.filter(usage => {
-                return usage.maszyna && usage.maszyna.id === this.selectedMaszynaFilter;
-            });
+            // Filtr po wyszukiwanej frazie (narzędzie i pracownik)
+            if (this.inUseSearchQuery.trim() !== '') {
+                const query = this.inUseSearchQuery.toLowerCase().trim();
+                filtered = filtered.filter(usage => {
+                    // Szukaj w nazwie narzędzia
+                    const narzedzie = usage.egzemplarz?.narzedzie_typ;
+                    let narzedzieTekst = '';
+                    if (narzedzie) {
+                        if (narzedzie.podkategoria) {
+                            narzedzieTekst = `${narzedzie.podkategoria.kategoria?.nazwa || ''} ${narzedzie.podkategoria.nazwa || ''} ${narzedzie.opis || ''}`.toLowerCase();
+                        } else {
+                            narzedzieTekst = (narzedzie.opis || '').toLowerCase();
+                        }
+                    }
+
+                    // Szukaj w nazwisku i imieniu pracownika
+                    const pracownik = usage.pracownik;
+                    let pracownikTekst = '';
+                    if (pracownik) {
+                        pracownikTekst = `${pracownik.nazwisko || ''} ${pracownik.imie || ''}`.toLowerCase();
+                    }
+
+                    return narzedzieTekst.includes(query) || pracownikTekst.includes(query);
+                });
+            }
+
+            return filtered;
         }
     },
 
@@ -422,6 +453,14 @@ createApp({
             this.usageToReturnId = usageId;
             this.returnStatus = 'uzywane';
 
+            // Ustaw domyślnie pracownika pobierającego jako zwracającego
+            const usage = this.usagesInUse.find(u => u.id === usageId);
+            if (usage && usage.pracownik) {
+                this.returnPracownikId = usage.pracownik.id;
+            } else {
+                this.returnPracownikId = null;
+            }
+
             if (this.modals.returnModal) {
                 this.modals.returnModal.show();
             } else {
@@ -432,7 +471,8 @@ createApp({
         async confirmReturnTool() {
             try {
                 await axios.post(`${API_URL}/historia/${this.usageToReturnId}/zwrot/`, {
-                    stan_po_zwrocie: this.returnStatus
+                    stan_po_zwrocie: this.returnStatus,
+                    pracownik_zwracajacy_id: this.returnPracownikId
                 });
 
                 if (this.modals.returnModal) {
@@ -754,5 +794,3 @@ createApp({
         },
     }
 }).mount('#app');
-
-

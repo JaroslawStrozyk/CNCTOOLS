@@ -145,7 +145,7 @@ createApp({
             let payload;
 
             if (this.modal.type === 'podkategoria') {
-                payload = { nazwa: this.modal.currentItem.nazwa, kategoria: this.modal.currentItem.kategoria };
+                payload = { nazwa: this.modal.currentItem.nazwa, kategoria_id: this.modal.currentItem.kategoria };
             } else {
                 payload = this.modal.currentItem;
             }
@@ -263,6 +263,4 @@ createApp({
         }
     }
 }).mount('#app');
-
-
 

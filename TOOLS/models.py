@@ -233,6 +233,14 @@ class HistoriaUzyciaNarzedzia(models.Model):
         null=True,
         related_name='historia_uzycia'
     )
+    pracownik_zwracajacy = models.ForeignKey(
+        Pracownik,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historia_zwrotow',
+        verbose_name='Pracownik zwracający'
+    )
     data_wydania = models.DateTimeField(auto_now_add=True)
     data_zwrotu = models.DateTimeField(null=True, blank=True)
     uwagi = models.TextField(blank=True)

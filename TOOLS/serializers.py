@@ -17,10 +17,15 @@ class KategoriaSimpleSerializer(serializers.ModelSerializer):
 class PodkategoriaSerializer(serializers.ModelSerializer):
     kategoria_nazwa = serializers.CharField(source='kategoria.nazwa', read_only=True)
     kategoria = KategoriaSimpleSerializer(read_only=True)
+    kategoria_id = serializers.PrimaryKeyRelatedField(
+        queryset=Kategoria.objects.all(),
+        source='kategoria',
+        write_only=True
+    )
 
     class Meta:
         model = Podkategoria
-        fields = ['id', 'nazwa', 'kategoria', 'kategoria_nazwa']
+        fields = ['id', 'nazwa', 'kategoria', 'kategoria_id', 'kategoria_nazwa']
 
 
 class KategoriaSerializer(serializers.ModelSerializer):
@@ -170,6 +175,14 @@ class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
     pracownik_id = serializers.PrimaryKeyRelatedField(
         queryset=Pracownik.objects.all(),
         source='pracownik',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    pracownik_zwracajacy = PracownikSerializer(read_only=True)
+    pracownik_zwracajacy_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pracownik.objects.all(),
+        source='pracownik_zwracajacy',
         write_only=True,
         required=False,
         allow_null=True
@@ -325,5 +338,3 @@ class RealizacjaZamowieniaSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealizacjaZamowienia
         fields = '__all__'
-
-

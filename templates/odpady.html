@@ -1,0 +1,131 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNC Tools - Odpady</title>
+    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <style>
+        html, body { height: 100%; overflow: hidden; background-color: #f8f9fa; margin: 0; }
+        #app { height: 100%; display: flex; flex-direction: column; }
+        .table-hover tbody tr:hover { background-color: #e9ecef; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <!-- Górna belka -->
+        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
+            <h2 class="mb-0"><strong><span style="color: yellow;">ODPADY</span></strong></h2>
+            <div>
+                <a href="{% url 'magazyn' %}" class="btn btn-primary shadow-sm" title="Wróć do Magazynu">
+                    <i class="fa-solid fa-warehouse me-1"></i> Magazyn
+                </a>
+            </div>
+        </div>
+
+        <!-- Główna treść -->
+        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">
+            <div class="card shadow d-flex flex-column" style="flex: 1; min-height: 0;">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#uszkodzone-panel" type="button">
+                                Uszkodzone elementy <span class="badge bg-danger">[[ damagesUszkodzone.length ]]</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#regeneracja-panel" type="button">
+                                Uszkodzone do regeneracji <span class="badge bg-warning text-dark">[[ damagesRegeneracja.length ]]</span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body p-0 tab-content" style="flex: 1; overflow-y: auto;">
+                    <!-- Tab: Uszkodzone elementy -->
+                    <div class="tab-pane fade show active h-100" id="uszkodzone-panel" role="tabpanel">
+                        <div v-if="isLoading" class="text-center p-4">
+                            <div class="spinner-border" role="status"></div>
+                            <p class="mt-2">Ładowanie danych...</p>
+                        </div>
+                        <div v-else-if="damagesUszkodzone.length === 0" class="text-center text-muted p-4">
+                            <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                            <p class="h5">Brak uszkodzonych elementów</p>
+                        </div>
+                        <table v-else class="table table-striped table-hover mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>Data uszkodzenia</th>
+                                    <th>Ostatnia maszyna</th>
+                                    <th>Ostatni użytkownik</th>
+                                    <th class="ps-3">Narzędzie</th>
+                                    <th>Nr kat.</th>
+                                    <th>Ostatnia lokalizacja</th>
+                                    <th>Opis uszkodzenia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="damage in damagesUszkodzone" :key="damage.id">
+                                    <td>[[ formatCustomDate(damage.data_uszkodzenia) ]]</td>
+                                    <td>[[ damage.maszyna_uszkodzenia || '-' ]]</td>
+                                    <td>[[ damage.ostatni_pracownik ? `${damage.ostatni_pracownik.nazwisko} ${damage.ostatni_pracownik.imie}` : '-' ]]</td>
+                                    <td class="ps-3">[[ damage.kategoria_narzedzia ]]: [[ damage.opis_narzedzia ]]</td>
+                                    <td>[[ damage.numer_katalogowy || '-' ]]</td>
+                                    <td>[[ damage.ostatnia_lokalizacja || '-' ]]</td>
+                                    <td>[[ damage.opis_uszkodzenia || '-' ]]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Tab: Uszkodzone do regeneracji -->
+                    <div class="tab-pane fade h-100" id="regeneracja-panel" role="tabpanel">
+                        <div v-if="isLoading" class="text-center p-4">
+                            <div class="spinner-border" role="status"></div>
+                            <p class="mt-2">Ładowanie danych...</p>
+                        </div>
+                        <div v-else-if="damagesRegeneracja.length === 0" class="text-center text-muted p-4">
+                            <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                            <p class="h5">Brak elementów do regeneracji</p>
+                        </div>
+                        <table v-else class="table table-striped table-hover mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>Data uszkodzenia</th>
+                                    <th>Ostatnia maszyna</th>
+                                    <th>Ostatni użytkownik</th>
+                                    <th class="ps-3">Narzędzie</th>
+                                    <th>Nr kat.</th>
+                                    <th>Ostatnia lokalizacja</th>
+                                    <th>Opis uszkodzenia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="damage in damagesRegeneracja" :key="damage.id">
+                                    <td>[[ formatCustomDate(damage.data_uszkodzenia) ]]</td>
+                                    <td>[[ damage.maszyna_uszkodzenia || '-' ]]</td>
+                                    <td>[[ damage.ostatni_pracownik ? `${damage.ostatni_pracownik.nazwisko} ${damage.ostatni_pracownik.imie}` : '-' ]]</td>
+                                    <td class="ps-3">[[ damage.kategoria_narzedzia ]]: [[ damage.opis_narzedzia ]]</td>
+                                    <td>[[ damage.numer_katalogowy || '-' ]]</td>
+                                    <td>[[ damage.ostatnia_lokalizacja || '-' ]]</td>
+                                    <td>[[ damage.opis_uszkodzenia || '-' ]]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{% static 'js/vue.global.js' %}"></script>
+    <script src="{% static 'js/axios.min.js' %}"></script>
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'js/main_odpady.js' %}"></script>
+</body>
+</html>

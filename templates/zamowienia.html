@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel Zamówień - CNC Tools</title>
+    <title>CNC Tools</title>
     <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
@@ -24,13 +24,21 @@
 <body>
     <div id="app">
         <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
-            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Zamówienia</span></strong></h2>
+            <h2 class="mb-0"><strong><span style="color: yellow;">ZAMÓWIENIA</span></strong></h2>
             <div class="btn-group" role="group" aria-label="Basic mixed styles example">
                 <a href="{% url 'ustawienia' %}?next={% url 'zamowienia' %}" class="btn btn-secondary shadow-sm" title="Ustawienia" style="margin-right: 5px;"><i class="fa-solid fa-gear"></i> Ustawienia</a>
-                <a href="{% url 'faktury' %}?next={% url 'zamowienia' %}" class="btn btn-primary shadow-sm text-white" title="Faktury" style="margin-right: 5px;"><i class="fa-solid fa-file-invoice-dollar"></i> Faktury</a>
-                <a href="{% url 'magazyn' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Magazyniera" style="margin-left: 5px;"><i class="fa-solid fa-warehouse"></i> Magazyn</a>
-                <a href="{% url 'zakupy' %}" class="btn btn-light shadow-sm" title="Przełącz na panel Zakupy" style="margin-left: 5px;"><i class="fa-solid fa-truck"></i> Zakupy</a>
-                <a href="{% url 'logout' %}" class="btn btn-danger shadow-sm" title="Wyloguj" style="margin-left: 5px;"><i class="fa-solid fa-right-from-bracket"></i> Wyjście</a>
+                <a href="{% url 'magazyn' %}" class="btn btn-primary shadow-sm" title="Przełącz na panel Magazyniera" style="margin-right: 5px;"><i class="fa-solid fa-warehouse"></i> Magazyn</a>
+                {% if is_logistyka %}<a href="{% url 'zakupy' %}" class="btn btn-primary shadow-sm" title="Przełącz na panel Zakupy" style="margin-right: 5px;"><i class="fa-solid fa-truck"></i> Zakupy</a>{% endif %}
+                <div class="dropdown" style="margin-left: 5px;">
+                    <button class="btn btn-danger shadow-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fa fa-user me-1"></i> {{ user.first_name }} {{ user.last_name }}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aboutModal"><i class="fa fa-info-circle me-2"></i>O programie</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'logout' %}"><i class="fa fa-right-from-bracket me-2"></i>Wyjście</a></li>
+                    </ul>
+                </div>
             </div>
         </div>
 
@@ -40,9 +48,11 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h3 class="mb-0">Lista zamówień</h3>
                     <div>
+                        {% if can_generate_orders %}
                         <button class="btn btn-success shadow-sm" @click="generujAutomatyczne" title="Generuj zamówienia z generatora">
                             <i class="fas fa-magic"></i> Generuj nowe
                         </button>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="card-body p-0" style="overflow-y: auto; max-height: 400px;">
@@ -316,6 +326,57 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal O programie -->
+        <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="aboutModalLabel"><i class="fa fa-info-circle me-2"></i>O programie</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="text-center mb-4">
+                            <img src="{% static 'images/cnc-logo.png' %}" alt="CNC Tools Logo" style="width: 80px; height: 80px;">
+                            <h4 class="mt-3 mb-0"><strong>CNC Tools</strong></h4>
+                            <p class="text-muted">System zarządzania narzędziami CNC</p>
+                        </div>
+                        <table class="table table-borderless mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="text-end text-muted" style="width: 40%;"><i class="fa fa-code-branch me-2"></i>Wersja:</td>
+                                    <td><strong>{{ info_program.WERSJA }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-calendar me-2"></i>Data modyfikacji:</td>
+                                    <td>{{ info_program.MODYFIKACJA }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-building me-2"></i>Firma:</td>
+                                    <td>{{ info_program.FIRMA }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-user me-2"></i>Autor:</td>
+                                    <td>{{ info_program.AUTOR }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-envelope me-2"></i>Email:</td>
+                                    <td><a href="{{ info_program.EMAIL }}">{{ info_program.NEMAIL }}</a></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-phone me-2"></i>Telefon:</td>
+                                    <td>{{ info_program.TEL }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <small class="text-muted me-auto">© {{ info_program.FIRMA }} 2025</small>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="{% static 'js/vue.global.js' %}"></script>
@@ -324,4 +385,3 @@
     <script src="{% static 'js/main_zamowienia.js' %}?v=1.0"></script>
 </body>
 </html>
-

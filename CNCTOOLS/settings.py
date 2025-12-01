@@ -163,3 +163,16 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # Dane EMAIL_HOST, EMAIL_PORT, EMAIL_USE_SSL, EMAIL_USE_TLS,
 # EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, DEFAULT_FROM_EMAIL, EMAIL_TEST_ADDRESS
 # są importowane z pass_file.py
+
+
+INFO_PROGRAM = [
+    {
+        'WERSJA'     : '0.20.0g',
+        'MODYFIKACJA': '01.12.2025r.',
+        'FIRMA'      : 'EDATABIT',
+        'AUTOR'      : 'Jarosław Stróżyk',
+        'EMAIL'      : 'mailto:biuro@edatabit.pl',
+        'NEMAIL'     : 'biuro@edatabit.pl',
+        'TEL'        : '+48 791-648-417',
+    },
+]

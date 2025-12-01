@@ -308,7 +308,7 @@ def send_zamowienie_email(zamowienie):
                 margin: 0 auto;
             }}
             .header {{
-                background: linear-gradient(to right, #007bff, #0056b3);
+                background: linear-gradient(to bottom, #adadad, #575757);
                 color: white;
                 padding: 20px;
                 border-radius: 8px 8px 0 0;
@@ -334,20 +334,20 @@ def send_zamowienie_email(zamowienie):
                 margin: 20px 0;
             }}
             th {{
-                background-color: #007bff;
+                background-color: #777777;
                 color: white;
                 padding: 12px;
                 text-align: left;
                 font-weight: bold;
             }}
             .total-row {{
-                background-color: #e7f3ff;
+                background-color: #adadad;
                 font-weight: bold;
             }}
             .footer {{
                 margin-top: 30px;
                 padding-top: 20px;
-                border-top: 2px solid #007bff;
+                border-top: 2px solid #ff7b00;
                 color: #666;
                 font-size: 0.9em;
             }}
@@ -365,7 +365,7 @@ def send_zamowienie_email(zamowienie):
     <body>
         <div class="email-container">
             <div class="header">
-                <h1>🔧 Zamówienie Narzędzi dla CNC Milling</h1>
+                <h1>🔧 Zamówienie dla CNC Milling sp. z o.o. sp. K. </h1>
             </div>
 
             <div class="date-time">
@@ -381,7 +381,7 @@ def send_zamowienie_email(zamowienie):
 
             {uwagi_html}
 
-            <h3 style="color: #007bff; margin-top: 30px;">Pozycje zamówienia:</h3>
+            <h3 style="color: #ff7b00; margin-top: 30px;">Pozycje zamówienia:</h3>
 
             <table>
                 <thead>
