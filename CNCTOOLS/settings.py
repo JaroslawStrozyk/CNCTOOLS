@@ -37,9 +37,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-m!-epurjl0s-y60esc746trodx_hq3k+8+=s@_mo_3&f#05f*$'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Używa zmiennej środowiskowej DJANGO_DEBUG (domyślnie True dla developmentu)
+DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 
-ALLOWED_HOSTS = ['0.0.0.0', '192.168.1.221']
+ALLOWED_HOSTS = ['*']  # Akceptuje polaczenia z wszystkich adresow (tylko dla DEBUG=True!)
 
 
 # Application definition
@@ -54,6 +55,9 @@ INSTALLED_APPS = [
     'rest_framework',
     'django_filters',
     'TOOLS',
+    'inertia',
+    'django_vite',
+    'pwa',
 ]
 
 
@@ -64,8 +68,10 @@ REST_FRAMEWORK = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serwowanie plików statycznych w produkcji
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'inertia.middleware.InertiaMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -85,6 +91,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'CNCTOOLS.context_processors.vite_settings',
             ],
         },
     },
@@ -140,14 +147,26 @@ USE_TZ = False
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Tutaj collectstatic zbiera pliki (produkcja)
 
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
+    BASE_DIR / 'static_dev',  # ← ZMIENIONE z 'static' na 'static_dev'
+    BASE_DIR / 'resources',
 ]
+
+# Whitenoise - serwowanie plików statycznych w produkcji
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+
+
+
 
 # Konfiguracja dla plików wgrywanych przez użytkownika
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Katalog z plikami instalacyjnymi (certyfikat SSL, CardReader.exe)
+# Dostępne publicznie przez /install/
+INSTALL_ROOT = BASE_DIR / 'install'
 
 
 # Default primary key field type
@@ -163,3 +182,107 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # Dane EMAIL_HOST, EMAIL_PORT, EMAIL_USE_SSL, EMAIL_USE_TLS,
 # EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, DEFAULT_FROM_EMAIL, EMAIL_TEST_ADDRESS
 # są importowane z pass_file.py
+
+
+INFO_PROGRAM = [
+    {
+        'WERSJA'     : '0.92.0g',
+        'MODYFIKACJA': '14.01.2026r.',
+        'FIRMA'      : 'EDATABIT',
+        'AUTOR'      : 'Jarosław Stróżyk',
+        'EMAIL'      : 'mailto:biuro@edatabit.pl',
+        'NEMAIL'     : 'biuro@edatabit.pl',
+        'TEL'        : '+48 791-648-417',
+    },
+]
+
+
+INERTIA_LAYOUT = 'app.html'
+INERTIA_SSR_ENABLED = False
+
+# Django Vite - konfiguracja dla Vite 5+
+DJANGO_VITE = {
+    "default": {
+        "dev_mode": DEBUG,
+        "dev_server_host": "0.0.0.0",
+        "dev_server_port": 5173,
+        "static_url_prefix": "dist",
+        "manifest_path": BASE_DIR / "static_dev" / "dist" / ".vite" / "manifest.json",
+    }
+}
+
+
+# Inertia shared data (dostępne we wszystkich komponentach przez $page.props)
+INERTIA_SHARE = {
+    'auth': lambda request: {
+        'user': {
+            'username': request.user.username,
+            'email': request.user.email,
+        } if request.user.is_authenticated else None
+    }
+}
+
+
+# ========== KONFIGURACJA PWA ==========
+PWA_APP_NAME = 'CNC Tools'
+PWA_APP_DESCRIPTION = 'System zarzadzania narzedziami CNC'
+PWA_APP_THEME_COLOR = '#1f2937'
+PWA_APP_BACKGROUND_COLOR = '#111827'
+PWA_APP_DISPLAY = 'standalone'
+PWA_APP_SCOPE = '/'
+PWA_APP_ORIENTATION = 'any'
+PWA_APP_START_URL = '/'
+PWA_APP_STATUS_BAR_COLOR = 'default'
+PWA_APP_LANG = 'pl-PL'
+PWA_APP_DIR = 'ltr'
+
+# Ikony PWA (rozne rozmiary)
+PWA_APP_ICONS = [
+    {
+        'src': '/static/images/icons/icon-72x72.png',
+        'sizes': '72x72',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-96x96.png',
+        'sizes': '96x96',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-128x128.png',
+        'sizes': '128x128',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-144x144.png',
+        'sizes': '144x144',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-152x152.png',
+        'sizes': '152x152',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-192x192.png',
+        'sizes': '192x192',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-384x384.png',
+        'sizes': '384x384',
+        'type': 'image/png'
+    },
+    {
+        'src': '/static/images/icons/icon-512x512.png',
+        'sizes': '512x512',
+        'type': 'image/png',
+        'purpose': 'any maskable'
+    }
+]
+
+# Splash screens - opcjonalne (zakomentowane)
+# PWA_APP_SPLASH_SCREEN = []
+
+# Service Worker
+PWA_SERVICE_WORKER_PATH = BASE_DIR / 'static_dev' / 'serviceworker.js'

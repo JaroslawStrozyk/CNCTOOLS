@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="pl" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,21 +8,16 @@
     <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main_magazyn_dark.css' %}">
     <style>
-        html, body { height: 100%; overflow: hidden; background-color: #f8f9fa; margin: 0; }
-        #app { height: 100%; display: flex; flex-direction: column; }
-        .table-hover tbody tr:hover { background-color: #e9ecef; }
-
-        /* Ukryj szablon Vue przed jego załadowaniem (zapobiega migotaniu FOUC) */
         [v-cloak] { display: none; }
     </style>
 </head>
 <body>
     <div id="app" v-cloak>
         <!-- Górna belka -->
-        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary" style="background: linear-gradient(to bottom, #495057, #212529);">
-            <h2 class="mb-0"><strong>CNC MILLING: <span style="color: yellow;">Generator Zamówień</span></strong></h2>
+        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary app-header" style="background: linear-gradient(to bottom, #2d3238, #1a1d21);">
+            <h2 class="mb-0"><strong><span style="color: #ffc107;">GENERATOR ZAMÓWIEŃ</span></strong></h2>
             <div>
                 <button @click="zamowienieGotowe" class="btn btn-success shadow-sm" title="Zamówienie gotowe" style="margin-right: 50px;">
                     <i class="fa-solid fa-check"></i> Zamówienie gotowe

@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "name": "cnctools",
+  "version": "1.0.0",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@inertiajs/vue3": "^2.3.4",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "axios": "^1.13.2",
+    "primeicons": "^7.0.0",
+    "primevue": "^3.53.1",
+    "vite": "^7.3.0",
+    "vue": "^3.5.26"
+  }
+}

@@ -308,7 +308,7 @@ def send_zamowienie_email(zamowienie):
                 margin: 0 auto;
             }}
             .header {{
-                background: linear-gradient(to right, #007bff, #0056b3);
+                background: linear-gradient(to bottom, #FF0000, #8B0000);
                 color: white;
                 padding: 20px;
                 border-radius: 8px 8px 0 0;
@@ -334,20 +334,20 @@ def send_zamowienie_email(zamowienie):
                 margin: 20px 0;
             }}
             th {{
-                background-color: #007bff;
+                background-color: #ADADAD;
                 color: white;
                 padding: 12px;
                 text-align: left;
                 font-weight: bold;
             }}
             .total-row {{
-                background-color: #e7f3ff;
+                background-color: #DADADA;
                 font-weight: bold;
             }}
             .footer {{
                 margin-top: 30px;
                 padding-top: 20px;
-                border-top: 2px solid #007bff;
+                border-top: 2px solid #ff7b00;
                 color: #666;
                 font-size: 0.9em;
             }}
@@ -365,7 +365,7 @@ def send_zamowienie_email(zamowienie):
     <body>
         <div class="email-container">
             <div class="header">
-                <h1>🔧 Zamówienie Narzędzi dla CNC Milling</h1>
+                <h1>🔧 Zamówienie dla CNC Milling sp. z o.o. sp. K. </h1>
             </div>
 
             <div class="date-time">
@@ -381,7 +381,7 @@ def send_zamowienie_email(zamowienie):
 
             {uwagi_html}
 
-            <h3 style="color: #007bff; margin-top: 30px;">Pozycje zamówienia:</h3>
+            <h3 style="color: #ff7b00; margin-top: 30px;">Pozycje zamówienia:</h3>
 
             <table>
                 <thead>
@@ -406,12 +406,13 @@ def send_zamowienie_email(zamowienie):
             </table>
 
             <div class="footer">
-                <p><strong>CNC Milling</strong></p>
-                <p>Email: zakupy@cncmilling.pl</p>
-                <p>Ten email został wygenerowany automatycznie przez system CNC Tools.</p>
-                <p style="margin-top: 15px; font-size: 0.85em; color: #999;">
-                    W razie pytań prosimy o kontakt: t.olejniczak@cncmilling.pl
-                </p>
+                <p>Ten email został wygenerowany automatycznie przez system CNC Tools (email: zakupy@cncmilling.pl).</p>
+                <br>
+                <p><strong>CNC Milling</strong><br>
+                <strong><i>Tomasz Olejniczak</i></strong><br>
+                email: t.olejniczak@cncmilling.pl<br>
+                <i>tel: +48 605-077-306</i></p>
+                <br>
             </div>
         </div>
     </body>

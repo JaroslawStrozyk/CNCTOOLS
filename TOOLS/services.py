@@ -69,7 +69,8 @@ class EgzemplarzService:
 
     @staticmethod
     @transaction.atomic
-    def wydaj_egzemplarz(egzemplarz_id, maszyna_id=None, pracownik_id=None):
+    def wydaj_egzemplarz(egzemplarz_id, maszyna_id=None, pracownik_id=None,
+                         czesciowe_wydanie=False, ilosc_sztuk=None):
         """
         Wydaje egzemplarz narzędzia pracownikowi.
 
@@ -77,6 +78,8 @@ class EgzemplarzService:
             egzemplarz_id: ID egzemplarza do wydania
             maszyna_id: ID maszyny (opcjonalne)
             pracownik_id: ID pracownika
+            czesciowe_wydanie: True jeśli wydajemy tylko część kompletu
+            ilosc_sztuk: Ilość sztuk do wydania (tylko przy czesciowe_wydanie=True)
 
         Returns:
             HistoriaUzyciaNarzedzia: Utworzony wpis historii
@@ -115,27 +118,68 @@ class EgzemplarzService:
         ).exists():
             raise ValidationError("Ten egzemplarz jest już w użyciu.")
 
-        # Utwórz wpis historii
-        historia = HistoriaUzyciaNarzedzia.objects.create(
-            egzemplarz=egzemplarz,
-            maszyna_id=maszyna_id,
-            pracownik_id=pracownik_id
-        )
+        # Obsługa częściowego wydania (rozbicie kompletu)
+        if czesciowe_wydanie:
+            if egzemplarz.jednostka != 'kompl':
+                raise ValidationError("Częściowe wydanie możliwe tylko dla kompletów.")
+
+            if not ilosc_sztuk or ilosc_sztuk < 1:
+                raise ValidationError("Podaj poprawną ilość sztuk do wydania.")
+
+            if ilosc_sztuk >= egzemplarz.ilosc_w_komplecie:
+                raise ValidationError(
+                    f"Ilość sztuk musi być mniejsza niż {egzemplarz.ilosc_w_komplecie}."
+                )
+
+            pozostale_sztuki = egzemplarz.ilosc_w_komplecie - ilosc_sztuk
+
+            # Utwórz nowy egzemplarz dla wydawanych sztuk
+            egzemplarz_wydany = EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=egzemplarz.narzedzie_typ,
+                stan=egzemplarz.stan,
+                lokalizacja=egzemplarz.lokalizacja,
+                faktura_zakupu=egzemplarz.faktura_zakupu,
+                zamowienie=egzemplarz.zamowienie,
+                jednostka='szt',  # Luźne sztuki
+                ilosc_w_komplecie=ilosc_sztuk
+            )
+
+            # Zmodyfikuj oryginalny egzemplarz - pozostałe sztuki
+            egzemplarz.jednostka = 'szt'
+            egzemplarz.ilosc_w_komplecie = pozostale_sztuki
+            egzemplarz.save()
+
+            # Utwórz wpis historii dla wydanego egzemplarza
+            historia = HistoriaUzyciaNarzedzia.objects.create(
+                egzemplarz=egzemplarz_wydany,
+                maszyna_id=maszyna_id,
+                pracownik_id=pracownik_id
+            )
+        else:
+            # Standardowe wydanie całego egzemplarza
+            historia = HistoriaUzyciaNarzedzia.objects.create(
+                egzemplarz=egzemplarz,
+                maszyna_id=maszyna_id,
+                pracownik_id=pracownik_id
+            )
 
         return historia
 
     @staticmethod
     @transaction.atomic
-    def zwroc_egzemplarz(historia_id, stan_po_zwrocie):
+    def zwroc_egzemplarz(historia_id, stan_po_zwrocie, czesciowy_zwrot=False, ilosc_sztuk=None):
         """
         Zwraca egzemplarz narzędzia i aktualizuje jego stan.
 
         Args:
             historia_id: ID wpisu historii użycia
             stan_po_zwrocie: Stan egzemplarza po zwrocie
+            czesciowy_zwrot: True jeśli zwracamy tylko część sztuk
+            ilosc_sztuk: Ilość sztuk do zwrotu (tylko przy czesciowy_zwrot=True)
 
         Returns:
-            HistoriaUzyciaNarzedzia: Zaktualizowany wpis historii
+            HistoriaUzyciaNarzedzia: Zaktualizowany wpis historii (pełny zwrot)
+            lub tuple(HistoriaUzyciaNarzedzia, EgzemplarzNarzedzia): (historia, nowy_egzemplarz) dla częściowego zwrotu
 
         Raises:
             ValidationError: Gdy zwrot nie może być dokonany
@@ -158,16 +202,49 @@ class EgzemplarzService:
         if stan_po_zwrocie not in STANY_PO_ZWROCIE:
             raise ValidationError("Nieprawidłowy stan po zwrocie.")
 
-        # Aktualizuj wpis historii
-        historia.data_zwrotu = timezone.now()
-        historia.save()
-
-        # Aktualizuj stan egzemplarza
         egzemplarz = historia.egzemplarz
-        egzemplarz.stan = stan_po_zwrocie
-        egzemplarz.save()
 
-        return historia
+        # Obsługa częściowego zwrotu
+        if czesciowy_zwrot:
+            if not ilosc_sztuk or ilosc_sztuk < 1:
+                raise ValidationError("Podaj poprawną ilość sztuk do zwrotu.")
+
+            if ilosc_sztuk >= egzemplarz.ilosc_w_komplecie:
+                raise ValidationError(
+                    f"Ilość sztuk musi być mniejsza niż {egzemplarz.ilosc_w_komplecie}."
+                )
+
+            pozostale_sztuki = egzemplarz.ilosc_w_komplecie - ilosc_sztuk
+
+            # Utwórz nowy egzemplarz dla zwracanych sztuk
+            egzemplarz_zwrocony = EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=egzemplarz.narzedzie_typ,
+                stan=stan_po_zwrocie,
+                lokalizacja=egzemplarz.lokalizacja,
+                faktura_zakupu=egzemplarz.faktura_zakupu,
+                zamowienie=egzemplarz.zamowienie,
+                jednostka='szt',
+                ilosc_w_komplecie=ilosc_sztuk
+            )
+
+            # Zmniejsz ilość sztuk w oryginalnym egzemplarzu (nadal w użyciu)
+            egzemplarz.ilosc_w_komplecie = pozostale_sztuki
+            egzemplarz.save()
+
+            # Historia pozostaje otwarta (dla pozostałych sztuk nadal w użyciu)
+            # Ale aktualizujemy ją, żeby frontend wiedział o zmianie
+            return (historia, egzemplarz_zwrocony)
+
+        else:
+            # Standardowy pełny zwrot
+            historia.data_zwrotu = timezone.now()
+            historia.save()
+
+            # Aktualizuj stan egzemplarza
+            egzemplarz.stan = stan_po_zwrocie
+            egzemplarz.save()
+
+            return historia
 
     @staticmethod
     @transaction.atomic

@@ -9,8 +9,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.db.models import Count, Q, Sum
+from django.db import transaction
 from django.utils import timezone
 from datetime import datetime
+from decimal import Decimal
 
 from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
@@ -18,6 +20,7 @@ from .models import (
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
     RealizacjaZamowienia, PozycjaRealizacji
 )
+from django.contrib.auth.models import User
 from .serializers import (
     KategoriaSerializer, PodkategoriaSerializer, NarzedzieMagazynoweSerializer,
     EgzemplarzNarzedziaSerializer, LokalizacjaSerializer, MaszynaSerializer,
@@ -38,10 +41,22 @@ def index_view(request):
     return redirect('login')
 
 
+def get_redirect_url_for_user(user):
+    """Zwraca URL przekierowania na podstawie grupy użytkownika"""
+    if user.groups.filter(name='logistyka').exists():
+        return 'zakupy'
+    elif user.groups.filter(name='magazyn').exists():
+        return 'magazyn'
+    # Domyślnie dla admina lub użytkowników bez grupy
+    return 'magazyn'
+
+
 def login_view(request):
     """Panel logowania"""
+    from django.conf import settings
+
     if request.user.is_authenticated:
-        return redirect('magazyn')
+        return redirect(get_redirect_url_for_user(request.user))
 
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
@@ -51,13 +66,24 @@ def login_view(request):
             user = authenticate(username=username, password=password)
             if user is not None:
                 login(request, user)
-                next_url = request.GET.get('next', 'magazyn')
-                return redirect(next_url)
+                # Sprawdź czy jest parametr next, jeśli nie - przekieruj wg grupy
+                next_url = request.GET.get('next')
+                if next_url:
+                    return redirect(next_url)
+                return redirect(get_redirect_url_for_user(user))
         messages.error(request, 'Nieprawidłowa nazwa użytkownika lub hasło.')
     else:
         form = AuthenticationForm()
 
-    return render(request, 'login.html', {'form': form})
+    # Pobierz informacje o programie z settings.py
+    info_program = {}
+    if hasattr(settings, 'INFO_PROGRAM') and settings.INFO_PROGRAM:
+        info_program = settings.INFO_PROGRAM[0]
+
+    return render(request, 'login.html', {
+        'form': form,
+        'info_program': info_program
+    })
 
 
 def logout_view(request):
@@ -68,12 +94,48 @@ def logout_view(request):
 
 @login_required
 def magazyn_view(request):
-    return render(request, 'magazyn.html')
+    from django.conf import settings
+
+    # Pobierz informacje o programie
+    info_program = {}
+    if hasattr(settings, 'INFO_PROGRAM') and settings.INFO_PROGRAM:
+        info_program = settings.INFO_PROGRAM[0]
+
+    # Sprawdź czy użytkownik należy do grupy logistyka
+    is_logistyka = request.user.groups.filter(name='logistyka').exists()
+
+    return render(request, 'magazyn.html', {
+        'info_program': info_program,
+        'is_logistyka': is_logistyka
+    })
+
+
+@login_required
+@login_required
+def odpady_view(request):
+    return render(request, 'odpady.html')
+
+
+@login_required
+def realizacja_view(request):
+    from django.conf import settings
+    return render(request, 'realizacja.html', {
+        'info_program': settings.INFO_PROGRAM
+    })
 
 
 @login_required
 def zakupy_view(request):
-    return render(request, 'zakupy.html')
+    from django.conf import settings
+
+    # Pobierz informacje o programie
+    info_program = {}
+    if hasattr(settings, 'INFO_PROGRAM') and settings.INFO_PROGRAM:
+        info_program = settings.INFO_PROGRAM[0]
+
+    return render(request, 'zakupy.html', {
+        'info_program': info_program
+    })
 
 
 @login_required
@@ -88,7 +150,25 @@ def ustawienia_view(request):
 
 @login_required
 def zamowienia_view(request):
-    return render(request, 'zamowienia.html')
+    from django.conf import settings
+
+    # Pobierz informacje o programie
+    info_program = {}
+    if hasattr(settings, 'INFO_PROGRAM') and settings.INFO_PROGRAM:
+        info_program = settings.INFO_PROGRAM[0]
+
+    # Sprawdź grupy użytkownika
+    is_logistyka = request.user.groups.filter(name='logistyka').exists()
+    is_admin = request.user.is_superuser
+
+    # Uprawnienie do generowania zamówień - logistyka lub admin
+    can_generate_orders = is_logistyka or is_admin
+
+    return render(request, 'zamowienia.html', {
+        'info_program': info_program,
+        'is_logistyka': is_logistyka,
+        'can_generate_orders': can_generate_orders
+    })
 
 
 @login_required
@@ -131,6 +211,17 @@ def generator_zamowien_api(request):
     for narzedzie in narzedzia:
         # Pomiń jeśli już jest w PozycjaGeneratora
         if narzedzie.id in istniejace_narzedzia_ids:
+            continue
+
+        # Sprawdź czy narzędzie jest w aktywnym (niezrealizowanym) zamówieniu
+        # Aktywne = status nie jest 'completed'
+        ma_aktywne_zamowienie = PozycjaZamowienia.objects.filter(
+            narzedzie_typ=narzedzie,
+            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
+        ).exists()
+
+        # Pomiń jeśli jest w aktywnym zamówieniu
+        if ma_aktywne_zamowienie:
             continue
 
         # Oblicz aktualny stan
@@ -185,6 +276,17 @@ def generator_zamowien_api(request):
 
     for pozycja in wszystkie_pozycje:
         narzedzie = pozycja.narzedzie_typ
+
+        # Sprawdź czy narzędzie jest w aktywnym (niezrealizowanym) zamówieniu
+        # Pomijamy tylko jeśli jest w zamówieniu - pozycje w generatorze pozostają do czasu zrealizowania
+        ma_aktywne_zamowienie = PozycjaZamowienia.objects.filter(
+            narzedzie_typ=narzedzie,
+            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
+        ).exists()
+
+        # Pomiń jeśli jest w aktywnym zamówieniu
+        if ma_aktywne_zamowienie:
+            continue
 
         # Przygotuj dane do wyświetlenia
         element = ''
@@ -609,7 +711,7 @@ class MaszynaViewSet(viewsets.ModelViewSet):
 
 
 class PracownikViewSet(viewsets.ModelViewSet):
-    queryset = Pracownik.objects.all()
+    queryset = Pracownik.objects.select_related('user').all()
     serializer_class = PracownikSerializer
     pagination_class = StandardResultsSetPagination
 
@@ -635,46 +737,45 @@ class NarzedzieMagazynoweViewSet(viewsets.ModelViewSet):
     serializer_class = NarzedzieMagazynoweSerializer
 
     def get_queryset(self):
-        from django.db.models import Case, When, Value, IntegerField
+        from django.db.models import Value, Subquery, OuterRef
+        from django.db.models.functions import Coalesce
+
+        # Subquery dla ilości nowych (stan='nowe')
+        nowe_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'),
+            stan='nowe'
+        ).values('narzedzie_typ').annotate(
+            total=Sum('ilosc_w_komplecie')
+        ).values('total')
+
+        # Subquery dla ilości używanych (stan='uzywane')
+        uzywane_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'),
+            stan='uzywane'
+        ).values('narzedzie_typ').annotate(
+            total=Sum('ilosc_w_komplecie')
+        ).values('total')
+
+        # Subquery dla ilości w użyciu - sumujemy ilosc_w_komplecie egzemplarzy
+        # które mają AKTYWNE wypożyczenie (wpis w historii bez daty zwrotu)
+        w_uzyciu_subquery = HistoriaUzyciaNarzedzia.objects.filter(
+            egzemplarz__narzedzie_typ=OuterRef('pk'),
+            data_zwrotu__isnull=True
+        ).values('egzemplarz__narzedzie_typ').annotate(
+            total=Sum('egzemplarz__ilosc_w_komplecie')
+        ).values('total')
 
         queryset = NarzedzieMagazynowe.objects.select_related(
             'podkategoria__kategoria',
             'ostatni_dostawca',
             'domyslna_lokalizacja'
         ).prefetch_related('egzemplarze').annotate(
-            ilosc_nowych=Sum(
-                Case(
-                    When(egzemplarze__stan='nowe', then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            ilosc_uzywanych_dostepnych=Sum(
-                Case(
-                    When(
-                        Q(egzemplarze__stan='uzywane') &
-                        (Q(egzemplarze__historia__data_zwrotu__isnull=False) | Q(egzemplarze__historia__isnull=True)),
-                        then='egzemplarze__ilosc_w_komplecie'
-                    ),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            ilosc_w_uzyciu=Sum(
-                Case(
-                    When(egzemplarze__historia__data_zwrotu__isnull=True, then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            calkowita_ilosc=Sum(
-                Case(
-                    When(~Q(egzemplarze__stan__in=['uszkodzone', 'uszkodzone_regeneracja']),
-                         then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            )
+            ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
+            ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
+            ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
+        ).annotate(
+            # Razem = Nowe + Używane (suma dostępnych sztuk)
+            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) + Coalesce(Subquery(uzywane_subquery), Value(0))
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
@@ -683,46 +784,45 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NarzedzieMagazynoweSerializer
 
     def get_queryset(self):
-        from django.db.models import Case, When, Value, IntegerField
+        from django.db.models import Value, Subquery, OuterRef
+        from django.db.models.functions import Coalesce
+
+        # Subquery dla ilości nowych (stan='nowe')
+        nowe_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'),
+            stan='nowe'
+        ).values('narzedzie_typ').annotate(
+            total=Sum('ilosc_w_komplecie')
+        ).values('total')
+
+        # Subquery dla ilości używanych (stan='uzywane')
+        uzywane_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'),
+            stan='uzywane'
+        ).values('narzedzie_typ').annotate(
+            total=Sum('ilosc_w_komplecie')
+        ).values('total')
+
+        # Subquery dla ilości w użyciu - sumujemy ilosc_w_komplecie egzemplarzy
+        # które mają AKTYWNE wypożyczenie (wpis w historii bez daty zwrotu)
+        w_uzyciu_subquery = HistoriaUzyciaNarzedzia.objects.filter(
+            egzemplarz__narzedzie_typ=OuterRef('pk'),
+            data_zwrotu__isnull=True
+        ).values('egzemplarz__narzedzie_typ').annotate(
+            total=Sum('egzemplarz__ilosc_w_komplecie')
+        ).values('total')
 
         queryset = NarzedzieMagazynowe.objects.select_related(
             'podkategoria__kategoria',
             'ostatni_dostawca',
             'domyslna_lokalizacja'
         ).prefetch_related('egzemplarze').annotate(
-            ilosc_nowych=Sum(
-                Case(
-                    When(egzemplarze__stan='nowe', then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            ilosc_uzywanych_dostepnych=Sum(
-                Case(
-                    When(
-                        Q(egzemplarze__stan='uzywane') &
-                        (Q(egzemplarze__historia__data_zwrotu__isnull=False) | Q(egzemplarze__historia__isnull=True)),
-                        then='egzemplarze__ilosc_w_komplecie'
-                    ),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            ilosc_w_uzyciu=Sum(
-                Case(
-                    When(egzemplarze__historia__data_zwrotu__isnull=True, then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            ),
-            calkowita_ilosc=Sum(
-                Case(
-                    When(~Q(egzemplarze__stan__in=['uszkodzone', 'uszkodzone_regeneracja']),
-                         then='egzemplarze__ilosc_w_komplecie'),
-                    default=Value(0),
-                    output_field=IntegerField()
-                )
-            )
+            ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
+            ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
+            ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
+        ).annotate(
+            # Razem = Nowe + Używane (suma dostępnych sztuk)
+            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) + Coalesce(Subquery(uzywane_subquery), Value(0))
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
@@ -743,6 +843,62 @@ class EgzemplarzNarzedziaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(narzedzie_typ_id=narzedzie_typ_id)
 
         return queryset.order_by('-data_zakupu')
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Usuwa egzemplarz:
+        - Jeśli stan = 'uszkodzone' lub 'uszkodzone_regeneracja' → tworzy wpis w Uszkodzenie i usuwa egzemplarz
+        - W pozostałych przypadkach → usuwa fizycznie
+        """
+        egzemplarz = self.get_object()
+
+        # Sprawdź czy egzemplarz jest uszkodzony
+        if egzemplarz.stan in ['uszkodzone', 'uszkodzone_regeneracja']:
+            # Przygotuj dane lokalizacji
+            lokalizacja_opis = ''
+            if egzemplarz.lokalizacja:
+                lokalizacja_opis = f"{egzemplarz.lokalizacja.szafa}/{egzemplarz.lokalizacja.kolumna}/{egzemplarz.lokalizacja.polka}"
+
+            # Przygotuj kategorię
+            kategoria_narzedzia = ''
+            if egzemplarz.narzedzie_typ and egzemplarz.narzedzie_typ.podkategoria:
+                kategoria_narzedzia = f"{egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa} / {egzemplarz.narzedzie_typ.podkategoria.nazwa}"
+
+            # Pobierz ostatnią historię użycia
+            ostatnia_historia = egzemplarz.historia.order_by('-data_wydania').first()
+            maszyna_nazwa = ''
+            pracownik_nazwisko = ''
+            pracownik_imie = ''
+
+            if ostatnia_historia:
+                if ostatnia_historia.maszyna:
+                    maszyna_nazwa = ostatnia_historia.maszyna.nazwa
+                if ostatnia_historia.pracownik:
+                    pracownik_nazwisko = ostatnia_historia.pracownik.nazwisko
+                    pracownik_imie = ostatnia_historia.pracownik.imie
+
+            # Mapowanie stanu na czytelny tekst
+            stan_tekst = 'Uszkodzone' if egzemplarz.stan == 'uszkodzone' else 'Uszkodzone do regeneracji'
+
+            # Utwórz wpis w tabeli Uszkodzenie z pełnymi danymi
+            Uszkodzenie.objects.create(
+                egzemplarz=None,
+                narzedzie_typ=egzemplarz.narzedzie_typ,
+                narzedzie_opis=egzemplarz.narzedzie_typ.opis,
+                numer_katalogowy=egzemplarz.narzedzie_typ.numer_katalogowy or '',
+                kategoria_narzedzia=kategoria_narzedzia,
+                lokalizacja_opis=lokalizacja_opis,
+                stan=stan_tekst,
+                maszyna_nazwa=maszyna_nazwa,
+                pracownik_nazwisko=pracownik_nazwisko,
+                pracownik_imie=pracownik_imie,
+                opis_uszkodzenia=''  # Pusty jak wymagane
+            )
+
+        # Usuń egzemplarz
+        egzemplarz.delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
@@ -774,12 +930,16 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
         egzemplarz_id = request.data.get('egzemplarz_id')
         maszyna_id = request.data.get('maszyna_id')
         pracownik_id = request.data.get('pracownik_id')
+        czesciowe_wydanie = request.data.get('czesciowe_wydanie', False)
+        ilosc_sztuk = request.data.get('ilosc_sztuk')
 
         try:
             historia = EgzemplarzService.wydaj_egzemplarz(
                 egzemplarz_id=egzemplarz_id,
                 maszyna_id=maszyna_id,
-                pracownik_id=pracownik_id
+                pracownik_id=pracownik_id,
+                czesciowe_wydanie=czesciowe_wydanie,
+                ilosc_sztuk=ilosc_sztuk
             )
             serializer = self.get_serializer(historia)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -796,23 +956,46 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
 
         historia = self.get_object()
         stan_po_zwrocie = request.data.get('stan_po_zwrocie', 'uzywane')
+        pracownik_zwracajacy_id = request.data.get('pracownik_zwracajacy_id')
+        czesciowy_zwrot = request.data.get('czesciowy_zwrot', False)
+        ilosc_sztuk = request.data.get('ilosc_sztuk')
 
         try:
-            historia = EgzemplarzService.zwroc_egzemplarz(
+            result = EgzemplarzService.zwroc_egzemplarz(
                 historia_id=historia.id,
-                stan_po_zwrocie=stan_po_zwrocie
+                stan_po_zwrocie=stan_po_zwrocie,
+                czesciowy_zwrot=czesciowy_zwrot,
+                ilosc_sztuk=ilosc_sztuk
             )
+
+            # result może być historia (pełny zwrot) lub tuple (historia_updated, egzemplarz_zwrocony) dla częściowego
+            if isinstance(result, tuple):
+                historia_updated, egzemplarz_zwrocony = result
+                # Przy częściowym zwrocie, historia pozostaje otwarta
+                # egzemplarz_zwrocony to nowy egzemplarz ze zwróconymi sztukami
+            else:
+                historia_updated = result
+                egzemplarz_zwrocony = historia_updated.egzemplarz
+
+            # Zapisz pracownika zwracającego
+            if pracownik_zwracajacy_id:
+                try:
+                    pracownik_zwracajacy = Pracownik.objects.get(id=pracownik_zwracajacy_id)
+                    historia_updated.pracownik_zwracajacy = pracownik_zwracajacy
+                    historia_updated.save()
+                except Pracownik.DoesNotExist:
+                    pass
 
             # Jeśli uszkodzone lub uszkodzone_regeneracja, utwórz wpis w tabeli uszkodzeń
             if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
                 opis_domyslny = 'Uszkodzenie podczas użycia' if stan_po_zwrocie == 'uszkodzone' else 'Uszkodzenie do regeneracji'
                 Uszkodzenie.objects.create(
-                    egzemplarz=historia.egzemplarz,
+                    egzemplarz=egzemplarz_zwrocony,
                     opis_uszkodzenia=request.data.get('uwagi', opis_domyslny),
                     pracownik=historia.pracownik
                 )
 
-            serializer = self.get_serializer(historia)
+            serializer = self.get_serializer(historia_updated)
             return Response(serializer.data)
         except ValidationError as e:
             return Response(
@@ -836,6 +1019,18 @@ class ZamowienieViewSet(viewsets.ModelViewSet):
     queryset = Zamowienie.objects.select_related('dostawca').prefetch_related('pozycje').all()
     serializer_class = ZamowienieSerializer
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        narzedzie_id = self.request.query_params.get('narzedzie_id', None)
+        if narzedzie_id:
+            # Pobierz ID zamówień które mają pozycję z danym narzędziem
+            from .models import PozycjaZamowienia
+            zamowienie_ids = PozycjaZamowienia.objects.filter(
+                narzedzie_typ_id=narzedzie_id
+            ).values_list('zamowienie_id', flat=True).distinct()
+            queryset = queryset.filter(id__in=zamowienie_ids)
+        return queryset.order_by('-data_utworzenia')
+
     @action(detail=False, methods=['post'])
     def generuj_automatyczne(self, request):
         """Generuje zamówienia dla narzędzi poniżej limitu"""
@@ -849,7 +1044,45 @@ class ZamowienieViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def rozpocznij_realizacje(self, request, pk=None):
         """Tworzy realizację do zaznaczania przychodzących pozycji"""
-        pass
+        from .models import RealizacjaZamowienia, PozycjaRealizacji
+
+        try:
+            zamowienie = self.get_object()
+
+            # Sprawdź czy realizacja już istnieje
+            if RealizacjaZamowienia.objects.filter(zamowienie=zamowienie).exists():
+                return Response(
+                    {'error': 'Realizacja dla tego zamówienia już istnieje'},
+                    status=400
+                )
+
+            # Utwórz realizację
+            realizacja = RealizacjaZamowienia.objects.create(
+                zamowienie=zamowienie
+            )
+
+            # Skopiuj pozycje zamówienia do pozycji realizacji
+            for pozycja_zam in zamowienie.pozycje.all():
+                PozycjaRealizacji.objects.create(
+                    realizacja=realizacja,
+                    pozycja_zamowienia=pozycja_zam,
+                    lokalizacja=pozycja_zam.narzedzie_typ.domyslna_lokalizacja,
+                    ilosc_przyjeta=0,
+                    faktura_zakupu=None,
+                    cena_jednostkowa=pozycja_zam.cena_jednostkowa
+                )
+
+            return Response({
+                'success': True,
+                'message': 'Realizacja utworzona pomyślnie',
+                'realizacja_id': realizacja.id
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=500
+            )
 
 
 class PozycjaZamowieniaViewSet(viewsets.ModelViewSet):
@@ -877,7 +1110,82 @@ class RealizacjaZamowieniaViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def zatwierdz(self, request, pk=None):
         """Tworzy egzemplarze, loguje, aktualizuje status"""
-        pass
+        from .models import EgzemplarzNarzedzia, HistoriaUzyciaNarzedzia
+        from decimal import Decimal
+
+        try:
+            realizacja = self.get_object()
+            pozycje_dane = request.data.get('pozycje', [])
+
+            if not pozycje_dane:
+                return Response(
+                    {'error': 'Brak danych pozycji do przyjęcia'},
+                    status=400
+                )
+
+            utworzone_egzemplarze = []
+
+            with transaction.atomic():
+                for poz_data in pozycje_dane:
+                    pozycja_id = poz_data.get('id')
+                    ilosc_przyjeta = int(poz_data.get('ilosc_przyjeta', 0))
+
+                    if ilosc_przyjeta <= 0:
+                        continue
+
+                    pozycja = PozycjaRealizacji.objects.get(id=pozycja_id)
+                    pozycja.ilosc_przyjeta = ilosc_przyjeta
+                    pozycja.save()
+
+                    # Utwórz egzemplarze
+                    narzedzie_typ = pozycja.pozycja_zamowienia.narzedzie_typ
+                    lokalizacja = pozycja.lokalizacja or narzedzie_typ.domyslna_lokalizacja
+
+                    for i in range(ilosc_przyjeta):
+                        egzemplarz = EgzemplarzNarzedzia.objects.create(
+                            narzedzie_typ=narzedzie_typ,
+                            lokalizacja=lokalizacja,
+                            stan='nowe',
+                            jednostka=pozycja.pozycja_zamowienia.jednostka,
+                            ilosc_w_komplecie=pozycja.pozycja_zamowienia.ilosc_w_komplecie,
+                            faktura_zakupu=pozycja.faktura_zakupu
+                        )
+
+                        utworzone_egzemplarze.append({
+                            'narzedzie': narzedzie_typ.opis,
+                            'lokalizacja': f"{lokalizacja.szafa}/{lokalizacja.kolumna}/{lokalizacja.polka}" if lokalizacja else 'Brak',
+                            'ilosc': egzemplarz.ilosc_w_komplecie
+                        })
+
+                # Sprawdź czy wszystkie pozycje zrealizowane
+                zamowienie = realizacja.zamowienie
+                wszystkie_zrealizowane = True
+
+                for poz_zam in zamowienie.pozycje.all():
+                    poz_real = realizacja.pozycje.filter(pozycja_zamowienia=poz_zam).first()
+                    if not poz_real or poz_real.ilosc_przyjeta < poz_zam.ilosc_zamowiona:
+                        wszystkie_zrealizowane = False
+                        break
+
+                # Aktualizuj status zamówienia
+                if wszystkie_zrealizowane:
+                    zamowienie.status = 'completed'
+                else:
+                    zamowienie.status = 'partially_received'
+                zamowienie.save()
+
+            return Response({
+                'success': True,
+                'message': 'Przyjęcie zatwierdzone',
+                'utworzone_egzemplarze': utworzone_egzemplarze,
+                'status_zamowienia': zamowienie.status
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=500
+            )
 
 
 class PozycjaRealizacjiViewSet(viewsets.ModelViewSet):

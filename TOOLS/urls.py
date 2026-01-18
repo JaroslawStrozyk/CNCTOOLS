@@ -2,6 +2,22 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from .views_inertia import (
+    login_view as login_inertia_view,
+    login_submit,
+    login_by_card,
+    logout_view as logout_inertia_view,
+    magazyn_view as magazyn_inertia_view,
+    zakupy_view as zakupy_inertia_view,
+    zamowienia_view as zamowienia_inertia_view,
+    ustawienia_view as ustawienia_inertia_view,
+    generator_view as generator_inertia_view,
+    realizacja_view as realizacja_inertia_view,
+    faktury_view as faktury_inertia_view,
+    zwroty_view as zwroty_inertia_view,
+    produkcja_view as produkcja_inertia_view,
+    technologia_view as technologia_inertia_view,
+)
 
 router = DefaultRouter()
 
@@ -28,18 +44,35 @@ router.register(r'realizacje', views.RealizacjaZamowieniaViewSet, basename='real
 router.register(r'pozycje-realizacji', views.PozycjaRealizacjiViewSet, basename='pozycja-realizacji')
 
 urlpatterns = [
-    path('api/', include(router.urls)),
-    path('', views.index_view, name='index'),
-    path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
-    path('magazyn/', views.magazyn_view, name='magazyn'),
-    path('zakupy/', views.zakupy_view, name='zakupy'),
-    path('faktury/', views.faktury_view, name='faktury'),
-    path('ustawienia/', views.ustawienia_view, name='ustawienia'),
-    path('zamowienia/', views.zamowienia_view, name='zamowienia'),
-    path('generator/', views.generator_view, name='generator'),
+    # ===== NOWY SYSTEM INERTIA (Vue SPA) =====
+    path('', login_inertia_view, name='login'),
+    path('login/', login_submit, name='login-submit'),
+    path('api/login-card/', login_by_card, name='login-card'),
+    path('logout/', logout_inertia_view, name='logout'),
+    path('magazyn/', magazyn_inertia_view, name='magazyn'),
+    path('zakupy/', zakupy_inertia_view, name='zakupy'),
+    path('zamowienia/', zamowienia_inertia_view, name='zamowienia'),
+    path('ustawienia/', ustawienia_inertia_view, name='ustawienia'),
+    path('generator/', generator_inertia_view, name='generator'),
+    path('realizacja/', realizacja_inertia_view, name='realizacja'),
+    path('faktury/', faktury_inertia_view, name='faktury'),
+    path('zwroty/', zwroty_inertia_view, name='zwroty'),
+    path('produkcja/', produkcja_inertia_view, name='produkcja'),
+    path('technologia/', technologia_inertia_view, name='technologia'),
 
-    # API endpoints
+    # ===== STARY SYSTEM (backup - do usunięcia po pełnej migracji) =====
+    path('old/', views.login_view, name='login-old'),
+    path('old/magazyn/', views.magazyn_view, name='magazyn-old'),
+    path('old/zakupy/', views.zakupy_view, name='zakupy-old'),
+    path('old/zamowienia/', views.zamowienia_view, name='zamowienia-old'),
+    path('old/ustawienia/', views.ustawienia_view, name='ustawienia-old'),
+    path('old/generator/', views.generator_view, name='generator-old'),
+    path('old/realizacja/', views.realizacja_view, name='realizacja-old'),
+    path('old/faktury/', views.faktury_view, name='faktury-old'),
+    path('old/odpady/', views.odpady_view, name='odpady-old'),
+
+    # ===== API =====
+    path('api/', include(router.urls)),
     path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),
     path('api/generator-zamowien/add/', views.generator_zamowien_add_api, name='generator-zamowien-add'),
     path('api/generator-zamowien/gotowe/', views.generator_zamowien_gotowe_api, name='generator-zamowien-gotowe'),

@@ -1,0 +1,63 @@
+{% load django_vite %}
+{% load pwa %}
+<!DOCTYPE html>
+<html lang="pl" style="background-color: #111827;">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+
+    <!-- Ciemne tlo - zapobiega bialemu flash przy ladowaniu/przekierowaniu -->
+    <style>html, body { background-color: #111827 !important; margin: 0; padding: 0; }</style>
+
+    <!-- PWA Meta Tags -->
+    {% progressive_web_app_meta %}
+
+    <!-- Ikony -->
+    <link rel="icon" type="image/png" href="/static/images/icons/icon-96x96.png">
+    <link rel="apple-touch-icon" href="/static/images/icons/icon-192x192.png">
+
+    <title>CNC Tools</title>
+
+    {% if debug %}
+    <!-- DEV MODE: Dynamiczne ładowanie Vite z tego samego hosta -->
+    <script type="module">
+        const vitePort = 5173;
+        const viteHost = window.location.hostname || 'localhost';
+        const viteBase = `http://${viteHost}:${vitePort}`;
+
+        // Ładowanie Vite client (HMR)
+        const clientScript = document.createElement('script');
+        clientScript.type = 'module';
+        clientScript.src = `${viteBase}/@vite/client`;
+        document.head.appendChild(clientScript);
+
+        // Ładowanie głównej aplikacji (dev: base='/')
+        const appScript = document.createElement('script');
+        appScript.type = 'module';
+        appScript.src = `${viteBase}/js/app.js`;
+        document.head.appendChild(appScript);
+    </script>
+    {% else %}
+    {% vite_asset 'js/app.js' %}
+    {% endif %}
+</head>
+<body>
+    {% block inertia %}{% endblock %}
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/serviceworker.js')
+                    .then(function(registration) {
+                        console.log('PWA: Service Worker zarejestrowany');
+                    })
+                    .catch(function(error) {
+                        console.log('PWA: Blad rejestracji Service Worker:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>

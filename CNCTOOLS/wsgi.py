@@ -13,4 +13,7 @@ from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'CNCTOOLS.settings')
 
+# Tryb produkcyjny - wyłącz DEBUG
+os.environ.setdefault('DJANGO_DEBUG', '0')
+
 application = get_wsgi_application()

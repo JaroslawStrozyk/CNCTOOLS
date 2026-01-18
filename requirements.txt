@@ -1,9 +1,33 @@
-asgiref==3.9.1
+# CNC-Tools - Requirements
+# Django + Vue/Inertia stack
+
+# === CORE ===
 Django==4.2.23
-django-filter==25.1
-django-pwa==2.0.1
-djangorestframework==3.16.1
-pillow==11.3.0
-psycopg2-binary==2.9.10
+asgiref==3.9.1
 sqlparse==0.5.3
 typing_extensions==4.15.0
+
+# === DATABASE ===
+psycopg2-binary==2.9.10
+
+# === REST API ===
+djangorestframework==3.16.1
+django-filter==25.1
+
+# === FRONTEND (Inertia + Vite) ===
+inertia-django==1.2.0
+django-vite==3.1.0
+
+# === UTILS ===
+pillow==11.3.0
+requests==2.32.5
+certifi==2025.11.12
+charset-normalizer==3.4.4
+idna==3.11
+urllib3==2.6.2
+
+# === PWA (Progressive Web App) ===
+django-pwa==2.0.1
+
+# === STATIC FILES (produkcja) ===
+whitenoise==6.8.2

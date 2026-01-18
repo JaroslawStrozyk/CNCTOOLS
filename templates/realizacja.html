@@ -1,0 +1,291 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CNC Tools - Realizacje</title>
+    <link rel="icon" href="{% static 'images/cnc-logo.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/all.min.css' %}">
+    <link rel="stylesheet" href="{% static 'css/main_magazyn_dark.css' %}">
+    <meta name="theme-color" content="#1a1d21">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CNC Tools">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="CNC Tools">
+    <link rel="apple-touch-icon" href="{% static 'images/cnc-logo.png' %}">
+    <style>
+        .badge { font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="d-flex justify-content-between align-items-center p-3 px-4 text-light border-bottom border-secondary app-header" style="background: linear-gradient(to bottom, #2d3238, #1a1d21);">
+            <h2 class="mb-0"><strong><span style="color: #ffc107;">REALIZACJE ZAMÓWIEŃ</span></strong></h2>
+            <div class="btn-group" role="group">
+                <a href="{% url 'zamowienia' %}" class="btn btn-danger shadow-sm" title="Wróć do magazynu" style="margin-right: 5px;">
+                    <i class="fa-solid fa-arrow-left"></i> Wróć
+                </a>
+                <div class="dropdown" style="margin-left: 5px;">
+                    <button class="btn btn-danger shadow-sm dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fa fa-user me-1"></i> {{ user.first_name }} {{ user.last_name }}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#aboutModal"><i class="fa fa-info-circle me-2"></i>O programie</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{% url 'logout' %}"><i class="fa fa-right-from-bracket me-2"></i>Wyjście</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <main class="container-fluid px-4 pt-4 pb-3 d-flex flex-column" style="flex: 1; min-height: 0;">
+            <div class="card shadow">
+                <div class="card-header">
+                    <h3 class="mb-0">Lista realizacji do przyjęcia</h3>
+                </div>
+                <div class="card-body p-0" style="overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="bg-light sticky-top">
+                            <tr>
+                                <th>Numer zamówienia</th>
+                                <th>Dostawca</th>
+                                <th>Data utworzenia</th>
+                                <th>Pozycje</th>
+                                <th class="text-center">Akcje</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-if="realizacje.length === 0">
+                                <td colspan="5" class="text-center text-muted p-3">Brak realizacji do przyjęcia</td>
+                            </tr>
+                            <tr v-for="realizacja in realizacje" :key="realizacja.id">
+                                <td><strong style="color: #8B4513;">[[ realizacja.zamowienie.numer ]]</strong></td>
+                                <td>[[ realizacja.zamowienie.dostawca.nazwa_firmy ]]</td>
+                                <td>[[ formatDate(realizacja.data_realizacji) ]]</td>
+                                <td>[[ realizacja.pozycje.length ]]</td>
+                                <td class="text-center">
+                                    <button v-if="!isRealizacjaZakonczona(realizacja)"
+                                            class="btn btn-sm btn-primary shadow-sm me-1"
+                                            @click="openPrzyjmijModal(realizacja)"
+                                            title="Przyjmij towar">
+                                        <i class="fas fa-box-open"></i> Przyjmij
+                                    </button>
+                                    <button v-if="!isRealizacjaZakonczona(realizacja)"
+                                            class="btn btn-sm btn-danger shadow-sm"
+                                            @click="openDeleteModal(realizacja)"
+                                            title="Usuń realizację">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    <span v-else class="badge bg-success">Przyjęto</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+        <!-- Modal przyjęcia towaru -->
+        <div class="modal fade" tabindex="-1" ref="przyjmijModal">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-box-open me-2"></i>
+                            Przyjęcie towaru - [[ selectedRealizacja?.zamowienie?.numer ]]
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div v-if="selectedRealizacja" class="mb-3">
+                            <p><strong>Dostawca:</strong> [[ selectedRealizacja.zamowienie.dostawca.nazwa_firmy ]]</p>
+                        </div>
+
+                        <table class="table table-sm">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th style="width: 50px;" class="text-center">Przyjmij</th>
+                                    <th>Narzędzie</th>
+                                    <th>Nr katalogowy</th>
+                                    <th class="text-center">Zamówiono</th>
+                                    <th class="text-center">Przyjęto</th>
+                                    <th>Lokalizacja</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="pozycja in selectedPozycje" :key="pozycja.id">
+                                    <td class="text-center">
+                                        <input type="checkbox" v-model="pozycja.przyjmij" class="form-check-input">
+                                    </td>
+                                    <td>[[ pozycja.pozycja_zamowienia.narzedzie_opis ]]</td>
+                                    <td>[[ pozycja.pozycja_zamowienia.numer_katalogowy ]]</td>
+                                    <td class="text-center"><strong>[[ pozycja.pozycja_zamowienia.ilosc_zamowiona ]]</strong></td>
+                                    <td class="text-center">
+                                        <input v-if="pozycja.przyjmij"
+                                               type="number"
+                                               v-model.number="pozycja.ilosc_przyjeta_input"
+                                               class="form-control form-control-sm text-center"
+                                               style="width: 80px;"
+                                               :max="pozycja.pozycja_zamowienia.ilosc_zamowiona"
+                                               min="1">
+                                        <span v-else>-</span>
+                                    </td>
+                                    <td>
+                                        <span v-if="pozycja.lokalizacja">
+                                            [[ pozycja.lokalizacja.szafa ]]/[[ pozycja.lokalizacja.kolumna ]]/[[ pozycja.lokalizacja.polka ]]
+                                        </span>
+                                        <span v-else class="text-muted">Brak domyślnej</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <div v-if="przyjmijError" class="alert alert-danger mt-3">
+                            [[ przyjmijError ]]
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                        <button type="button" class="btn btn-success" @click="zatwierdzPrzyjecie" :disabled="isPrzyjecieLoading">
+                            <span v-if="isPrzyjecieLoading" class="spinner-border spinner-border-sm me-2"></span>
+                            <i v-else class="fas fa-check me-2"></i>
+                            Zatwierdź przyjęcie
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal wyniku przyjęcia -->
+        <div class="modal fade" tabindex="-1" ref="wynikModal">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Przyjęcie potwierdzone
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-success">
+                            <strong>Utworzono egzemplarze w magazynie:</strong>
+                        </div>
+
+                        <table class="table table-sm">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>Narzędzie</th>
+                                    <th>Ilość</th>
+                                    <th>Lokalizacja</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(egz, index) in utworzoneEgzemplarze" :key="index">
+                                    <td>[[ egz.narzedzie ]]</td>
+                                    <td><strong>[[ egz.ilosc ]]</strong></td>
+                                    <td>[[ egz.lokalizacja ]]</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal Potwierdzenia usunięcia -->
+        <div class="modal fade" tabindex="-1" ref="deleteModal">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title">
+                            <i class="fas fa-trash me-2"></i>
+                            Potwierdzenie usunięcia
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Czy na pewno chcesz usunąć tę realizację?</p>
+                        <div class="alert alert-warning mb-0">
+                            <strong>Numer zamówienia:</strong> [[ selectedDeleteRealizacja?.zamowienie?.numer ]]<br>
+                            <strong>Dostawca:</strong> [[ selectedDeleteRealizacja?.zamowienie?.dostawca?.nazwa_firmy ]]<br>
+                            <strong>Liczba pozycji:</strong> [[ selectedDeleteRealizacja?.pozycje?.length ]]
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Anuluj</button>
+                        <button type="button" class="btn btn-danger" @click="confirmDelete" :disabled="isDeleting">
+                            <span v-if="isDeleting" class="spinner-border spinner-border-sm me-2"></span>
+                            <i v-else class="fas fa-trash me-2"></i>
+                            Usuń
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal O programie -->
+        <div class="modal fade" id="aboutModal" tabindex="-1" aria-labelledby="aboutModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="aboutModalLabel"><i class="fa fa-info-circle me-2"></i>O programie</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="text-center mb-4">
+                            <img src="{% static 'images/cnc-logo.png' %}" alt="CNC Tools Logo" style="width: 80px; height: 80px;">
+                            <h4 class="mt-3 mb-0"><strong>CNC Tools</strong></h4>
+                            <p class="text-muted">System zarządzania narzędziami CNC</p>
+                        </div>
+                        <table class="table table-borderless mb-0">
+                            <tbody>
+                                <tr>
+                                    <td class="text-end text-muted" style="width: 40%;"><i class="fa fa-code-branch me-2"></i>Wersja:</td>
+                                    <td><strong>{{ info_program.WERSJA }}</strong></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-calendar me-2"></i>Data modyfikacji:</td>
+                                    <td>{{ info_program.MODYFIKACJA }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-building me-2"></i>Firma:</td>
+                                    <td>{{ info_program.FIRMA }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-user me-2"></i>Autor:</td>
+                                    <td>{{ info_program.AUTOR }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-envelope me-2"></i>Email:</td>
+                                    <td><a href="{{ info_program.EMAIL }}">{{ info_program.NEMAIL }}</a></td>
+                                </tr>
+                                <tr>
+                                    <td class="text-end text-muted"><i class="fa fa-phone me-2"></i>Telefon:</td>
+                                    <td>{{ info_program.TEL }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <small class="text-muted me-auto">© {{ info_program.FIRMA }} 2025</small>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zamknij</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/vue.global.js' %}"></script>
+    <script src="{% static 'js/axios.min.js' %}"></script>
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+    <script src="{% static 'js/main_realizacja.js' %}"></script>
+</body>
+</html>

@@ -1,11 +1,59 @@
 # tools/admin.py
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import User
 from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
     RealizacjaZamowienia, PozycjaRealizacji
 )
+
+
+# Inline dla Pracownika w panelu User
+class PracownikInline(admin.StackedInline):
+    model = Pracownik
+    can_delete = False
+    verbose_name = 'Karta dostępu'
+    verbose_name_plural = 'Karta dostępu'
+    fields = ['karta']
+
+
+# Rozszerzony UserAdmin z inline Pracownik
+class UserAdmin(BaseUserAdmin):
+    inlines = [PracownikInline]
+    list_display = ['username', 'email', 'first_name', 'last_name', 'get_grupy', 'get_karta', 'is_staff']
+    search_fields = ['username', 'email', 'first_name', 'last_name']
+
+    @admin.display(description='Grupy')
+    def get_grupy(self, obj):
+        grupy = obj.groups.all()
+        if grupy:
+            return ', '.join([g.name for g in grupy])
+        return '-'
+
+    @admin.display(description='Nr karty')
+    def get_karta(self, obj):
+        if hasattr(obj, 'pracownik') and obj.pracownik:
+            return obj.pracownik.karta
+        return '-'
+
+    def save_formset(self, request, form, formset, change):
+        """Synchronizuje first_name/last_name z User do imie/nazwisko w Pracownik"""
+        instances = formset.save(commit=False)
+        for instance in instances:
+            if isinstance(instance, Pracownik):
+                # Kopiuj dane z User do Pracownik
+                user = form.instance
+                instance.imie = user.first_name or ''
+                instance.nazwisko = user.last_name or ''
+                instance.save()
+        formset.save_m2m()
+
+
+# Przerejestrowujemy User z nowym UserAdmin
+admin.site.unregister(User)
+admin.site.register(User, UserAdmin)
 
 
 @admin.register(Kategoria)
@@ -49,9 +97,11 @@ class MaszynaAdmin(admin.ModelAdmin):
 
 @admin.register(Pracownik)
 class PracownikAdmin(admin.ModelAdmin):
-    list_display = ['karta', 'nazwisko', 'imie']
-    search_fields = ['karta', 'nazwisko', 'imie']
+    list_display = ['karta', 'nazwisko', 'imie', 'user']
+    search_fields = ['karta', 'nazwisko', 'imie', 'user__username']
+    list_filter = ['user__is_active']
     ordering = ['nazwisko', 'imie']
+    autocomplete_fields = ['user']
 
 
 @admin.register(FakturaZakupu)

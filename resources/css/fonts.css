@@ -1,0 +1,19 @@
+/* PrimeIcons */
+@font-face {
+    font-family: 'primeicons';
+    src: url('@fonts/primeicons.woff2') format('woff2'),
+         url('@fonts/primeicons.woff') format('woff'),
+         url('@fonts/primeicons.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Inter font */
+@font-face {
+    font-family: 'Inter';
+    src: url('@fonts/Inter-roman.var.woff2') format('woff2-variations');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}

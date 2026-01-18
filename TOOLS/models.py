@@ -77,6 +77,14 @@ class Pracownik(models.Model):
     karta = models.CharField(max_length=50, unique=True)
     nazwisko = models.CharField(max_length=100)
     imie = models.CharField(max_length=100)
+    user = models.OneToOneField(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pracownik',
+        verbose_name='Konto użytkownika'
+    )
 
     class Meta:
         verbose_name_plural = "Pracownicy"
@@ -121,8 +129,8 @@ class NarzedzieMagazynowe(models.Model):
     opis = models.TextField()
     numer_katalogowy = models.CharField(max_length=100, blank=True, null=True)
     obraz = models.ImageField(upload_to='narzedzia/', blank=True, null=True)
-    stan_minimalny = models.PositiveIntegerField(default=5)
-    stan_maksymalny = models.PositiveIntegerField(default=20)
+    stan_minimalny = models.PositiveIntegerField(default=0)
+    stan_maksymalny = models.PositiveIntegerField(default=0)
     ostatni_dostawca = models.ForeignKey(
         Dostawca,
         on_delete=models.SET_NULL,
@@ -137,12 +145,24 @@ class NarzedzieMagazynowe(models.Model):
         blank=True,
         related_name='narzedzia_domyslne'
     )
+    # Jednostka zakupu - jak zamawiamy narzędzie
     opakowanie = models.CharField(
         max_length=10,
         choices=OPAKOWANIE_CHOICES,
-        default='szt'
+        default='szt',
+        verbose_name='Jednostka zakupu'
     )
-    ilosc_w_opakowaniu = models.PositiveIntegerField(default=1)
+    # Ilość sztuk w komplecie zakupowym
+    ilosc_w_opakowaniu = models.PositiveIntegerField(
+        default=1,
+        verbose_name='Ilość w komplecie'
+    )
+    # Czy można wydawać pojedyncze sztuki z kompletu
+    wydawanie_sztuk = models.BooleanField(
+        default=False,
+        verbose_name='Możliwość wydawania pojedynczych sztuk',
+        help_text='Jeśli zaznaczone, można wydawać pojedyncze sztuki z kompletu. Jeśli nie, tylko całe komplety.'
+    )
 
     class Meta:
         verbose_name_plural = "Narzędzia magazynowe"
@@ -233,6 +253,14 @@ class HistoriaUzyciaNarzedzia(models.Model):
         null=True,
         related_name='historia_uzycia'
     )
+    pracownik_zwracajacy = models.ForeignKey(
+        Pracownik,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='historia_zwrotow',
+        verbose_name='Pracownik zwracający'
+    )
     data_wydania = models.DateTimeField(auto_now_add=True)
     data_zwrotu = models.DateTimeField(null=True, blank=True)
     uwagi = models.TextField(blank=True)
@@ -248,13 +276,30 @@ class HistoriaUzyciaNarzedzia(models.Model):
 class Uszkodzenie(models.Model):
     egzemplarz = models.ForeignKey(
         EgzemplarzNarzedzia,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='uszkodzenia',
         null=True,
         blank=True
     )
+    # Pola do przechowania danych usuniętego egzemplarza
+    narzedzie_typ = models.ForeignKey(
+        NarzedzieMagazynowe,
+        on_delete=models.CASCADE,
+        related_name='uszkodzenia_narzedzi',
+        null=True,
+        blank=True
+    )
+    narzedzie_opis = models.CharField(max_length=500, blank=True)
+    numer_katalogowy = models.CharField(max_length=200, blank=True)
+    kategoria_narzedzia = models.CharField(max_length=300, blank=True)
+    lokalizacja_opis = models.CharField(max_length=200, blank=True)
+    stan = models.CharField(max_length=50, blank=True)
+    maszyna_nazwa = models.CharField(max_length=200, blank=True)
+    pracownik_nazwisko = models.CharField(max_length=100, blank=True)
+    pracownik_imie = models.CharField(max_length=100, blank=True)
+
     data_uszkodzenia = models.DateTimeField(auto_now_add=True)
-    opis_uszkodzenia = models.TextField(null=True)
+    opis_uszkodzenia = models.TextField(null=True, blank=True)
     pracownik = models.ForeignKey(
         Pracownik,
         on_delete=models.SET_NULL,
@@ -268,7 +313,9 @@ class Uszkodzenie(models.Model):
         ordering = ['-data_uszkodzenia']
 
     def __str__(self):
-        return f"Uszkodzenie: {self.egzemplarz} - {self.data_uszkodzenia}"
+        if self.egzemplarz:
+            return f"Uszkodzenie: {self.egzemplarz} - {self.data_uszkodzenia}"
+        return f"Uszkodzenie: {self.narzedzie_opis} - {self.data_uszkodzenia}"
 
 
 class Zamowienie(models.Model):
@@ -396,6 +443,21 @@ class PozycjaRealizacji(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         related_name='pozycje_realizacji'
+    )
+    faktura_zakupu = models.ForeignKey(
+        'FakturaZakupu',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pozycje_realizacji',
+        help_text="Faktura zakupu dla tej pozycji (uzupełniane przez Logistyka)"
+    )
+    cena_jednostkowa = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Rzeczywista cena jednostkowa z faktury (uzupełniane przez Logistyka)"
     )
 
     class Meta:

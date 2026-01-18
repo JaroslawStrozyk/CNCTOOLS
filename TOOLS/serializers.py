@@ -1,11 +1,26 @@
 # tools/serializers.py
 from rest_framework import serializers
+from django.contrib.auth.models import User
 from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
     RealizacjaZamowienia, PozycjaRealizacji
 )
+
+
+class UserSimpleSerializer(serializers.ModelSerializer):
+    """Prosty serializer dla User do wyświetlania w dropdown"""
+    display_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'display_name']
+
+    def get_display_name(self, obj):
+        if obj.first_name and obj.last_name:
+            return f"{obj.first_name} {obj.last_name} ({obj.username})"
+        return obj.username
 
 
 class KategoriaSimpleSerializer(serializers.ModelSerializer):
@@ -17,10 +32,15 @@ class KategoriaSimpleSerializer(serializers.ModelSerializer):
 class PodkategoriaSerializer(serializers.ModelSerializer):
     kategoria_nazwa = serializers.CharField(source='kategoria.nazwa', read_only=True)
     kategoria = KategoriaSimpleSerializer(read_only=True)
+    kategoria_id = serializers.PrimaryKeyRelatedField(
+        queryset=Kategoria.objects.all(),
+        source='kategoria',
+        write_only=True
+    )
 
     class Meta:
         model = Podkategoria
-        fields = ['id', 'nazwa', 'kategoria', 'kategoria_nazwa']
+        fields = ['id', 'nazwa', 'kategoria', 'kategoria_id', 'kategoria_nazwa']
 
 
 class KategoriaSerializer(serializers.ModelSerializer):
@@ -50,9 +70,18 @@ class MaszynaSerializer(serializers.ModelSerializer):
 
 
 class PracownikSerializer(serializers.ModelSerializer):
+    user = UserSimpleSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='user',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = Pracownik
-        fields = '__all__'
+        fields = ['id', 'karta', 'nazwisko', 'imie', 'user', 'user_id']
 
 
 class FakturaZakupuSerializer(serializers.ModelSerializer):
@@ -143,10 +172,13 @@ class EgzemplarzNarzedziaSerializer(serializers.ModelSerializer):
         # Pobierz typ narzędzia
         narzedzie_typ = validated_data.get('narzedzie_typ')
 
-        # Automatycznie ustaw jednostka i ilosc_w_komplecie na podstawie typu narzędzia
+        # Jeśli nie podano jednostki i ilosc_w_komplecie, użyj wartości z typu narzędzia
+        # Pozwala to na dodawanie "luźnych sztuk" dla narzędzi typu komplet
         if narzedzie_typ:
-            validated_data['jednostka'] = narzedzie_typ.opakowanie
-            validated_data['ilosc_w_komplecie'] = narzedzie_typ.ilosc_w_opakowaniu
+            if 'jednostka' not in validated_data:
+                validated_data['jednostka'] = narzedzie_typ.opakowanie
+            if 'ilosc_w_komplecie' not in validated_data:
+                validated_data['ilosc_w_komplecie'] = narzedzie_typ.ilosc_w_opakowaniu
 
         return super().create(validated_data)
 
@@ -170,6 +202,14 @@ class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
     pracownik_id = serializers.PrimaryKeyRelatedField(
         queryset=Pracownik.objects.all(),
         source='pracownik',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+    pracownik_zwracajacy = PracownikSerializer(read_only=True)
+    pracownik_zwracajacy_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pracownik.objects.all(),
+        source='pracownik_zwracajacy',
         write_only=True,
         required=False,
         allow_null=True
@@ -207,44 +247,87 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Uszkodzenie
-        fields = '__all__'
+        fields = [
+            'id', 'egzemplarz', 'egzemplarz_id', 'narzedzie_typ', 'narzedzie_opis',
+            'lokalizacja_opis', 'stan', 'maszyna_nazwa',
+            'pracownik_nazwisko', 'pracownik_imie', 'data_uszkodzenia', 'opis_uszkodzenia',
+            'pracownik', 'pracownik_id',
+            # SerializerMethodFields (nadpisują pola modelu o tej samej nazwie)
+            'kategoria_narzedzia', 'opis_narzedzia', 'numer_katalogowy', 'ostatnia_lokalizacja',
+            'maszyna_uszkodzenia', 'ostatni_pracownik', 'stan_egzemplarza'
+        ]
 
     def get_kategoria_narzedzia(self, obj):
+        # Najpierw sprawdź pole kategoria_narzedzia (dla usuniętych)
+        if obj.kategoria_narzedzia:
+            return obj.kategoria_narzedzia
+        # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz and obj.egzemplarz.narzedzie_typ and obj.egzemplarz.narzedzie_typ.podkategoria:
             return f"{obj.egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa} / {obj.egzemplarz.narzedzie_typ.podkategoria.nazwa}"
         return '-'
 
     def get_opis_narzedzia(self, obj):
+        # Najpierw sprawdź pole narzedzie_opis (dla usuniętych)
+        if obj.narzedzie_opis:
+            return obj.narzedzie_opis
+        # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz and obj.egzemplarz.narzedzie_typ:
             return obj.egzemplarz.narzedzie_typ.opis
         return '-'
 
     def get_numer_katalogowy(self, obj):
+        # Najpierw sprawdź pole numer_katalogowy (dla usuniętych)
+        if obj.numer_katalogowy:
+            return obj.numer_katalogowy
+        # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz and obj.egzemplarz.narzedzie_typ:
             return obj.egzemplarz.narzedzie_typ.numer_katalogowy or None
         return None
 
     def get_ostatnia_lokalizacja(self, obj):
+        # Najpierw sprawdź pole lokalizacja_opis (dla usuniętych)
+        if obj.lokalizacja_opis:
+            return obj.lokalizacja_opis
+        # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz and obj.egzemplarz.lokalizacja:
             lok = obj.egzemplarz.lokalizacja
             return f"{lok.szafa}/{lok.kolumna}/{lok.polka}"
         return None
 
     def get_maszyna_uszkodzenia(self, obj):
+        # Najpierw sprawdź pole maszyna_nazwa (dla usuniętych)
+        if obj.maszyna_nazwa:
+            return obj.maszyna_nazwa
+        # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz:
-            # Pobierz ostatnią historię użycia
             ostatnia_historia = obj.egzemplarz.historia.order_by('-data_wydania').first()
             if ostatnia_historia and ostatnia_historia.maszyna:
                 return ostatnia_historia.maszyna.nazwa
         return None
 
     def get_ostatni_pracownik(self, obj):
-        # Zwraca pracownika przypisanego do uszkodzenia (który zgłosił)
+        # Najpierw sprawdź pola pracownik_nazwisko/imie (dla usuniętych)
+        if obj.pracownik_nazwisko or obj.pracownik_imie:
+            return {
+                'nazwisko': obj.pracownik_nazwisko,
+                'imie': obj.pracownik_imie
+            }
+        # Potem sprawdź pracownika przypisanego do uszkodzenia
         if obj.pracownik:
             return PracownikSerializer(obj.pracownik).data
+        # Na koniec sprawdź ostatnią historię egzemplarza
+        if obj.egzemplarz:
+            ostatnia_historia = obj.egzemplarz.historia.order_by('-data_wydania').first()
+            if ostatnia_historia and ostatnia_historia.pracownik:
+                return PracownikSerializer(ostatnia_historia.pracownik).data
         return None
 
     def get_stan_egzemplarza(self, obj):
+        # Najpierw sprawdź czy jest stan zapisany bezpośrednio w modelu (dla usuniętych egzemplarzy)
+        if obj.stan:
+            return obj.stan
+
+        # Jeśli nie, sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz:
             # Mapowanie stanów na czytelne nazwy
             stan_map = {
@@ -325,5 +408,3 @@ class RealizacjaZamowieniaSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealizacjaZamowienia
         fields = '__all__'
-
-
