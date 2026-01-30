@@ -95,6 +95,8 @@ urlpatterns = [
 
     # Logi endpoints
     path('api/logi/biezace/', views.logi_biezace_view, name='logi-biezace'),
+    path('api/logi/biezace/pdf/', views.logi_pdf_biezace_view, name='logi-biezace-pdf'),
     path('api/logi/pliki/', views.logi_pliki_view, name='logi-pliki'),
     path('api/logi/pliki/<str:filename>/', views.logi_plik_content_view, name='logi-plik-content'),
+    path('api/logi/pliki/<str:filename>/pdf/', views.logi_pdf_archiwum_view, name='logi-archiwum-pdf'),
 ]

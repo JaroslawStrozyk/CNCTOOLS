@@ -2,28 +2,49 @@
     <div class="magazyn-app">
         <!-- Nagłówek -->
         <header class="magazyn-header">
-            <h2 class="header-title">MAGAZYN</h2>
+            <h2 class="header-title">{{ trybProdukcja ? 'NARZĘDZIA' : 'MAGAZYN' }}</h2>
             <div class="header-buttons">
-                <a :href="urls.ustawienia" class="btn btn-secondary">
-                    <i class="pi pi-cog"></i> Ustawienia
-                </a>
-                <a :href="urls.zwroty" class="btn btn-zwroty">
-                    <i class="pi pi-undo"></i> Zwroty
-                </a>
-                <a :href="urls.zamowienia" class="btn btn-success">
-                    <i class="pi pi-file"></i> Zamówienia
-                </a>
-                <a v-if="auth.isLogistyka" :href="urls.zakupy" class="btn btn-primary">
-                    <i class="pi pi-truck"></i> Zakupy
-                </a>
-                <div class="dropdown-wrapper">
-                    <button class="user-dropdown-btn" @click="toggleUserMenu">
+                <!-- Pełny tryb magazynu -->
+                <template v-if="!trybProdukcja">
+                    <a
+                        v-if="auth.isAdministrator"
+                        :href="urls.logi"
+                        class="btn btn-logi"
+                        title="Logi systemowe"
+                    >
+                        <i class="pi pi-list"></i> Logi
+                    </a>
+                    <a :href="urls.ustawienia" class="btn btn-secondary">
+                        <i class="pi pi-cog"></i> Ustawienia
+                    </a>
+                    <a :href="urls.zwroty" class="btn btn-zwroty">
+                        <i class="pi pi-undo"></i> Zwroty
+                    </a>
+                    <a :href="urls.zamowienia" class="btn btn-success">
+                        <i class="pi pi-file"></i> Zamówienia
+                    </a>
+                    <a v-if="auth.isLogistyka" :href="urls.zakupy" class="btn btn-primary">
+                        <i class="pi pi-truck"></i> Zakupy
+                    </a>
+                    <div class="dropdown-wrapper">
+                        <button class="user-dropdown-btn" @click="toggleUserMenu">
+                            <i class="pi pi-user"></i>
+                            {{ auth.user.first_name }} {{ auth.user.last_name }}
+                            <i class="pi pi-chevron-down"></i>
+                        </button>
+                        <Menu ref="userMenu" id="user_menu" :model="userMenuItems" :popup="true" />
+                    </div>
+                </template>
+                <!-- Tryb produkcja - tylko powrót -->
+                <template v-else>
+                    <span class="user-name-label">
                         <i class="pi pi-user"></i>
                         {{ auth.user.first_name }} {{ auth.user.last_name }}
-                        <i class="pi pi-chevron-down"></i>
-                    </button>
-                    <Menu ref="userMenu" id="user_menu" :model="userMenuItems" :popup="true" />
-                </div>
+                    </span>
+                    <a :href="urls.produkcja" class="btn btn-danger">
+                        <i class="pi pi-arrow-left"></i> Wróć do Produkcji
+                    </a>
+                </template>
             </div>
         </header>
 
@@ -111,7 +132,7 @@
                                 <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
                             </template>
                         </Column>
-                        <Column header="" style="width: 100px; text-align: center;">
+                        <Column v-if="!trybProdukcja" header="" style="width: 100px; text-align: center;">
                             <template #header>
                                 <Button icon="pi pi-plus" class="p-button-success p-button-sm" @click.stop="openToolModal()" title="Dodaj nowy typ narzędzia" />
                             </template>
@@ -144,7 +165,7 @@
                                         <Column header="Lokalizacja">
                                             <template #body="{ data }">
                                                 <span :title="data.faktura_zakupu ? `Faktura: ${data.faktura_zakupu.numer_faktury}` : ''">
-                                                    {{ data.lokalizacja ? `${data.lokalizacja.szafa}/${data.lokalizacja.kolumna}/${data.lokalizacja.polka}` : 'Brak' }}
+                                                    {{ data.lokalizacja ? `${data.lokalizacja.szafa}/${data.lokalizacja.polka}/${data.lokalizacja.kolumna}` : 'Brak' }}
                                                 </span>
                                             </template>
                                         </Column>
@@ -176,7 +197,7 @@
                                                 />
                                             </template>
                                         </Column>
-                                        <Column style="width: 90px; text-align: center;">
+                                        <Column v-if="!trybProdukcja" style="width: 90px; text-align: center;">
                                             <template #header>
                                                 <Button icon="pi pi-plus" class="p-button-success p-button-sm" @click="openInstanceModal('add')" title="Dodaj nowy egzemplarz" />
                                             </template>
@@ -320,6 +341,89 @@
                             </DataTable>
                         </div>
                     </TabPanel>
+
+                    <TabPanel v-if="!trybProdukcja">
+                        <template #header>
+                            <span>Zapotrzebowania</span>
+                            <Badge v-if="zapotrzebowania.length > 0" :value="zapotrzebowania.length" severity="warning" class="ml-2" />
+                        </template>
+                        <div class="tab-content-wrapper">
+                            <div v-if="isLoadingZapotrzebowania" class="loading-spinner">
+                                <ProgressSpinner />
+                            </div>
+                            <DataTable
+                                v-else
+                                :value="zapotrzebowania"
+                                :scrollable="true"
+                                scrollHeight="flex"
+                                v-model:expandedRows="expandedZapotrzebowania"
+                                dataKey="id"
+                            >
+                                <Column :expander="true" style="width: 40px;" />
+                                <Column header="Numer">
+                                    <template #body="{ data }">
+                                        <strong>ZAM-{{ String(data.id).padStart(4, '0') }}</strong>
+                                    </template>
+                                </Column>
+                                <Column header="Technolog">
+                                    <template #body="{ data }">
+                                        {{ data.technolog ? `${data.technolog.first_name} ${data.technolog.last_name}` : 'Nieznany' }}
+                                    </template>
+                                </Column>
+                                <Column header="Data wysłania">
+                                    <template #body="{ data }">
+                                        {{ formatCustomDate(data.data_wyslania) }}
+                                    </template>
+                                </Column>
+                                <Column header="Pozycji" style="width: 80px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Badge :value="data.pozycje_count" />
+                                    </template>
+                                </Column>
+                                <Column header="Akcje" style="width: 100px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Button
+                                            icon="pi pi-check"
+                                            class="p-button-success p-button-sm"
+                                            @click="zrealizujZapotrzebowanie(data.id)"
+                                            title="Zrealizuj zapotrzebowanie"
+                                        />
+                                    </template>
+                                </Column>
+                                <template #expansion="slotProps">
+                                    <div class="expansion-content">
+                                        <h5>Pozycje zapotrzebowania ZAM-{{ String(slotProps.data.id).padStart(4, '0') }}</h5>
+                                        <DataTable :value="slotProps.data.pozycje" class="expansion-table">
+                                            <Column field="nr_klienta" header="Nr klienta">
+                                                <template #body="{ data }">{{ data.nr_klienta || '-' }}</template>
+                                            </Column>
+                                            <Column field="nr_zlecenia" header="Nr zlecenia">
+                                                <template #body="{ data }">{{ data.nr_zlecenia || '-' }}</template>
+                                            </Column>
+                                            <Column header="Kategoria">
+                                                <template #body="{ data }">
+                                                    {{ data.kategoria_nazwa || '-' }} / {{ data.podkategoria_nazwa || '-' }}
+                                                </template>
+                                            </Column>
+                                            <Column field="specyfikacja" header="Specyfikacja">
+                                                <template #body="{ data }">{{ data.specyfikacja || '-' }}</template>
+                                            </Column>
+                                            <Column field="numer_katalogowy" header="Nr katalogowy">
+                                                <template #body="{ data }">{{ data.numer_katalogowy || '-' }}</template>
+                                            </Column>
+                                            <Column field="ilosc" header="Ilość" style="width: 60px; text-align: center;" />
+                                            <Column field="uwagi" header="Uwagi">
+                                                <template #body="{ data }">{{ data.uwagi || '-' }}</template>
+                                            </Column>
+                                        </DataTable>
+                                    </div>
+                                </template>
+                                <template #empty>
+                                    <div class="empty-state">Brak wysłanych zapotrzebowań do realizacji.</div>
+                                </template>
+                            </DataTable>
+                        </div>
+                    </TabPanel>
                 </TabView>
             </div>
         </main>
@@ -453,7 +557,7 @@
                         </div>
                         <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanUszkodzoneRegen" value="uszkodzone_regeneracja" />
-                            <label for="stanUszkodzoneRegen">Uszkodzonym do regeneracji</label>
+                            <label for="stanUszkodzoneRegen">Zużytym do regeneracji</label>
                         </div>
                     </div>
                 </div>
@@ -722,7 +826,8 @@ const props = defineProps({
         type: Object,
         default: () => ({
             user: { first_name: '', last_name: '', username: '' },
-            isLogistyka: false
+            isLogistyka: false,
+            isAdministrator: false
         })
     },
     urls: {
@@ -732,12 +837,18 @@ const props = defineProps({
             zwroty: '/zwroty/',
             zamowienia: '/zamowienia/',
             zakupy: '/zakupy/',
-            logout: '/logout/'
+            logi: '/logi/',
+            logout: '/logout/',
+            produkcja: '/produkcja/'
         })
     },
     infoProgram: {
         type: Object,
         default: () => ({})
+    },
+    trybProdukcja: {
+        type: Boolean,
+        default: false
     }
 });
 
@@ -753,6 +864,9 @@ const usagesInUse = ref([]);
 const toolInstances = ref([]);
 const toolHistory = ref([]);
 const locations = ref([]);
+const zapotrzebowania = ref([]);
+const expandedZapotrzebowania = ref([]);
+const isLoadingZapotrzebowania = ref(false);
 
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
@@ -935,7 +1049,7 @@ const locationOptions = computed(() => {
     return [
         { label: '-- Brak --', value: null },
         ...sortedLocations.value.map(loc => ({
-            label: `${loc.szafa} / ${loc.kolumna} / ${loc.polka}`,
+            label: `${loc.szafa} / ${loc.polka} / ${loc.kolumna}`,
             value: loc.id
         }))
     ];
@@ -1498,6 +1612,33 @@ const confirmDeleteInstance = async () => {
     }
 };
 
+// Zapotrzebowania - funkcje
+const fetchZapotrzebowania = async () => {
+    isLoadingZapotrzebowania.value = true;
+    try {
+        const response = await axios.get(`${API_URL}/zapotrzebowania/lista_dla_magazynu/`);
+        zapotrzebowania.value = response.data;
+    } catch (error) {
+        console.error("Błąd pobierania zapotrzebowań:", error.response?.data || error.message);
+    } finally {
+        isLoadingZapotrzebowania.value = false;
+    }
+};
+
+const zrealizujZapotrzebowanie = async (id) => {
+    if (!confirm('Czy na pewno chcesz oznaczyć to zapotrzebowanie jako zrealizowane?')) {
+        return;
+    }
+    try {
+        await axios.post(`${API_URL}/zapotrzebowania/${id}/zrealizuj/`);
+        // Odśwież listę
+        await fetchZapotrzebowania();
+    } catch (error) {
+        console.error("Błąd realizacji zapotrzebowania:", error.response?.data || error.message);
+        alert('Nie udało się zrealizować zapotrzebowania: ' + (error.response?.data?.error || error.message));
+    }
+};
+
 const fetchInitialData = async () => {
     try {
         const [
@@ -1530,14 +1671,20 @@ const fetchInitialData = async () => {
         podkategorie.value = podkategorieRes.data;
 
         // Dodaj fullName do pracowników dla dropdown
+        // (...) = tylko karta (stara tabela, brak konta użytkownika)
         const pracownicyData = pracownicyRes.data.results || pracownicyRes.data;
         pracownicy.value = pracownicyData.map(p => ({
             ...p,
-            fullName: `${p.nazwisko} ${p.imie}`
+            fullName: p.user
+                ? `${p.nazwisko} ${p.imie}`
+                : `${p.nazwisko} ${p.imie} ...`
         }));
 
         faktury.value = fakturyRes.data.results || fakturyRes.data;
         zamowienia.value = zamowieniaRes.data.results || zamowieniaRes.data;
+
+        // Pobierz zapotrzebowania dla magazynu
+        await fetchZapotrzebowania();
     } catch (error) {
         console.error("Błąd ładowania danych początkowych:", error.response?.data || error.message);
         alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
@@ -1664,6 +1811,17 @@ onMounted(() => {
     color: #fff;
 }
 
+.btn-logi {
+    background-color: #6f42c1;
+    border-color: #6f42c1;
+    color: #fff;
+}
+.btn-logi:hover {
+    background-color: #5a32a3;
+    border-color: #4e2a8e;
+    color: #fff;
+}
+
 .btn-danger {
     background-color: #dc3545;
     border-color: #dc3545;
@@ -1723,6 +1881,16 @@ onMounted(() => {
 .user-dropdown-btn:hover {
     background-color: #bb2d3b;
     border-color: #b02a37;
+}
+
+.user-name-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #ffc107;
 }
 
 /* === GŁÓWNA ZAWARTOŚĆ === */
@@ -2303,6 +2471,35 @@ onMounted(() => {
 /* === WARTOŚĆ ZEROWA W TABELI === */
 .zero-value {
     color: #6c757d !important;
+}
+
+/* === ZAPOTRZEBOWANIA - EXPANSION === */
+.expansion-content {
+    padding: 16px;
+    background: rgba(52, 58, 64, 0.5);
+    border-radius: 6px;
+    margin: 8px 0;
+}
+
+.expansion-content h5 {
+    color: var(--dark-text-primary);
+    margin-bottom: 12px;
+    font-size: 0.95rem;
+}
+
+.expansion-table {
+    font-size: 0.85rem;
+}
+
+:deep(.expansion-table .p-datatable-tbody > tr > td) {
+    padding: 6px 8px;
+    background: transparent;
+}
+
+:deep(.expansion-table .p-datatable-thead > tr > th) {
+    padding: 8px;
+    background: var(--dark-bg-tertiary);
+    font-size: 0.8rem;
 }
 
 </style>

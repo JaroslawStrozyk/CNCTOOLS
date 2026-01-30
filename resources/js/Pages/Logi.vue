@@ -19,6 +19,19 @@
                         <div class="panel-header">
                             <h3>Logi z dzisiaj</h3>
                             <div class="header-actions">
+                                <!-- Filtr statusu -->
+                                <div class="filter-group">
+                                    <label>Status:</label>
+                                    <Dropdown
+                                        v-model="filterStatusBiezace"
+                                        :options="statusOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Wszystkie"
+                                        class="status-dropdown"
+                                        @change="onFilterStatusBiezaceChange"
+                                    />
+                                </div>
                                 <span class="auto-refresh-status" :class="{ active: autoRefreshEnabled }">
                                     <i class="pi pi-sync" :class="{ 'pi-spin': autoRefreshEnabled }"></i>
                                     Auto-odświeżanie: {{ autoRefreshEnabled ? 'ON' : 'OFF' }}
@@ -26,10 +39,17 @@
                                 <button
                                     class="btn"
                                     :class="autoRefreshEnabled ? 'btn-warning' : 'btn-success'"
-                                    @click="autoRefreshEnabled = !autoRefreshEnabled"
+                                    @click="toggleAutoRefresh"
                                 >
                                     <i :class="autoRefreshEnabled ? 'pi pi-pause' : 'pi pi-play'"></i>
                                     {{ autoRefreshEnabled ? 'Zatrzymaj' : 'Wznów' }}
+                                </button>
+                                <button
+                                    class="btn btn-secondary"
+                                    @click="openPdfBiezace"
+                                    :disabled="filteredLogiBiezace.length === 0"
+                                >
+                                    <i class="pi pi-file-pdf"></i> PDF
                                 </button>
                             </div>
                         </div>
@@ -38,13 +58,13 @@
                                 <ProgressSpinner />
                                 <p>Ładowanie logów...</p>
                             </div>
-                            <div v-else-if="logiBiezace.length === 0" class="empty-state">
+                            <div v-else-if="filteredLogiBiezace.length === 0" class="empty-state">
                                 <i class="pi pi-inbox"></i>
-                                <p>Brak logów z dzisiaj</p>
+                                <p>{{ filterStatusBiezace ? 'Brak logów o wybranym statusie' : 'Brak logów z dzisiaj' }}</p>
                             </div>
                             <DataTable
                                 v-else
-                                :value="logiBiezace"
+                                :value="filteredLogiBiezace"
                                 :scrollable="true"
                                 scrollHeight="flex"
                                 :paginator="true"
@@ -87,6 +107,28 @@
                     <div class="settings-panel">
                         <div class="panel-header">
                             <h3>Archiwum logów</h3>
+                            <div class="header-actions">
+                                <!-- Filtr statusu dla archiwum -->
+                                <div class="filter-group" v-if="selectedPlik">
+                                    <label>Status:</label>
+                                    <Dropdown
+                                        v-model="filterStatusArchiwum"
+                                        :options="statusOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Wszystkie"
+                                        class="status-dropdown"
+                                    />
+                                </div>
+                                <button
+                                    v-if="selectedPlik"
+                                    class="btn btn-secondary"
+                                    @click="openPdfArchiwum"
+                                    :disabled="filteredLogiArchiwum.length === 0"
+                                >
+                                    <i class="pi pi-file-pdf"></i> PDF
+                                </button>
+                            </div>
                         </div>
                         <div class="panel-body archiwum-layout">
                             <!-- Lista plików -->
@@ -133,13 +175,13 @@
                                     <ProgressSpinner />
                                     <p>Ładowanie zawartości...</p>
                                 </div>
-                                <div v-else-if="logiArchiwum.length === 0" class="empty-state">
+                                <div v-else-if="filteredLogiArchiwum.length === 0" class="empty-state">
                                     <i class="pi pi-inbox"></i>
-                                    <p>Plik jest pusty</p>
+                                    <p>{{ filterStatusArchiwum ? 'Brak logów o wybranym statusie' : 'Plik jest pusty' }}</p>
                                 </div>
                                 <DataTable
                                     v-else
-                                    :value="logiArchiwum"
+                                    :value="filteredLogiArchiwum"
                                     :scrollable="true"
                                     scrollHeight="flex"
                                     :paginator="true"
@@ -179,11 +221,31 @@
                 </TabPanel>
             </TabView>
         </main>
+
+        <!-- Modal: Podgląd PDF -->
+        <Dialog
+            v-model:visible="pdfPreviewVisible"
+            header="Podgląd dokumentu PDF"
+            :modal="true"
+            :style="{ width: '90vw', height: '90vh' }"
+            @hide="closePdfPreview"
+        >
+            <div class="pdf-preview-container">
+                <iframe
+                    id="pdf-preview-iframe"
+                    :src="pdfPreviewUrl"
+                    class="pdf-iframe"
+                ></iframe>
+            </div>
+            <template #footer>
+                <Button label="Zamknij" class="btn-modal-secondary" @click="closePdfPreview" />
+            </template>
+        </Dialog>
     </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 
 import DataTable from 'primevue/datatable';
@@ -192,6 +254,9 @@ import TabView from 'primevue/tabview';
 import TabPanel from 'primevue/tabpanel';
 import Tag from 'primevue/tag';
 import Listbox from 'primevue/listbox';
+import Dropdown from 'primevue/dropdown';
+import Dialog from 'primevue/dialog';
+import Button from 'primevue/button';
 import ProgressSpinner from 'primevue/progressspinner';
 
 const API_URL = '/api';
@@ -209,10 +274,20 @@ const props = defineProps({
     }
 });
 
+// Opcje statusu do filtrowania
+const statusOptions = [
+    { label: 'Wszystkie', value: null },
+    { label: 'SUCCESS', value: 'SUCCESS' },
+    { label: 'INFO', value: 'INFO' },
+    { label: 'WARNING', value: 'WARNING' },
+    { label: 'ERROR', value: 'ERROR' }
+];
+
 // Logi bieżące
 const logiBiezace = ref([]);
 const logiLoading = ref(false);
 const autoRefreshEnabled = ref(true);
+const filterStatusBiezace = ref(null);
 
 // Archiwum
 const plikiLogow = ref([]);
@@ -220,6 +295,27 @@ const selectedPlik = ref(null);
 const logiArchiwum = ref([]);
 const archiwumLoading = ref(false);
 const plikLoading = ref(false);
+const filterStatusArchiwum = ref(null);
+
+// PDF Preview
+const pdfPreviewVisible = ref(false);
+const pdfPreviewUrl = ref('');
+
+// Computed - filtrowane logi bieżące
+const filteredLogiBiezace = computed(() => {
+    if (!filterStatusBiezace.value) {
+        return logiBiezace.value;
+    }
+    return logiBiezace.value.filter(log => log.status === filterStatusBiezace.value);
+});
+
+// Computed - filtrowane logi archiwum
+const filteredLogiArchiwum = computed(() => {
+    if (!filterStatusArchiwum.value) {
+        return logiArchiwum.value;
+    }
+    return logiArchiwum.value.filter(log => log.status === filterStatusArchiwum.value);
+});
 
 // Methods - formatowanie daty i czasu
 const formatDate = (timestamp) => {
@@ -265,6 +361,23 @@ const getStatusSeverity = (status) => {
         'SUCCESS': 'success'
     };
     return severities[status?.toUpperCase()] || 'secondary';
+};
+
+// Obsługa zmiany filtra statusu w logach bieżących - zatrzymaj auto-refresh
+const onFilterStatusBiezaceChange = () => {
+    if (filterStatusBiezace.value) {
+        // Zatrzymaj auto-odświeżanie gdy wybrano filtr
+        autoRefreshEnabled.value = false;
+    }
+};
+
+// Toggle auto-refresh
+const toggleAutoRefresh = () => {
+    autoRefreshEnabled.value = !autoRefreshEnabled.value;
+    // Jeśli włączamy auto-refresh, resetuj filtr
+    if (autoRefreshEnabled.value) {
+        filterStatusBiezace.value = null;
+    }
 };
 
 // Automatyczne odświeżanie
@@ -323,10 +436,12 @@ const refreshArchiwum = async () => {
 const onPlikSelect = async (event) => {
     if (!event.value) {
         logiArchiwum.value = [];
+        filterStatusArchiwum.value = null;
         return;
     }
 
     plikLoading.value = true;
+    filterStatusArchiwum.value = null; // Reset filtra przy zmianie pliku
     try {
         const response = await axios.get(`${API_URL}/logi/pliki/${event.value.nazwa}/`);
         logiArchiwum.value = response.data || [];
@@ -335,6 +450,64 @@ const onPlikSelect = async (event) => {
         logiArchiwum.value = [];
     } finally {
         plikLoading.value = false;
+    }
+};
+
+// PDF - logi bieżące
+const openPdfBiezace = async () => {
+    try {
+        let url = `${API_URL}/logi/biezace/pdf/`;
+        if (filterStatusBiezace.value) {
+            url += `?status=${filterStatusBiezace.value}`;
+        }
+
+        const response = await axios.get(url, {
+            responseType: 'blob'
+        });
+
+        if (pdfPreviewUrl.value) {
+            window.URL.revokeObjectURL(pdfPreviewUrl.value);
+        }
+
+        pdfPreviewUrl.value = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        pdfPreviewVisible.value = true;
+    } catch (error) {
+        console.error('Błąd generowania PDF:', error.response?.data || error.message);
+        alert('Błąd podczas generowania PDF');
+    }
+};
+
+// PDF - archiwum
+const openPdfArchiwum = async () => {
+    if (!selectedPlik.value) return;
+
+    try {
+        let url = `${API_URL}/logi/pliki/${selectedPlik.value.nazwa}/pdf/`;
+        if (filterStatusArchiwum.value) {
+            url += `?status=${filterStatusArchiwum.value}`;
+        }
+
+        const response = await axios.get(url, {
+            responseType: 'blob'
+        });
+
+        if (pdfPreviewUrl.value) {
+            window.URL.revokeObjectURL(pdfPreviewUrl.value);
+        }
+
+        pdfPreviewUrl.value = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        pdfPreviewVisible.value = true;
+    } catch (error) {
+        console.error('Błąd generowania PDF:', error.response?.data || error.message);
+        alert('Błąd podczas generowania PDF');
+    }
+};
+
+const closePdfPreview = () => {
+    pdfPreviewVisible.value = false;
+    if (pdfPreviewUrl.value) {
+        window.URL.revokeObjectURL(pdfPreviewUrl.value);
+        pdfPreviewUrl.value = '';
     }
 };
 
@@ -350,6 +523,10 @@ onMounted(async () => {
 onUnmounted(() => {
     // Zatrzymaj automatyczne odświeżanie przy opuszczeniu strony
     stopAutoRefresh();
+    // Zwolnij URL obiektów
+    if (pdfPreviewUrl.value) {
+        window.URL.revokeObjectURL(pdfPreviewUrl.value);
+    }
 });
 </script>
 
@@ -469,6 +646,35 @@ onUnmounted(() => {
 .header-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
+}
+
+/* === FILTER GROUP === */
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 12px;
+}
+
+.filter-group label {
+    font-size: 13px;
+    color: #adb5bd;
+}
+
+.status-dropdown {
+    width: 140px;
+}
+
+:deep(.status-dropdown .p-dropdown) {
+    background: var(--dark-bg-secondary);
+    border-color: var(--dark-border);
+}
+
+:deep(.status-dropdown .p-dropdown-label) {
+    color: var(--dark-text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
 }
 
 /* === BUTTONS === */
@@ -486,12 +692,17 @@ onUnmounted(() => {
     text-decoration: none;
 }
 
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .btn-danger {
     background-color: #dc3545;
     border-color: #dc3545;
     color: #fff;
 }
-.btn-danger:hover {
+.btn-danger:hover:not(:disabled) {
     background-color: #bb2d3b;
     border-color: #b02a37;
 }
@@ -501,7 +712,7 @@ onUnmounted(() => {
     border-color: #6c757d;
     color: #fff;
 }
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
     background-color: #5c636a;
     border-color: #565e64;
 }
@@ -511,7 +722,7 @@ onUnmounted(() => {
     border-color: #198754;
     color: #fff;
 }
-.btn-success:hover {
+.btn-success:hover:not(:disabled) {
     background-color: #157347;
     border-color: #146c43;
 }
@@ -521,7 +732,7 @@ onUnmounted(() => {
     border-color: #ffc107;
     color: #212529;
 }
-.btn-warning:hover {
+.btn-warning:hover:not(:disabled) {
     background-color: #ffca2c;
     border-color: #ffc720;
 }
@@ -713,5 +924,46 @@ onUnmounted(() => {
 :deep(.p-paginator .p-paginator-pages .p-paginator-page.p-highlight) {
     background: #6f42c1 !important;
     color: #fff !important;
+}
+
+/* === PODGLĄD PDF === */
+.pdf-preview-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(90vh - 150px);
+}
+
+.pdf-iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: #fff;
+}
+
+/* === MODAL BUTTONS === */
+.btn-modal-secondary {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+/* === DIALOG DARK THEME === */
+:deep(.p-dialog) {
+    background: var(--dark-bg-secondary);
+}
+
+:deep(.p-dialog .p-dialog-header) {
+    background: var(--dark-bg-tertiary);
+    color: var(--dark-text-primary);
+    border-bottom: 1px solid var(--dark-border);
+}
+
+:deep(.p-dialog .p-dialog-content) {
+    background: var(--dark-bg-secondary);
+    color: var(--dark-text-primary);
+}
+
+:deep(.p-dialog .p-dialog-footer) {
+    background: var(--dark-bg-tertiary);
+    border-top: 1px solid var(--dark-border);
 }
 </style>

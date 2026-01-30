@@ -1707,3 +1707,136 @@ def logi_plik_content_view(request, filename):
 
     logs = app_logger.get_file_content(filename)
     return JsonResponse(logs, safe=False)
+
+
+@login_required
+@require_http_methods(["GET"])
+def logi_pdf_biezace_view(request):
+    """
+    Generuje PDF z logami bieżącymi (dzisiejszymi).
+    Dostępne tylko dla administratorów.
+    """
+    import os
+    from datetime import datetime
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from django.conf import settings
+    from weasyprint import HTML
+
+    if not request.user.groups.filter(name='administrator').exists():
+        return JsonResponse({'error': 'Brak uprawnień'}, status=403)
+
+    # Parametr filtra statusu
+    status_filter = request.GET.get('status', None)
+
+    # Pobierz logi
+    logs = app_logger.get_recent_logs()
+
+    # Filtrowanie po statusie
+    if status_filter:
+        logs = [log for log in logs if log['status'] == status_filter]
+
+    # Przygotuj dane do szablonu
+    today = datetime.now().strftime('%Y-%m-%d')
+    logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+    # Przekształć logi do formatu dla szablonu
+    logi_formatted = []
+    for log in logs:
+        timestamp = datetime.fromisoformat(log['timestamp'].replace('+00:00', ''))
+        logi_formatted.append({
+            'data': timestamp.strftime('%Y-%m-%d'),
+            'godzina': timestamp.strftime('%H:%M:%S'),
+            'status': log['status'],
+            'osoba': log['osoba'],
+            'operacja': log['operacja']
+        })
+
+    context = {
+        'typ_logow': 'Bieżące',
+        'data_logu': today,
+        'filtr_statusu': status_filter or 'Wszystkie',
+        'logi': logi_formatted,
+        'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+        'logo_path': f'file://{logo_path}',
+    }
+
+    # Renderowanie HTML
+    html_string = render_to_string('pdf/logi.html', context)
+
+    # Generowanie PDF
+    pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    filename = f'logi_biezace_{today}.pdf'
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
+
+@login_required
+@require_http_methods(["GET"])
+def logi_pdf_archiwum_view(request, filename):
+    """
+    Generuje PDF z logami z pliku archiwalnego.
+    Dostępne tylko dla administratorów.
+    """
+    import os
+    from datetime import datetime
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from django.conf import settings
+    from weasyprint import HTML
+
+    if not request.user.groups.filter(name='administrator').exists():
+        return JsonResponse({'error': 'Brak uprawnień'}, status=403)
+
+    # Parametr filtra statusu
+    status_filter = request.GET.get('status', None)
+
+    # Pobierz logi z pliku
+    logs = app_logger.get_file_content(filename)
+
+    # Filtrowanie po statusie
+    if status_filter:
+        logs = [log for log in logs if log['status'] == status_filter]
+
+    # Przygotuj dane do szablonu
+    data_logu = filename.replace('.log', '')
+    logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+    # Przekształć logi do formatu dla szablonu
+    logi_formatted = []
+    for log in logs:
+        try:
+            timestamp = datetime.fromisoformat(log['timestamp'].replace('+00:00', ''))
+            logi_formatted.append({
+                'data': timestamp.strftime('%Y-%m-%d'),
+                'godzina': timestamp.strftime('%H:%M:%S'),
+                'status': log['status'],
+                'osoba': log['osoba'],
+                'operacja': log['operacja']
+            })
+        except (ValueError, KeyError):
+            continue
+
+    context = {
+        'typ_logow': 'Archiwum',
+        'data_logu': data_logu,
+        'filtr_statusu': status_filter or 'Wszystkie',
+        'logi': logi_formatted,
+        'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+        'logo_path': f'file://{logo_path}',
+    }
+
+    # Renderowanie HTML
+    html_string = render_to_string('pdf/logi.html', context)
+
+    # Generowanie PDF
+    pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    pdf_filename = f'logi_{data_logu}.pdf'
+    response['Content-Disposition'] = f'inline; filename="{pdf_filename}"'
+    return response

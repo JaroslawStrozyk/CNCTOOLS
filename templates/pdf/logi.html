@@ -1,0 +1,92 @@
+{% extends "pdf/base_pdf.html" %}
+
+{% block title %}Logi systemowe - {{ data_logu }}{% endblock %}
+{% block footer_date %}{{ data_wydruku }}{% endblock %}
+
+{% block document_title %}LOGI SYSTEMOWE{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .status-success { color: #198754; font-weight: bold; }
+    .status-info { color: #0d6efd; }
+    .status-warning { color: #ffc107; font-weight: bold; }
+    .status-error { color: #dc3545; font-weight: bold; }
+
+    .summary-section {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: #e9ecef;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    .summary-item {
+        display: inline-block;
+        margin-right: 20px;
+    }
+
+    .summary-label {
+        font-size: 9pt;
+        color: #666;
+    }
+
+    .summary-value {
+        font-weight: bold;
+        font-size: 11pt;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <!-- Sekcja informacyjna -->
+    <div class="info-section">
+        <div class="info-item">
+            <div class="info-label">Typ logów</div>
+            <div class="info-value">{{ typ_logow }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Data logów</div>
+            <div class="info-value">{{ data_logu }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Filtr statusu</div>
+            <div class="info-value">{{ filtr_statusu|default:"Wszystkie" }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Liczba wpisów</div>
+            <div class="info-value">{{ logi|length }}</div>
+        </div>
+    </div>
+
+    <!-- Tabela logów -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 70px;">Data</th>
+                <th style="width: 55px;">Godzina</th>
+                <th style="width: 60px;">Status</th>
+                <th style="width: 110px;">Osoba</th>
+                <th>Operacja</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logi %}
+            <tr>
+                <td class="col-center">{{ log.data }}</td>
+                <td class="col-center">{{ log.godzina }}</td>
+                <td class="col-center {% if log.status == 'SUCCESS' %}status-success{% elif log.status == 'INFO' %}status-info{% elif log.status == 'WARNING' %}status-warning{% elif log.status == 'ERROR' %}status-error{% endif %}">{{ log.status }}</td>
+                <td>{{ log.osoba|default:"-" }}</td>
+                <td class="text-small">{{ log.operacja }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" class="col-center text-muted">Brak wpisów</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
+
+{% block signatures %}
+    <!-- Brak podpisów dla logów -->
+{% endblock %}

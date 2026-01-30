@@ -94,10 +94,14 @@ def test_inertia(request):
 @login_required
 def magazyn_view(request):
     """Panel magazynu - Inertia"""
+    # Tryb produkcja - ograniczony dostęp (tylko wydanie/zwrot)
+    tryb_produkcja = request.GET.get('tryb') == 'produkcja'
+
     return render(request, 'Magazyn', {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
+        'trybProdukcja': tryb_produkcja,
     })
 
 
