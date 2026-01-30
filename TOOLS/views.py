@@ -18,7 +18,8 @@ from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
-    RealizacjaZamowienia, PozycjaRealizacji
+    RealizacjaZamowienia, PozycjaRealizacji,
+    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania
 )
 from django.contrib.auth.models import User
 from .serializers import (
@@ -27,9 +28,49 @@ from .serializers import (
     HistoriaUzyciaNarzedziaSerializer, FakturaZakupuSerializer,
     DostawcaSerializer, PracownikSerializer, UszkodzenieSerializer,
     ZamowienieSerializer, PozycjaZamowieniaSerializer,
-    RealizacjaZamowieniaSerializer, PozycjaRealizacjiSerializer
+    RealizacjaZamowieniaSerializer, PozycjaRealizacjiSerializer,
+    ZapotrzebowanieTechnologaSerializer, PozycjaZapotrzebowaniaSerializer
 )
 from .services import EgzemplarzService, LokalizacjaService
+from .logging_service import app_logger, get_user_display_name
+
+
+# ========== MIXIN LOGOWANIA ==========
+
+class LoggingMixin:
+    """
+    Mixin dodający logowanie operacji CRUD do ViewSetów.
+    Wymaga zdefiniowania atrybutu `log_name` w klasie potomnej.
+    """
+    log_name = 'Element'  # Domyślna nazwa, nadpisz w potomnej klasie
+
+    def get_log_description(self, instance):
+        """Zwraca opis obiektu do logowania. Nadpisz w razie potrzeby."""
+        if hasattr(instance, 'nazwa'):
+            return instance.nazwa
+        elif hasattr(instance, 'opis'):
+            return instance.opis
+        elif hasattr(instance, '__str__'):
+            return str(instance)
+        return f'ID: {instance.pk}'
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        user_name = get_user_display_name(self.request.user)
+        desc = self.get_log_description(instance)
+        app_logger.success(user_name, f"Dodano {self.log_name}: {desc}")
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        user_name = get_user_display_name(self.request.user)
+        desc = self.get_log_description(instance)
+        app_logger.info(user_name, f"Edytowano {self.log_name}: {desc}")
+
+    def perform_destroy(self, instance):
+        user_name = get_user_display_name(self.request.user)
+        desc = self.get_log_description(instance)
+        instance.delete()
+        app_logger.warning(user_name, f"Usunięto {self.log_name}: {desc}")
 
 
 # ========== WIDOKI HTML ==========
@@ -382,6 +423,10 @@ def generator_zamowien_update_api(request, narzedzie_id):
 
     pozycja.save()
 
+    # Logowanie
+    user_name = get_user_display_name(request.user)
+    app_logger.info(user_name, f"Edytowano pozycję generatora: {narzedzie.opis}")
+
     return Response({'success': True, 'message': 'Zaktualizowano pomyślnie'})
 
 
@@ -410,6 +455,10 @@ def generator_zamowien_delete_api(request, narzedzie_id):
 
     narzedzie.stan_maksymalny = calkowita_ilosc
     narzedzie.save()
+
+    # Logowanie
+    user_name = get_user_display_name(request.user)
+    app_logger.warning(user_name, f"Usunięto z generatora zamówień: {narzedzie.opis}")
 
     return Response({'success': True, 'message': 'Usunięto z listy zamówień'})
 
@@ -454,6 +503,10 @@ def generator_zamowien_add_api(request):
         ilosc_do_zamowienia=ilosc,
         cena_jednostkowa=cena
     )
+
+    # Logowanie
+    user_name = get_user_display_name(request.user)
+    app_logger.success(user_name, f"Dodano do generatora zamówień: {narzedzie.opis} ({ilosc} szt.)")
 
     return Response({'success': True, 'message': 'Dodano pomyślnie'})
 
@@ -569,6 +622,11 @@ def generator_zamowien_gotowe_api(request):
             # Wyczyść tabelę PozycjaGeneratora
             PozycjaGeneratora.objects.all().delete()
 
+            # Logowanie
+            user_name = get_user_display_name(request.user)
+            numery = ', '.join([z['numer'] for z in utworzone_zamowienia])
+            app_logger.success(user_name, f"Wygenerowano {len(utworzone_zamowienia)} zamówień: {numery}")
+
             return Response({
                 'success': True,
                 'message': f'Utworzono {len(utworzone_zamowienia)} zamówień',
@@ -606,11 +664,20 @@ def wyslij_email_zamowienie_api(request, zamowienie_id):
         zamowienie.data_wyslania = timezone.now()
         zamowienie.save()
 
+        # Logowanie
+        user_name = get_user_display_name(request.user)
+        dostawca = zamowienie.dostawca.nazwa_firmy if zamowienie.dostawca else 'nieznany'
+        app_logger.success(user_name, f"Wysłano email z zamówieniem {zamowienie.numer} do: {dostawca} ({zamowienie.email_docelowy})")
+
         return Response({
             'success': True,
             'message': result['message']
         })
     else:
+        # Logowanie błędu
+        user_name = get_user_display_name(request.user)
+        app_logger.error(user_name, f"Błąd wysyłki email z zamówieniem {zamowienie.numer}: {result['message']}")
+
         return Response({
             'error': result['message']
         }, status=500)
@@ -628,6 +695,12 @@ from .utils import send_test_email
 def test_email_view(request):
     """Endpoint do testowania wysyłki emaili"""
     result = send_test_email()
+    # Logowanie
+    user_name = get_user_display_name(request.user)
+    if result.get('success'):
+        app_logger.info(user_name, "Wysłano testowy email")
+    else:
+        app_logger.error(user_name, f"Błąd wysyłki testowego emaila: {result.get('message', 'nieznany błąd')}")
     return JsonResponse(result)
 
 
@@ -660,24 +733,34 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 1000
 
 
-class KategoriaViewSet(viewsets.ModelViewSet):
+class KategoriaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Kategoria.objects.prefetch_related('podkategorie').all()
     serializer_class = KategoriaSerializer
+    log_name = 'kategorię'
 
 
-class PodkategoriaViewSet(viewsets.ModelViewSet):
+class PodkategoriaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Podkategoria.objects.select_related('kategoria').all()
     serializer_class = PodkategoriaSerializer
+    log_name = 'podkategorię'
 
 
-class DostawcaViewSet(viewsets.ModelViewSet):
+class DostawcaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Dostawca.objects.all()
     serializer_class = DostawcaSerializer
+    log_name = 'dostawcę'
+
+    def get_log_description(self, instance):
+        return instance.nazwa_firmy or instance.kod_dostawcy
 
 
-class LokalizacjaViewSet(viewsets.ModelViewSet):
+class LokalizacjaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Lokalizacja.objects.all()
     serializer_class = LokalizacjaSerializer
+    log_name = 'lokalizację'
+
+    def get_log_description(self, instance):
+        return f"{instance.szafa}/{instance.polka}/{instance.kolumna}"
 
     @action(detail=False, methods=['post'])
     def dodaj_seryjnie(self, request):
@@ -694,6 +777,8 @@ class LokalizacjaViewSet(viewsets.ModelViewSet):
                 liczba_kolumn=liczba_kolumn,
                 liczba_polek=liczba_polek
             )
+            user_name = get_user_display_name(request.user)
+            app_logger.success(user_name, f"Dodano seryjnie {liczba_utworzonych} lokalizacji dla szafy {szafa}")
             return Response(
                 {'message': f'Dodano {liczba_utworzonych} lokalizacji dla szafy {szafa}.'},
                 status=status.HTTP_201_CREATED
@@ -705,21 +790,39 @@ class LokalizacjaViewSet(viewsets.ModelViewSet):
             )
 
 
-class MaszynaViewSet(viewsets.ModelViewSet):
+class MaszynaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Maszyna.objects.all()
     serializer_class = MaszynaSerializer
+    log_name = 'maszynę'
 
 
-class PracownikViewSet(viewsets.ModelViewSet):
+class PracownikViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Pracownik.objects.select_related('user').all()
     serializer_class = PracownikSerializer
     pagination_class = StandardResultsSetPagination
+    log_name = 'pracownika'
+
+    def get_log_description(self, instance):
+        return f"{instance.nazwisko} {instance.imie}"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Domyślnie zwracaj tylko pracowników mogących pobierać narzędzia
+        # Użyj ?all=true aby pobrać wszystkich (np. dla panelu admina)
+        show_all = self.request.query_params.get('all', 'false').lower() == 'true'
+        if not show_all:
+            queryset = queryset.filter(pobieranie_narzedzi=True)
+        return queryset
 
 
-class FakturaZakupuViewSet(viewsets.ModelViewSet):
+class FakturaZakupuViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = FakturaZakupu.objects.select_related('dostawca').all()
     serializer_class = FakturaZakupuSerializer
     pagination_class = StandardResultsSetPagination
+    log_name = 'fakturę'
+
+    def get_log_description(self, instance):
+        return f"{instance.numer_faktury} ({instance.dostawca.nazwa_firmy if instance.dostawca else 'brak dostawcy'})"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -733,25 +836,40 @@ class FakturaZakupuViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-data_wystawienia')
 
 
-class NarzedzieMagazynoweViewSet(viewsets.ModelViewSet):
+class NarzedzieMagazynoweViewSet(LoggingMixin, viewsets.ModelViewSet):
     serializer_class = NarzedzieMagazynoweSerializer
+    log_name = 'typ narzędzia'
+
+    def get_log_description(self, instance):
+        if instance.podkategoria:
+            return f"{instance.podkategoria.kategoria.nazwa}/{instance.podkategoria.nazwa} - {instance.opis}"
+        return instance.opis
 
     def get_queryset(self):
         from django.db.models import Value, Subquery, OuterRef
         from django.db.models.functions import Coalesce
 
-        # Subquery dla ilości nowych (stan='nowe')
+        # IDs egzemplarzy aktualnie wydanych (w użyciu)
+        egzemplarze_w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).values('egzemplarz_id')
+
+        # Subquery dla ilości nowych (stan='nowe') NIE WYDANYCH
         nowe_subquery = EgzemplarzNarzedzia.objects.filter(
             narzedzie_typ=OuterRef('pk'),
             stan='nowe'
+        ).exclude(
+            id__in=Subquery(egzemplarze_w_uzyciu)
         ).values('narzedzie_typ').annotate(
             total=Sum('ilosc_w_komplecie')
         ).values('total')
 
-        # Subquery dla ilości używanych (stan='uzywane')
+        # Subquery dla ilości używanych (stan='uzywane') NIE WYDANYCH
         uzywane_subquery = EgzemplarzNarzedzia.objects.filter(
             narzedzie_typ=OuterRef('pk'),
             stan='uzywane'
+        ).exclude(
+            id__in=Subquery(egzemplarze_w_uzyciu)
         ).values('narzedzie_typ').annotate(
             total=Sum('ilosc_w_komplecie')
         ).values('total')
@@ -774,8 +892,10 @@ class NarzedzieMagazynoweViewSet(viewsets.ModelViewSet):
             ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
         ).annotate(
-            # Razem = Nowe + Używane (suma dostępnych sztuk)
-            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) + Coalesce(Subquery(uzywane_subquery), Value(0))
+            # Razem = Nowe + Używane + W użyciu (suma wszystkich sztuk)
+            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) +
+                           Coalesce(Subquery(uzywane_subquery), Value(0)) +
+                           Coalesce(Subquery(w_uzyciu_subquery), Value(0))
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
@@ -787,18 +907,27 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
         from django.db.models import Value, Subquery, OuterRef
         from django.db.models.functions import Coalesce
 
-        # Subquery dla ilości nowych (stan='nowe')
+        # IDs egzemplarzy aktualnie wydanych (w użyciu)
+        egzemplarze_w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).values('egzemplarz_id')
+
+        # Subquery dla ilości nowych (stan='nowe') NIE WYDANYCH
         nowe_subquery = EgzemplarzNarzedzia.objects.filter(
             narzedzie_typ=OuterRef('pk'),
             stan='nowe'
+        ).exclude(
+            id__in=Subquery(egzemplarze_w_uzyciu)
         ).values('narzedzie_typ').annotate(
             total=Sum('ilosc_w_komplecie')
         ).values('total')
 
-        # Subquery dla ilości używanych (stan='uzywane')
+        # Subquery dla ilości używanych (stan='uzywane') NIE WYDANYCH
         uzywane_subquery = EgzemplarzNarzedzia.objects.filter(
             narzedzie_typ=OuterRef('pk'),
             stan='uzywane'
+        ).exclude(
+            id__in=Subquery(egzemplarze_w_uzyciu)
         ).values('narzedzie_typ').annotate(
             total=Sum('ilosc_w_komplecie')
         ).values('total')
@@ -821,19 +950,25 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
             ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
         ).annotate(
-            # Razem = Nowe + Używane (suma dostępnych sztuk)
-            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) + Coalesce(Subquery(uzywane_subquery), Value(0))
+            # Razem = Nowe + Używane + W użyciu (suma wszystkich sztuk)
+            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) +
+                           Coalesce(Subquery(uzywane_subquery), Value(0)) +
+                           Coalesce(Subquery(w_uzyciu_subquery), Value(0))
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
 
-class EgzemplarzNarzedziaViewSet(viewsets.ModelViewSet):
+class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = EgzemplarzNarzedzia.objects.select_related(
         'narzedzie_typ__podkategoria__kategoria',
         'lokalizacja',
         'faktura_zakupu'
     ).all()
     serializer_class = EgzemplarzNarzedziaSerializer
+    log_name = 'egzemplarz narzędzia'
+
+    def get_log_description(self, instance):
+        return f"{instance.narzedzie_typ.opis} (ID: {instance.id})"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -857,7 +992,7 @@ class EgzemplarzNarzedziaViewSet(viewsets.ModelViewSet):
             # Przygotuj dane lokalizacji
             lokalizacja_opis = ''
             if egzemplarz.lokalizacja:
-                lokalizacja_opis = f"{egzemplarz.lokalizacja.szafa}/{egzemplarz.lokalizacja.kolumna}/{egzemplarz.lokalizacja.polka}"
+                lokalizacja_opis = f"{egzemplarz.lokalizacja.szafa}/{egzemplarz.lokalizacja.polka}/{egzemplarz.lokalizacja.kolumna}"
 
             # Przygotuj kategorię
             kategoria_narzedzia = ''
@@ -894,6 +1029,14 @@ class EgzemplarzNarzedziaViewSet(viewsets.ModelViewSet):
                 pracownik_imie=pracownik_imie,
                 opis_uszkodzenia=''  # Pusty jak wymagane
             )
+
+        # Loguj usunięcie
+        user_name = get_user_display_name(request.user)
+        opis = f"{egzemplarz.narzedzie_typ.opis} (ID: {egzemplarz.id})"
+        if egzemplarz.stan in ['uszkodzone', 'uszkodzone_regeneracja']:
+            app_logger.warning(user_name, f"Usunięto uszkodzony egzemplarz: {opis}")
+        else:
+            app_logger.warning(user_name, f"Usunięto egzemplarz narzędzia: {opis}")
 
         # Usuń egzemplarz
         egzemplarz.delete()
@@ -941,6 +1084,13 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
                 czesciowe_wydanie=czesciowe_wydanie,
                 ilosc_sztuk=ilosc_sztuk
             )
+            # Logowanie wydania
+            user_name = get_user_display_name(request.user)
+            narzedzie_opis = historia.egzemplarz.narzedzie_typ.opis
+            pracownik_info = f"{historia.pracownik.nazwisko} {historia.pracownik.imie}" if historia.pracownik else "nieznany"
+            maszyna_info = historia.maszyna.nazwa if historia.maszyna else "brak"
+            app_logger.success(user_name, f"Wydano narzędzie: {narzedzie_opis} → pracownik: {pracownik_info}, maszyna: {maszyna_info}")
+
             serializer = self.get_serializer(historia)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         except ValidationError as e:
@@ -995,6 +1145,16 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
                     pracownik=historia.pracownik
                 )
 
+            # Logowanie zwrotu
+            user_name = get_user_display_name(request.user)
+            narzedzie_opis = historia.egzemplarz.narzedzie_typ.opis
+            stan_map = {'nowe': 'nowe', 'uzywane': 'używane', 'uszkodzone': 'uszkodzone', 'uszkodzone_regeneracja': 'do regeneracji'}
+            stan_tekst = stan_map.get(stan_po_zwrocie, stan_po_zwrocie)
+            if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
+                app_logger.warning(user_name, f"Zwrócono narzędzie jako {stan_tekst}: {narzedzie_opis}")
+            else:
+                app_logger.success(user_name, f"Zwrócono narzędzie ({stan_tekst}): {narzedzie_opis}")
+
             serializer = self.get_serializer(historia_updated)
             return Response(serializer.data)
         except ValidationError as e:
@@ -1004,20 +1164,30 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
             )
 
 
-class UszkodzenieViewSet(viewsets.ModelViewSet):
+class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Uszkodzenie.objects.select_related(
         'egzemplarz__narzedzie_typ__podkategoria__kategoria',
         'pracownik'
     ).all()
     serializer_class = UszkodzenieSerializer
+    log_name = 'uszkodzenie'
+
+    def get_log_description(self, instance):
+        narzedzie = instance.narzedzie_opis or (instance.egzemplarz.narzedzie_typ.opis if instance.egzemplarz else 'nieznane')
+        return f"{narzedzie} (ID: {instance.id})"
 
     def get_queryset(self):
         return super().get_queryset().order_by('-data_uszkodzenia')
 
 
-class ZamowienieViewSet(viewsets.ModelViewSet):
+class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Zamowienie.objects.select_related('dostawca').prefetch_related('pozycje').all()
     serializer_class = ZamowienieSerializer
+    log_name = 'zamówienie'
+
+    def get_log_description(self, instance):
+        dostawca = instance.dostawca.nazwa_firmy if instance.dostawca else 'brak dostawcy'
+        return f"{instance.numer} ({dostawca})"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1072,6 +1242,11 @@ class ZamowienieViewSet(viewsets.ModelViewSet):
                     cena_jednostkowa=pozycja_zam.cena_jednostkowa
                 )
 
+            # Logowanie
+            user_name = get_user_display_name(request.user)
+            dostawca = zamowienie.dostawca.nazwa_firmy if zamowienie.dostawca else 'brak'
+            app_logger.info(user_name, f"Rozpoczęto realizację zamówienia: {zamowienie.numer} ({dostawca})")
+
             return Response({
                 'success': True,
                 'message': 'Realizacja utworzona pomyślnie',
@@ -1085,12 +1260,16 @@ class ZamowienieViewSet(viewsets.ModelViewSet):
             )
 
 
-class PozycjaZamowieniaViewSet(viewsets.ModelViewSet):
+class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = PozycjaZamowienia.objects.select_related(
         'zamowienie',
         'narzedzie_typ__podkategoria__kategoria'
     ).all()
     serializer_class = PozycjaZamowieniaSerializer
+    log_name = 'pozycję zamówienia'
+
+    def get_log_description(self, instance):
+        return f"{instance.narzedzie_opis} (zam. {instance.zamowienie.numer})"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1100,12 +1279,16 @@ class PozycjaZamowieniaViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-class RealizacjaZamowieniaViewSet(viewsets.ModelViewSet):
+class RealizacjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = RealizacjaZamowienia.objects.select_related(
         'zamowienie__dostawca',
         'lokalizacja_domyslna'
     ).prefetch_related('pozycje').all()
     serializer_class = RealizacjaZamowieniaSerializer
+    log_name = 'realizację zamówienia'
+
+    def get_log_description(self, instance):
+        return f"zam. {instance.zamowienie.numer}"
 
     @action(detail=True, methods=['post'])
     def zatwierdz(self, request, pk=None):
@@ -1153,7 +1336,7 @@ class RealizacjaZamowieniaViewSet(viewsets.ModelViewSet):
 
                         utworzone_egzemplarze.append({
                             'narzedzie': narzedzie_typ.opis,
-                            'lokalizacja': f"{lokalizacja.szafa}/{lokalizacja.kolumna}/{lokalizacja.polka}" if lokalizacja else 'Brak',
+                            'lokalizacja': f"{lokalizacja.szafa}/{lokalizacja.polka}/{lokalizacja.kolumna}" if lokalizacja else 'Brak',
                             'ilosc': egzemplarz.ilosc_w_komplecie
                         })
 
@@ -1174,6 +1357,13 @@ class RealizacjaZamowieniaViewSet(viewsets.ModelViewSet):
                     zamowienie.status = 'partially_received'
                 zamowienie.save()
 
+                # Logowanie
+                user_name = get_user_display_name(request.user)
+                ilosc_przyjeta = len(utworzone_egzemplarze)
+                dostawca = zamowienie.dostawca.nazwa_firmy if zamowienie.dostawca else 'brak'
+                status_tekst = 'zrealizowane w całości' if wszystkie_zrealizowane else 'częściowo zrealizowane'
+                app_logger.success(user_name, f"Przyjęto {ilosc_przyjeta} szt. z zamówienia {zamowienie.numer} ({dostawca}) - {status_tekst}")
+
             return Response({
                 'success': True,
                 'message': 'Przyjęcie zatwierdzone',
@@ -1188,13 +1378,14 @@ class RealizacjaZamowieniaViewSet(viewsets.ModelViewSet):
             )
 
 
-class PozycjaRealizacjiViewSet(viewsets.ModelViewSet):
+class PozycjaRealizacjiViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = PozycjaRealizacji.objects.select_related(
         'realizacja',
         'pozycja_zamowienia__narzedzie_typ',
         'lokalizacja'
     ).all()
     serializer_class = PozycjaRealizacjiSerializer
+    log_name = 'pozycję realizacji'
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1202,3 +1393,317 @@ class PozycjaRealizacjiViewSet(viewsets.ModelViewSet):
         if realizacja_id:
             queryset = queryset.filter(realizacja_id=realizacja_id)
         return queryset
+
+
+class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
+    """
+    ViewSet dla zapotrzebowań technologów.
+    Zawiera akcje customowe: moj_koszyk, wyslij, pdf.
+    """
+    queryset = ZapotrzebowanieTechnologa.objects.select_related('technolog').prefetch_related('pozycje').all()
+    serializer_class = ZapotrzebowanieTechnologaSerializer
+    log_name = 'zapotrzebowanie'
+
+    def get_log_description(self, instance):
+        technolog = f"{instance.technolog.first_name} {instance.technolog.last_name}" if instance.technolog else 'nieznany'
+        return f"ID: {instance.id} ({technolog})"
+
+    def get_queryset(self):
+        """Filtrowanie - tylko zapotrzebowania aktualnego użytkownika"""
+        queryset = super().get_queryset()
+        if self.request.user.is_authenticated and not self.request.user.is_superuser:
+            queryset = queryset.filter(technolog=self.request.user)
+        return queryset.order_by('-data_utworzenia')
+
+    def perform_create(self, serializer):
+        """Automatycznie przypisz technologa przy tworzeniu"""
+        serializer.save(technolog=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def moj_koszyk(self, request):
+        """
+        Zwraca aktywny koszyk (draft) użytkownika lub tworzy nowy.
+        """
+        koszyk = ZapotrzebowanieTechnologa.objects.filter(
+            technolog=request.user,
+            status='draft'
+        ).first()
+
+        if not koszyk:
+            koszyk = ZapotrzebowanieTechnologa.objects.create(
+                technolog=request.user,
+                status='draft'
+            )
+
+        serializer = self.get_serializer(koszyk)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def wyslij(self, request, pk=None):
+        """
+        Zmienia status na 'submitted', ustawia datę wysłania.
+        """
+        zapotrzebowanie = self.get_object()
+
+        if zapotrzebowanie.status != 'draft':
+            return Response(
+                {'error': 'Tylko zapotrzebowanie w statusie roboczym może być wysłane'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not zapotrzebowanie.pozycje.exists():
+            return Response(
+                {'error': 'Nie można wysłać pustego zapotrzebowania'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zapotrzebowanie.status = 'submitted'
+        zapotrzebowanie.data_wyslania = timezone.now()
+        zapotrzebowanie.save()
+
+        # Logowanie
+        user_name = get_user_display_name(request.user)
+        ilosc_pozycji = zapotrzebowanie.pozycje.count()
+        app_logger.success(user_name, f"Wysłano zapotrzebowanie (ID: {zapotrzebowanie.id}, {ilosc_pozycji} pozycji)")
+
+        serializer = self.get_serializer(zapotrzebowanie)
+        return Response({
+            'success': True,
+            'message': 'Zapotrzebowanie zostało wysłane',
+            'data': serializer.data
+        })
+
+    @action(detail=False, methods=['get'])
+    def historia(self, request):
+        """
+        Zwraca historię zapotrzebowań (nie-draft) z ostatnich 6 miesięcy.
+        Parametry:
+        - all=true: pokaż zapotrzebowania wszystkich technologów
+        - all=false (domyślnie): tylko własne zapotrzebowania
+        """
+        from datetime import timedelta
+
+        # Sprawdź czy użytkownik jest zalogowany
+        if not request.user.is_authenticated:
+            return Response([])
+
+        # Oblicz datę 6 miesięcy wstecz
+        data_od = timezone.now() - timedelta(days=180)
+
+        # Bazowe zapytanie - tylko nie-draft i z ostatnich 6 miesięcy
+        queryset = ZapotrzebowanieTechnologa.objects.exclude(
+            status='draft'
+        ).filter(
+            data_utworzenia__gte=data_od
+        ).select_related('technolog').prefetch_related('pozycje')
+
+        # Filtrowanie - własne lub wszystkie
+        show_all = request.query_params.get('all', 'false').lower() == 'true'
+        if not show_all:
+            queryset = queryset.filter(technolog=request.user)
+
+        # Sortowanie od najnowszych
+        queryset = queryset.order_by('-data_wyslania', '-data_utworzenia')
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def lista_dla_magazynu(self, request):
+        """
+        Zwraca wszystkie wysłane zapotrzebowania dla magazyniera.
+        Dostępne dla wszystkich użytkowników.
+        """
+        zapotrzebowania = ZapotrzebowanieTechnologa.objects.filter(
+            status='submitted'
+        ).select_related('technolog').prefetch_related('pozycje').order_by('-data_wyslania')
+
+        serializer = self.get_serializer(zapotrzebowania, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def zrealizuj(self, request, pk=None):
+        """
+        Zmienia status zapotrzebowania na 'completed'.
+        """
+        zapotrzebowanie = self.get_object()
+
+        if zapotrzebowanie.status != 'submitted':
+            return Response(
+                {'error': 'Tylko wysłane zapotrzebowanie może być zrealizowane'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zapotrzebowanie.status = 'completed'
+        zapotrzebowanie.data_realizacji = timezone.now()
+        if request.user.is_authenticated:
+            zapotrzebowanie.zrealizowany_przez = request.user
+        zapotrzebowanie.save()
+
+        # Logowanie
+        user_name = get_user_display_name(request.user)
+        technolog = f"{zapotrzebowanie.technolog.first_name} {zapotrzebowanie.technolog.last_name}" if zapotrzebowanie.technolog else 'nieznany'
+        app_logger.success(user_name, f"Zrealizowano zapotrzebowanie (ID: {zapotrzebowanie.id}) od: {technolog}")
+
+        serializer = self.get_serializer(zapotrzebowanie)
+        return Response({
+            'success': True,
+            'message': 'Zapotrzebowanie zostało zrealizowane',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """
+        Generuje PDF z pozycjami zapotrzebowania (WeasyPrint + HTML template).
+        """
+        import os
+        from datetime import datetime
+        from django.http import HttpResponse
+        from django.template.loader import render_to_string
+        from django.conf import settings
+        from weasyprint import HTML
+
+        zapotrzebowanie = self.get_object()
+
+        # Dane do szablonu
+        technolog_nazwa = f"{zapotrzebowanie.technolog.first_name} {zapotrzebowanie.technolog.last_name}" if zapotrzebowanie.technolog else "Nieznany"
+        numer = f"ZAM-{zapotrzebowanie.id:04d}"
+
+        # Pobierz grupę użytkownika (dział)
+        dzial = "---"
+        if zapotrzebowanie.technolog:
+            groups = zapotrzebowanie.technolog.groups.all()
+            if groups.exists():
+                dzial = groups.first().name
+
+        # Mapowanie statusów na polskie nazwy
+        status_display = {
+            'draft': 'Robocze',
+            'submitted': 'Wysłane',
+            'completed': 'Zrealizowane',
+            'cancelled': 'Anulowane',
+        }.get(zapotrzebowanie.status, zapotrzebowanie.status)
+
+        # Ścieżka do logo (absolutna dla WeasyPrint)
+        logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+        context = {
+            'numer': numer,
+            'data_utworzenia': zapotrzebowanie.data_utworzenia.strftime('%Y-%m-%d'),
+            'data_wydruku': settings.PDF_DATA_DOKUMENTU,
+            'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+            'technolog': technolog_nazwa,
+            'dzial': dzial,
+            'status': status_display,
+            'uwagi': zapotrzebowanie.uwagi,
+            'pozycje': zapotrzebowanie.pozycje.all(),
+            'logo_path': f'file://{logo_path}',
+        }
+
+        # Renderowanie HTML
+        html_string = render_to_string('pdf/zapotrzebowanie.html', context)
+
+        # Generowanie PDF
+        pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{numer}.pdf"'
+        return response
+
+
+class PozycjaZapotrzebowaniaViewSet(LoggingMixin, viewsets.ModelViewSet):
+    """
+    ViewSet dla pozycji zapotrzebowań.
+    CRUD dla pozycji koszyka.
+    """
+    queryset = PozycjaZapotrzebowania.objects.select_related(
+        'zapotrzebowanie',
+        'narzedzie_typ__podkategoria__kategoria'
+    ).all()
+    serializer_class = PozycjaZapotrzebowaniaSerializer
+    log_name = 'pozycję koszyka'
+
+    def get_log_description(self, instance):
+        return instance.specyfikacja or str(instance.id)
+
+    def get_queryset(self):
+        """Filtrowanie - tylko pozycje zapotrzebowań aktualnego użytkownika"""
+        queryset = super().get_queryset()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(zapotrzebowanie__technolog=self.request.user)
+
+        zapotrzebowanie_id = self.request.query_params.get('zapotrzebowanie_id', None)
+        if zapotrzebowanie_id:
+            queryset = queryset.filter(zapotrzebowanie_id=zapotrzebowanie_id)
+
+        return queryset.order_by('data_dodania')
+
+    def perform_create(self, serializer):
+        """
+        Przy tworzeniu pozycji automatycznie wypełnia snapshot danych
+        jeśli podano narzedzie_typ.
+        """
+        narzedzie_typ = serializer.validated_data.get('narzedzie_typ')
+        extra_data = {}
+
+        if narzedzie_typ:
+            extra_data['specyfikacja'] = narzedzie_typ.opis
+            extra_data['numer_katalogowy'] = narzedzie_typ.numer_katalogowy or ''
+            if narzedzie_typ.podkategoria:
+                extra_data['kategoria_nazwa'] = narzedzie_typ.podkategoria.kategoria.nazwa
+                extra_data['podkategoria_nazwa'] = narzedzie_typ.podkategoria.nazwa
+
+        instance = serializer.save(**extra_data)
+        # Logowanie
+        user_name = get_user_display_name(self.request.user)
+        app_logger.success(user_name, f"Dodano {self.log_name}: {self.get_log_description(instance)}")
+
+
+# ========== LOGI API ==========
+
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.contrib.admin.views.decorators import staff_member_required
+
+
+@login_required
+@require_http_methods(["GET"])
+def logi_biezace_view(request):
+    """
+    Zwraca logi z dzisiaj.
+    Dostępne tylko dla administratorów.
+    """
+    if not request.user.groups.filter(name='administrator').exists():
+        return JsonResponse({'error': 'Brak uprawnień'}, status=403)
+
+    logs = app_logger.get_recent_logs()
+    return JsonResponse(logs, safe=False)
+
+
+@login_required
+@require_http_methods(["GET"])
+def logi_pliki_view(request):
+    """
+    Zwraca listę plików logów archiwalnych.
+    Dostępne tylko dla administratorów.
+    """
+    if not request.user.groups.filter(name='administrator').exists():
+        return JsonResponse({'error': 'Brak uprawnień'}, status=403)
+
+    files = app_logger.get_log_files()
+    return JsonResponse(files, safe=False)
+
+
+@login_required
+@require_http_methods(["GET"])
+def logi_plik_content_view(request, filename):
+    """
+    Zwraca zawartość konkretnego pliku logu jako listę logów.
+    Dostępne tylko dla administratorów.
+    """
+    if not request.user.groups.filter(name='administrator').exists():
+        return JsonResponse({'error': 'Brak uprawnień'}, status=403)
+
+    logs = app_logger.get_file_content(filename)
+    return JsonResponse(logs, safe=False)

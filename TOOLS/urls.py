@@ -17,6 +17,7 @@ from .views_inertia import (
     zwroty_view as zwroty_inertia_view,
     produkcja_view as produkcja_inertia_view,
     technologia_view as technologia_inertia_view,
+    logi_view as logi_inertia_view,
 )
 
 router = DefaultRouter()
@@ -43,6 +44,10 @@ router.register(r'pozycje-zamowien', views.PozycjaZamowieniaViewSet, basename='p
 router.register(r'realizacje', views.RealizacjaZamowieniaViewSet, basename='realizacja')
 router.register(r'pozycje-realizacji', views.PozycjaRealizacjiViewSet, basename='pozycja-realizacji')
 
+# Zapotrzebowania technologów
+router.register(r'zapotrzebowania', views.ZapotrzebowanieTechnologaViewSet, basename='zapotrzebowanie')
+router.register(r'pozycje-zapotrzebowan', views.PozycjaZapotrzebowaniaViewSet, basename='pozycja-zapotrzebowania')
+
 urlpatterns = [
     # ===== NOWY SYSTEM INERTIA (Vue SPA) =====
     path('', login_inertia_view, name='login'),
@@ -59,6 +64,7 @@ urlpatterns = [
     path('zwroty/', zwroty_inertia_view, name='zwroty'),
     path('produkcja/', produkcja_inertia_view, name='produkcja'),
     path('technologia/', technologia_inertia_view, name='technologia'),
+    path('logi/', logi_inertia_view, name='logi'),
 
     # ===== STARY SYSTEM (backup - do usunięcia po pełnej migracji) =====
     path('old/', views.login_view, name='login-old'),
@@ -86,4 +92,9 @@ urlpatterns = [
     path('api/email/config/', views.email_config_view, name='email_config'),
     path('api/zamowienia/<int:zamowienie_id>/wyslij-email/', views.wyslij_email_zamowienie_api,
          name='zamowienia-wyslij-email'),
+
+    # Logi endpoints
+    path('api/logi/biezace/', views.logi_biezace_view, name='logi-biezace'),
+    path('api/logi/pliki/', views.logi_pliki_view, name='logi-pliki'),
+    path('api/logi/pliki/<str:filename>/', views.logi_plik_content_view, name='logi-plik-content'),
 ]

@@ -8,6 +8,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from .models import Pracownik
+from .logging_service import app_logger, get_user_display_name
 
 
 def get_info_program():
@@ -30,6 +31,7 @@ def get_common_urls():
         'zwroty': '/zwroty/',
         'produkcja': '/produkcja/',
         'technologia': '/technologia/',
+        'logi': '/logi/',
         'logout': '/logout/',
     }
 
@@ -38,6 +40,8 @@ def get_redirect_url_for_user(user):
     """Zwraca URL przekierowania na podstawie grupy użytkownika"""
     if user.groups.filter(name='logistyka').exists():
         return 'zakupy'
+    elif user.groups.filter(name='produkcja-magazyn').exists():
+        return 'produkcja'
     elif user.groups.filter(name='produkcja').exists():
         return 'produkcja'
     elif user.groups.filter(name='technologia').exists():
@@ -52,6 +56,11 @@ def get_redirect_url_for_user(user):
 def get_auth_data(request):
     """Zwraca wspólne dane auth dla wszystkich widoków"""
     is_logistyka = request.user.groups.filter(name='logistyka').exists()
+    is_produkcja_magazyn = request.user.groups.filter(name='produkcja-magazyn').exists()
+    is_administrator = request.user.groups.filter(name='administrator').exists()
+    # Pobierz pierwszą grupę użytkownika jako "dział"
+    user_groups = list(request.user.groups.values_list('name', flat=True))
+    grupa = user_groups[0] if user_groups else ''
     return {
         'user': {
             'id': request.user.id,
@@ -59,8 +68,11 @@ def get_auth_data(request):
             'first_name': request.user.first_name or request.user.username,
             'last_name': request.user.last_name or '',
             'email': request.user.email,
+            'grupa': grupa,
         },
         'isLogistyka': is_logistyka,
+        'isProdukcjaMagazyn': is_produkcja_magazyn,
+        'isAdministrator': is_administrator,
     }
 
 
@@ -172,7 +184,21 @@ def produkcja_view(request):
 @login_required
 def technologia_view(request):
     """Technologia - Inertia (tylko podgląd)"""
-    return render(request, 'Technologia', {
+    return render(request, 'Technolog', {
+        'auth': get_auth_data(request),
+        'urls': get_common_urls(),
+        'infoProgram': get_info_program(),
+    })
+
+
+@login_required
+def logi_view(request):
+    """Logi systemowe - Inertia (tylko dla administratorów)"""
+    # Sprawdź czy użytkownik jest administratorem
+    if not request.user.groups.filter(name='administrator').exists():
+        return redirect('magazyn')
+
+    return render(request, 'Logi', {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
@@ -206,10 +232,14 @@ def login_submit(request):
 
     if user is not None:
         login(request, user)
+        # Loguj sukces
+        app_logger.success(get_user_display_name(user), f"Zalogowano do systemu (login: {username})")
         # Przekieruj na podstawie grupy użytkownika
         redirect_url = get_redirect_url_for_user(user)
         return redirect(redirect_url)
     else:
+        # Loguj nieudaną próbę
+        app_logger.warning('-', f"Nieudana próba logowania (login: {username})")
         return render(request, 'Login', props={
             'errors': {
                 'error': 'Nieprawidłowa nazwa użytkownika lub hasło'
@@ -220,6 +250,10 @@ def login_submit(request):
 @ensure_csrf_cookie
 def logout_view(request):
     """Wylogowanie"""
+    # Loguj przed wylogowaniem (żeby mieć dostęp do usera)
+    user_name = get_user_display_name(request.user)
+    app_logger.info(user_name, "Wylogowano z systemu")
+
     auth_logout(request)
     response = redirect('login')
     response.delete_cookie('csrftoken')
@@ -243,20 +277,25 @@ def login_by_card(request):
     try:
         pracownik = Pracownik.objects.select_related('user').get(karta=card_number)
     except Pracownik.DoesNotExist:
+        app_logger.warning('-', f"Nieudane logowanie kartą - karta niezarejestrowana ({card_number})")
         return JsonResponse({'error': 'Karta nie jest zarejestrowana w systemie'}, status=404)
 
     # Sprawdź czy ma powiązane konto użytkownika
     if not pracownik.user:
+        app_logger.warning('-', f"Nieudane logowanie kartą - brak konta ({pracownik.nazwisko} {pracownik.imie})")
         return JsonResponse({
             'error': f'Pracownik {pracownik.nazwisko} {pracownik.imie} nie ma przypisanego konta'
         }, status=403)
 
     # Sprawdź czy konto jest aktywne
     if not pracownik.user.is_active:
+        app_logger.warning('-', f"Nieudane logowanie kartą - konto nieaktywne ({pracownik.nazwisko} {pracownik.imie})")
         return JsonResponse({'error': 'Konto użytkownika jest nieaktywne'}, status=403)
 
     # Zaloguj użytkownika
     login(request, pracownik.user)
+    user_name = f"{pracownik.imie} {pracownik.nazwisko}"
+    app_logger.success(user_name, f"Zalogowano kartą zbliżeniową")
     redirect_url = '/' + get_redirect_url_for_user(pracownik.user) + '/'
 
     return JsonResponse({

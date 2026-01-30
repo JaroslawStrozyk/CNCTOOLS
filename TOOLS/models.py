@@ -59,7 +59,7 @@ class Lokalizacja(models.Model):
         ordering = ['szafa', 'kolumna', 'polka']
 
     def __str__(self):
-        return f"{self.szafa}/{self.kolumna}/{self.polka}"
+        return f"{self.szafa}/{self.polka}/{self.kolumna}"
 
 
 class Maszyna(models.Model):
@@ -74,7 +74,13 @@ class Maszyna(models.Model):
 
 
 class Pracownik(models.Model):
-    karta = models.CharField(max_length=50, unique=True)
+    karta = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True,
+        verbose_name='Nr karty'
+    )
     nazwisko = models.CharField(max_length=100)
     imie = models.CharField(max_length=100)
     user = models.OneToOneField(
@@ -85,13 +91,20 @@ class Pracownik(models.Model):
         related_name='pracownik',
         verbose_name='Konto użytkownika'
     )
+    pobieranie_narzedzi = models.BooleanField(
+        default=True,
+        verbose_name='Pobieranie narzędzi',
+        help_text='Czy pracownik może pobierać narzędzia (pojawia się na listach wyboru)'
+    )
 
     class Meta:
         verbose_name_plural = "Pracownicy"
         ordering = ['nazwisko', 'imie']
 
     def __str__(self):
-        return f"{self.nazwisko} {self.imie} ({self.karta})"
+        if self.karta:
+            return f"{self.nazwisko} {self.imie} ({self.karta})"
+        return f"{self.nazwisko} {self.imie}"
 
 
 class FakturaZakupu(models.Model):
@@ -505,3 +518,115 @@ class PozycjaGeneratora(models.Model):
 
     def __str__(self):
         return f"Generator: {self.narzedzie_typ.opis} - {self.ilosc_do_zamowienia} szt."
+
+
+class ZapotrzebowanieTechnologa(models.Model):
+    """
+    Model przechowujący zapotrzebowania technologów na narzędzia.
+    Każde zapotrzebowanie może mieć wiele pozycji (narzędzi do zamówienia).
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Robocze'),
+        ('submitted', 'Wysłane'),
+        ('completed', 'Zrealizowane'),
+        ('cancelled', 'Anulowane'),
+    ]
+
+    technolog = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='zapotrzebowania'
+    )
+    data_utworzenia = models.DateTimeField(auto_now_add=True)
+    data_wyslania = models.DateTimeField(null=True, blank=True)
+    data_realizacji = models.DateTimeField(null=True, blank=True)
+    zrealizowany_przez = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='zrealizowane_zapotrzebowania'
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    uwagi = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Zapotrzebowanie technologa"
+        verbose_name_plural = "Zapotrzebowania technologów"
+        ordering = ['-data_utworzenia']
+
+    def __str__(self):
+        technolog_nazwa = self.technolog.username if self.technolog else 'Nieznany'
+        return f"ZAP-{self.id} ({technolog_nazwa}) - {self.get_status_display()}"
+
+
+class LogEntry(models.Model):
+    """
+    Model przechowujący logi operacji użytkowników.
+    Logi z dzisiaj są bieżące, starsze archiwizowane do plików.
+    """
+    STATUS_CHOICES = [
+        ('INFO', 'Info'),
+        ('SUCCESS', 'Sukces'),
+        ('WARNING', 'Ostrzeżenie'),
+        ('ERROR', 'Błąd'),
+    ]
+
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='INFO')
+    osoba = models.CharField(max_length=200, default='-')
+    operacja = models.TextField()
+
+    class Meta:
+        verbose_name = "Wpis logu"
+        verbose_name_plural = "Wpisy logów"
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp']),
+        ]
+
+    def __str__(self):
+        return f"[{self.timestamp}] {self.status} - {self.osoba}: {self.operacja[:50]}"
+
+
+class PozycjaZapotrzebowania(models.Model):
+    """
+    Pozycja w zapotrzebowaniu technologa.
+    Przechowuje snapshot danych narzędzia oraz pola specyficzne dla technologa.
+    """
+    zapotrzebowanie = models.ForeignKey(
+        ZapotrzebowanieTechnologa,
+        related_name='pozycje',
+        on_delete=models.CASCADE
+    )
+    narzedzie_typ = models.ForeignKey(
+        NarzedzieMagazynowe,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='pozycje_zapotrzebowan'
+    )
+
+    # Snapshot danych (wypełniane automatycznie lub ręcznie)
+    kategoria_nazwa = models.CharField(max_length=200, blank=True)
+    podkategoria_nazwa = models.CharField(max_length=200, blank=True)
+    specyfikacja = models.TextField(blank=True)
+    numer_katalogowy = models.CharField(max_length=100, blank=True)
+
+    # Pola technologa
+    nr_klienta = models.CharField(max_length=100, blank=True)
+    nr_zlecenia = models.CharField(max_length=100, blank=True)
+    ilosc = models.PositiveIntegerField(default=1)
+    uwagi = models.TextField(blank=True)
+
+    data_dodania = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Pozycja zapotrzebowania"
+        verbose_name_plural = "Pozycje zapotrzebowań"
+        ordering = ['data_dodania']
+
+    def __str__(self):
+        narzedzie = self.specyfikacja or (self.narzedzie_typ.opis if self.narzedzie_typ else 'Brak')
+        return f"{self.zapotrzebowanie} - {narzedzie} x{self.ilosc}"
