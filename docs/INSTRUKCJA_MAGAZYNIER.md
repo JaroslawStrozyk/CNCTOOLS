@@ -225,7 +225,7 @@ Jeśli narzędzie jest w formie kompletu (np. zestaw 10 płytek), możesz wydać
    - Wybierz **stan techniczny** po zwrocie:
      - **Dobrym (jako używane)** - narzędzie nadaje się do dalszego użytku
      - **Uszkodzonym** - narzędzie do utylizacji
-     - **Uszkodzonym do regeneracji** - narzędzie do naprawy/ostrzenia
+     - **Zużytym do regeneracji** - narzędzie do naprawy/ostrzenia
 5. Kliknij **"Potwierdź zwrot"**
 
 ### 7.2 Zwrot częściowy
@@ -507,7 +507,7 @@ Lista zamówień zawiera:
 **O:** Przy zwrocie wybierz opcję "Tylko część" i wprowadź liczbę zwracanych sztuk. Reszta pozostanie przypisana do pracownika.
 
 ### P: Jak oznaczyć uszkodzone narzędzie?
-**O:** Przy przyjmowaniu zwrotu wybierz stan "Uszkodzonym" lub "Uszkodzonym do regeneracji". Narzędzie trafi do modułu Zwroty.
+**O:** Przy przyjmowaniu zwrotu wybierz stan "Uszkodzonym" lub "Zużytym do regeneracji". Narzędzie trafi do modułu Zwroty.
 
 ### P: Nie widzę przycisku "Zakupy"
 **O:** Przycisk jest widoczny tylko dla użytkowników z uprawnieniami logistyki. Skontaktuj się z administratorem, jeśli potrzebujesz dostępu.

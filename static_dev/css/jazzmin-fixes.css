@@ -1,0 +1,54 @@
+/* Naprawka dla pól wielokrotnego wyboru w panelu uprawnień */
+/* Filtry i pola select w User permissions */
+
+.selector-available select,
+.selector-chosen select,
+.filtered select,
+select[multiple] {
+    background-color: #2b3035 !important;
+    color: #dee2e6 !important;
+    border-color: #495057 !important;
+}
+
+.selector-available select option,
+.selector-chosen select option,
+.filtered select option,
+select[multiple] option {
+    background-color: #2b3035 !important;
+    color: #dee2e6 !important;
+    padding: 4px 8px;
+}
+
+.selector-available select option:checked,
+.selector-chosen select option:checked,
+select[multiple] option:checked {
+    background-color: #375a7f !important;
+    color: #fff !important;
+}
+
+/* Input filtra w selectorze */
+.selector-filter input,
+.selector input[type="text"] {
+    background-color: #2b3035 !important;
+    color: #dee2e6 !important;
+    border-color: #495057 !important;
+}
+
+/* Nagłówki w selectorze */
+.selector-available h2,
+.selector-chosen h2,
+.selector h2 {
+    background-color: #343a40 !important;
+    color: #dee2e6 !important;
+}
+
+/* Przyciski wyboru (strzałki) */
+.selector-chooser a,
+.selector-chooser li a {
+    background-color: #495057 !important;
+    color: #dee2e6 !important;
+}
+
+.selector-chooser a:hover {
+    background-color: #5a6268 !important;
+}

@@ -125,7 +125,7 @@
         <Column header="Lokalizacja">
           <template #body="{ data }">
             <span v-if="data.lokalizacja">
-              {{ data.lokalizacja.szafa }}/{{ data.lokalizacja.kolumna }}/{{ data.lokalizacja.polka }}
+              {{ data.lokalizacja.szafa }}/{{ data.lokalizacja.polka }}/{{ data.lokalizacja.kolumna }}
             </span>
             <span v-else class="no-location">Brak domyślnej</span>
           </template>

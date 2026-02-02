@@ -1,7 +1,11 @@
 # tools/admin.py
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
+from django.shortcuts import redirect
+from django.urls import path
+from django.core.management import call_command
+from io import StringIO
 from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
@@ -14,15 +18,15 @@ from .models import (
 class PracownikInline(admin.StackedInline):
     model = Pracownik
     can_delete = False
-    verbose_name = 'Karta dostępu'
-    verbose_name_plural = 'Karta dostępu'
-    fields = ['karta']
+    verbose_name = 'Dane pracownika'
+    verbose_name_plural = 'Dane pracownika'
+    fields = ['karta', 'pobieranie_narzedzi']
 
 
 # Rozszerzony UserAdmin z inline Pracownik
 class UserAdmin(BaseUserAdmin):
     inlines = [PracownikInline]
-    list_display = ['username', 'email', 'first_name', 'last_name', 'get_grupy', 'get_karta', 'is_staff']
+    list_display = ['username', 'email', 'first_name', 'last_name', 'get_grupy', 'get_karta', 'get_pobieranie', 'is_staff']
     search_fields = ['username', 'email', 'first_name', 'last_name']
 
     @admin.display(description='Grupy')
@@ -37,6 +41,12 @@ class UserAdmin(BaseUserAdmin):
         if hasattr(obj, 'pracownik') and obj.pracownik:
             return obj.pracownik.karta
         return '-'
+
+    @admin.display(description='Pobieranie', boolean=True)
+    def get_pobieranie(self, obj):
+        if hasattr(obj, 'pracownik') and obj.pracownik:
+            return obj.pracownik.pobieranie_narzedzi
+        return None
 
     def save_formset(self, request, form, formset, change):
         """Synchronizuje first_name/last_name z User do imie/nazwisko w Pracownik"""
@@ -97,11 +107,138 @@ class MaszynaAdmin(admin.ModelAdmin):
 
 @admin.register(Pracownik)
 class PracownikAdmin(admin.ModelAdmin):
-    list_display = ['karta', 'nazwisko', 'imie', 'user']
+    list_display = ['karta', 'nazwisko', 'imie', 'user', 'pobieranie_narzedzi']
     search_fields = ['karta', 'nazwisko', 'imie', 'user__username']
-    list_filter = ['user__is_active']
+    list_filter = ['pobieranie_narzedzi', 'user__is_active']
+    list_editable = ['pobieranie_narzedzi']
     ordering = ['nazwisko', 'imie']
     autocomplete_fields = ['user']
+    actions = ['sync_selected_to_user', 'sync_selected_from_user']
+    change_list_template = 'admin/TOOLS/pracownik/change_list.html'
+
+    @admin.action(description='Synchronizuj zaznaczonych → User (Pracownik nadpisuje User)')
+    def sync_selected_to_user(self, request, queryset):
+        """Synchronizuje zaznaczonych Pracowników do User (tworzy User jeśli brak)"""
+        utworzono = 0
+        zsynchronizowano = 0
+        dodano_grupe = 0
+
+        # Pobierz grupę "produkcja"
+        grupa_produkcja = Group.objects.filter(name='produkcja').first()
+
+        for pracownik in queryset:
+            if pracownik.user is None:
+                # Utwórz nowego User
+                username = self._generate_username(pracownik.imie, pracownik.nazwisko)
+                user = User.objects.create_user(
+                    username=username,
+                    password='cnctools!',
+                    first_name=pracownik.imie,
+                    last_name=pracownik.nazwisko,
+                    is_active=True,
+                )
+                # Przypisz grupę "produkcja"
+                if grupa_produkcja:
+                    user.groups.add(grupa_produkcja)
+                pracownik.user = user
+                pracownik.save(update_fields=['user'])
+                utworzono += 1
+            else:
+                # Synchronizuj Pracownik → User
+                user = pracownik.user
+                changed = False
+                if user.first_name != pracownik.imie or user.last_name != pracownik.nazwisko:
+                    user.first_name = pracownik.imie
+                    user.last_name = pracownik.nazwisko
+                    user.save()
+                    changed = True
+                # Dodaj grupę "produkcja" jeśli User nie ma żadnej grupy
+                if not user.groups.exists() and grupa_produkcja:
+                    user.groups.add(grupa_produkcja)
+                    dodano_grupe += 1
+                    changed = True
+                if changed:
+                    zsynchronizowano += 1
+
+        msg = []
+        if utworzono:
+            msg.append(f'Utworzono {utworzono} nowych kont User (z grupą produkcja)')
+        if zsynchronizowano:
+            msg.append(f'Zsynchronizowano {zsynchronizowano} rekordów')
+        if dodano_grupe:
+            msg.append(f'Dodano grupę produkcja: {dodano_grupe}')
+        if not msg:
+            msg.append('Brak zmian')
+
+        self.message_user(request, '. '.join(msg), messages.SUCCESS)
+
+    @admin.action(description='Synchronizuj zaznaczonych ← User (User nadpisuje Pracownik)')
+    def sync_selected_from_user(self, request, queryset):
+        """Synchronizuje zaznaczonych Pracowników z User (User nadpisuje Pracownika)"""
+        zsynchronizowano = 0
+        pominięto = 0
+
+        for pracownik in queryset:
+            if pracownik.user is None:
+                pominięto += 1
+                continue
+
+            user = pracownik.user
+            if pracownik.imie != user.first_name or pracownik.nazwisko != user.last_name:
+                pracownik.imie = user.first_name
+                pracownik.nazwisko = user.last_name
+                pracownik.save()
+                zsynchronizowano += 1
+
+        msg = []
+        if zsynchronizowano:
+            msg.append(f'Zsynchronizowano {zsynchronizowano} rekordów')
+        if pominięto:
+            msg.append(f'Pominięto {pominięto} (brak powiązanego User)')
+        if not msg:
+            msg.append('Brak zmian')
+
+        self.message_user(request, '. '.join(msg), messages.SUCCESS)
+
+    def _generate_username(self, imie, nazwisko):
+        """Generuje unikalny username w formacie imie.nazwisko"""
+        import unicodedata
+
+        def normalize(text):
+            nfkd = unicodedata.normalize('NFKD', text.lower())
+            ascii_text = ''.join(c for c in nfkd if not unicodedata.combining(c))
+            ascii_text = ascii_text.replace('ł', 'l')
+            return ''.join(c for c in ascii_text if c.isalnum())
+
+        base_username = f"{normalize(imie)}.{normalize(nazwisko)}"
+        username = base_username
+        counter = 2
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        return username
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('sync-all/', self.admin_site.admin_view(self.sync_all_view), name='pracownik_sync_all'),
+        ]
+        return custom_urls + urls
+
+    def sync_all_view(self, request):
+        """Widok do synchronizacji WSZYSTKICH Pracowników"""
+        out = StringIO()
+        call_command('sync_pracownicy', stdout=out)
+        output = out.getvalue()
+
+        # Zlicz wyniki z output
+        lines = output.split('\n')
+        for line in lines:
+            if 'Utworzono' in line or 'Zsynchronizowano' in line or 'Bez zmian' in line or 'Błędy' in line:
+                self.message_user(request, line.strip(), messages.INFO)
+
+        self.message_user(request, 'Synchronizacja zakończona!', messages.SUCCESS)
+        return redirect('admin:TOOLS_pracownik_changelist')
 
 
 @admin.register(FakturaZakupu)

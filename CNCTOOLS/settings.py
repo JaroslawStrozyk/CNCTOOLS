@@ -43,9 +43,15 @@ DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 ALLOWED_HOSTS = ['*']  # Akceptuje polaczenia z wszystkich adresow (tylko dla DEBUG=True!)
 
 
+# Dokumenty PDF - wersja i data (ręcznie zmieniane w razie potrzeby)
+PDF_WERSJA_DOKUMENTU = 2
+PDF_DATA_DOKUMENTU = '2026-01-22'
+
+
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',  # Musi być PRZED django.contrib.admin
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -186,8 +192,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '0.92.0g',
-        'MODYFIKACJA': '14.01.2026r.',
+        'WERSJA'     : '0.94.0g',
+        'MODYFIKACJA': '31.01.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',
@@ -286,3 +292,125 @@ PWA_APP_ICONS = [
 
 # Service Worker
 PWA_SERVICE_WORKER_PATH = BASE_DIR / 'static_dev' / 'serviceworker.js'
+
+
+# ========== KONFIGURACJA JAZZMIN (Django Admin) ==========
+JAZZMIN_SETTINGS = {
+    # Tytuł w oknie przeglądarki
+    "site_title": "CNC Tools Admin",
+
+    # Tytuł na ekranie logowania
+    "site_header": "CNC Tools",
+
+    # Tytuł w menu bocznym
+    "site_brand": "CNC Tools",
+
+    # Logo (opcjonalne) - w sidebar
+    "site_logo": "images/icons/icon-72x72.png",
+
+    # Logo na ekranie logowania (None = brak logo)
+    "login_logo": None,
+
+    # Ukryj logo na ekranie logowania
+    "login_logo_dark": None,
+
+    # CSS classes dla logo
+    "site_logo_classes": "img-circle",
+
+    # Ikona favicon
+    "site_icon": "images/icons/icon-72x72.png",
+
+    # Custom CSS - naprawki stylów
+    "custom_css": "css/jazzmin-fixes.css",
+
+    # Link do powrotu do aplikacji
+    "welcome_sign": "Panel administracyjny CNC Tools",
+
+    # Copyright
+    "copyright": "EDATABIT - Jarosław Stróżyk",
+
+    # Użytkownik w prawym górnym rogu
+    "user_avatar": None,
+
+    # Linki w topbar
+    "topmenu_links": [
+        {"name": "Aplikacja", "url": "/", "new_window": False},
+        {"name": "API", "url": "/api/", "new_window": True},
+    ],
+
+    # Ukryj modele w menu
+    "hide_models": [],
+
+    # Kolejność aplikacji w menu
+    "order_with_respect_to": ["auth", "TOOLS"],
+
+    # Ikony dla modeli (Font Awesome 5)
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "TOOLS.Pracownik": "fas fa-id-card",
+        "TOOLS.NarzedzieMagazynowe": "fas fa-tools",
+        "TOOLS.EgzemplarzNarzedzia": "fas fa-wrench",
+        "TOOLS.HistoriaUzyciaNarzedzia": "fas fa-history",
+        "TOOLS.Kategoria": "fas fa-folder",
+        "TOOLS.Podkategoria": "fas fa-folder-open",
+        "TOOLS.Lokalizacja": "fas fa-map-marker-alt",
+        "TOOLS.Maszyna": "fas fa-industry",
+        "TOOLS.Dostawca": "fas fa-truck",
+        "TOOLS.Zamowienie": "fas fa-shopping-cart",
+        "TOOLS.FakturaZakupu": "fas fa-file-invoice-dollar",
+        "TOOLS.Uszkodzenie": "fas fa-exclamation-triangle",
+    },
+
+    # Domyślna ikona
+    "default_icon_parents": "fas fa-folder",
+    "default_icon_children": "fas fa-circle",
+
+    # Powiązane modele (show/hide)
+    "related_modal_active": True,
+
+    # UI Tweaks
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "show_ui_builder": False,
+
+    # Zmień tekst "Django administration"
+    "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {
+        "auth.user": "collapsible",
+    },
+}
+
+# Jazzmin UI customizer - ciemny motyw
+JAZZMIN_UI_TWEAKS = {
+    "navbar_small_text": False,
+    "footer_small_text": False,
+    "body_small_text": False,
+    "brand_small_text": False,
+    "brand_colour": "navbar-dark",
+    "accent": "accent-primary",
+    "navbar": "navbar-dark navbar-gray-dark",
+    "no_navbar_border": False,
+    "navbar_fixed": True,
+    "layout_boxed": False,
+    "footer_fixed": False,
+    "sidebar_fixed": True,
+    "sidebar": "sidebar-dark-primary",
+    "sidebar_nav_small_text": False,
+    "sidebar_disable_expand": False,
+    "sidebar_nav_child_indent": False,
+    "sidebar_nav_compact_style": False,
+    "sidebar_nav_legacy_style": False,
+    "sidebar_nav_flat_style": False,
+    "theme": "darkly",
+    "dark_mode_theme": "darkly",
+    "button_classes": {
+        "primary": "btn-primary",
+        "secondary": "btn-secondary",
+        "info": "btn-info",
+        "warning": "btn-warning",
+        "danger": "btn-danger",
+        "success": "btn-success",
+    },
+}

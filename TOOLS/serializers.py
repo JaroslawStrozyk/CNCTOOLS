@@ -5,7 +5,8 @@ from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
-    RealizacjaZamowienia, PozycjaRealizacji
+    RealizacjaZamowienia, PozycjaRealizacji,
+    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania
 )
 
 
@@ -81,7 +82,7 @@ class PracownikSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Pracownik
-        fields = ['id', 'karta', 'nazwisko', 'imie', 'user', 'user_id']
+        fields = ['id', 'karta', 'nazwisko', 'imie', 'user', 'user_id', 'pobieranie_narzedzi']
 
 
 class FakturaZakupuSerializer(serializers.ModelSerializer):
@@ -291,7 +292,7 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
         # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz and obj.egzemplarz.lokalizacja:
             lok = obj.egzemplarz.lokalizacja
-            return f"{lok.szafa}/{lok.kolumna}/{lok.polka}"
+            return f"{lok.szafa}/{lok.polka}/{lok.kolumna}"
         return None
 
     def get_maszyna_uszkodzenia(self, obj):
@@ -408,3 +409,33 @@ class RealizacjaZamowieniaSerializer(serializers.ModelSerializer):
     class Meta:
         model = RealizacjaZamowienia
         fields = '__all__'
+
+
+class PozycjaZapotrzebowaniaSerializer(serializers.ModelSerializer):
+    narzedzie_typ = NarzedzieMagazynoweSerializer(read_only=True)
+    narzedzie_typ_id = serializers.PrimaryKeyRelatedField(
+        queryset=NarzedzieMagazynowe.objects.all(),
+        source='narzedzie_typ',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )
+
+    class Meta:
+        model = PozycjaZapotrzebowania
+        fields = '__all__'
+
+
+class ZapotrzebowanieTechnologaSerializer(serializers.ModelSerializer):
+    technolog = UserSimpleSerializer(read_only=True)
+    zrealizowany_przez = UserSimpleSerializer(read_only=True)
+    pozycje = PozycjaZapotrzebowaniaSerializer(many=True, read_only=True)
+    pozycje_count = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = ZapotrzebowanieTechnologa
+        fields = '__all__'
+
+    def get_pozycje_count(self, obj):
+        return obj.pozycje.count()

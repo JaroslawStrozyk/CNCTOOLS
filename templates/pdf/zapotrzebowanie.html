@@ -1,0 +1,95 @@
+{% extends "pdf/base_pdf.html" %}
+
+{% block title %}Karta zapotrzebowania {{ numer }}{% endblock %}
+{% block footer_date %}{{ data_wydruku }}{% endblock %}
+
+{% block document_title %}KARTA ZAPOTRZEBOWANIA{% endblock %}
+
+{% block content %}
+    <!-- Sekcja informacyjna -->
+    <div class="info-section">
+        <div class="info-item">
+            <div class="info-label">Numer</div>
+            <div class="info-value">{{ numer }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Data utworzenia</div>
+            <div class="info-value">{{ data_utworzenia }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Dział</div>
+            <div class="info-value">{{ dzial|upper }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Technolog</div>
+            <div class="info-value">{{ technolog }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Status</div>
+            <div class="info-value">{{ status }}</div>
+        </div>
+    </div>
+
+    <!-- Tabela pozycji -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 25px;">Lp</th>
+                <th style="width: 60px;">Nr klienta</th>
+                <th style="width: 60px;">Nr zlecenia</th>
+                <th style="width: 70px;">Kategoria</th>
+                <th style="width: 70px;">Podkategoria</th>
+                <th>Specyfikacja</th>
+                <th style="width: 90px;">Nr katalogowy</th>
+                <th style="width: 35px;">Ilość</th>
+                <th style="width: 80px;">Uwagi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pozycja in pozycje %}
+            <tr>
+                <td class="col-center">{{ forloop.counter }}</td>
+                <td class="col-center">{{ pozycja.nr_klienta|default:"-" }}</td>
+                <td class="col-center">{{ pozycja.nr_zlecenia|default:"-" }}</td>
+                <td>{{ pozycja.kategoria_nazwa|default:"-" }}</td>
+                <td>{{ pozycja.podkategoria_nazwa|default:"-" }}</td>
+                <td>{{ pozycja.specyfikacja|default:"-" }}</td>
+                <td class="col-nowrap">{{ pozycja.numer_katalogowy|default:"-" }}</td>
+                <td class="col-center">{{ pozycja.ilosc }}</td>
+                <td class="text-small">{{ pozycja.uwagi|default:"-"|truncatewords:10 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="9" class="col-center text-muted">Brak pozycji</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Podsumowanie -->
+    <div class="mb-10">
+        <strong>Łączna liczba pozycji:</strong> {{ pozycje|length }}
+    </div>
+
+    <!-- Uwagi ogólne -->
+    {% if uwagi %}
+    <div class="notes-section">
+        <div class="notes-label">Uwagi:</div>
+        <div>{{ uwagi }}</div>
+    </div>
+    {% endif %}
+{% endblock %}
+
+{% block signatures %}
+    <div class="signatures-section">
+        <div class="signature-box">
+            <div class="signature-line">Sporządził (Technolog)</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Zatwierdził (Kierownik)</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Przyjął (Magazyn)</div>
+        </div>
+    </div>
+{% endblock %}

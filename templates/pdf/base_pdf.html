@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Dokument{% endblock %}</title>
+    <style>
+        /* === CZCIONKI === */
+        @font-face {
+            font-family: 'DejaVu';
+            src: url('file:///usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
+        }
+        @font-face {
+            font-family: 'DejaVu';
+            font-weight: bold;
+            src: url('file:///usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf');
+        }
+
+        /* === STRONA === */
+        @page {
+            size: A4 portrait;
+            margin: 15mm;
+        }
+
+        /* === RESET === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DejaVu', sans-serif;
+            font-size: 10pt;
+            line-height: 1.4;
+            color: #212529;
+        }
+
+        /* === NAGŁÓWEK DOKUMENTU === */
+        .document-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #dc3545;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo {
+            height: 45px;
+            width: auto;
+        }
+
+        .document-title {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #212529;
+            text-align: right;
+        }
+
+        /* === SEKCJA INFO === */
+        .info-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+
+        .info-item {
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 8pt;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+
+        .info-value {
+            font-weight: bold;
+            font-size: 10pt;
+        }
+
+        /* === TABELE === */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+
+        th {
+            background-color: #343a40;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            padding: 6px 4px;
+            font-size: 8pt;
+        }
+
+        td {
+            padding: 5px 4px;
+            border: 1px solid #dee2e6;
+            font-size: 8pt;
+            vertical-align: middle;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .col-center {
+            text-align: center;
+        }
+
+        .col-right {
+            text-align: right;
+        }
+
+        .col-nowrap {
+            white-space: nowrap;
+        }
+
+        /* === SEKCJA UWAG === */
+        .notes-section {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+        }
+
+        .notes-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        /* === DOLNA SEKCJA STRONY (podpisy + stopka) === */
+        .page-bottom {
+            position: fixed;
+            bottom: 15mm;
+            left: 15mm;
+            right: 15mm;
+        }
+
+        /* Podpisy - trzy kolumny na pełną szerokość */
+        .signatures-section {
+            display: table;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .signature-box {
+            display: table-cell;
+            width: 33.33%;
+            text-align: center;
+            vertical-align: bottom;
+            padding: 0 10px;
+        }
+
+        .signature-box:first-child {
+            padding-left: 0;
+        }
+
+        .signature-box:last-child {
+            padding-right: 0;
+        }
+
+        .signature-line {
+            border-top: 1px solid #999;
+            padding-top: 5px;
+            font-size: 8pt;
+            color: #666;
+        }
+
+        /* Stopka (linia + tekst) */
+        .page-footer {
+            border-top: 2px solid #dc3545;
+            padding-top: 5px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 9pt;
+            color: #666;
+        }
+
+        .page-footer .footer-left {
+            text-align: left;
+            flex: 1;
+        }
+
+        .page-footer .footer-center {
+            text-align: center;
+            flex: 1;
+        }
+
+        .page-footer .footer-right {
+            text-align: right;
+            flex: 1;
+        }
+
+        /* === POMOCNICZE === */
+        .text-muted {
+            color: #666;
+        }
+
+        .text-small {
+            font-size: 8pt;
+        }
+
+        .mb-10 {
+            margin-bottom: 10px;
+        }
+
+        .mt-10 {
+            margin-top: 10px;
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <!-- Nagłówek dokumentu -->
+    <div class="document-header">
+        <div class="logo-section">
+            <img src="{{ logo_path }}" alt="Logo" class="logo">
+        </div>
+        <div class="document-title">{% block document_title %}Dokument{% endblock %}</div>
+    </div>
+
+    <!-- Treść dokumentu -->
+    {% block content %}{% endblock %}
+
+    <!-- Dolna sekcja: podpisy + stopka -->
+    <div class="page-bottom">
+        {% block signatures %}{% endblock %}
+        <div class="page-footer">
+            <span class="footer-left">Data: {{ data_wydruku }}</span>
+            <span class="footer-center">Wersja dokumentu: {{ wersja_dokumentu }}</span>
+            <span class="footer-right">Strona 1 z 1</span>
+        </div>
+    </div>
+</body>
+</html>

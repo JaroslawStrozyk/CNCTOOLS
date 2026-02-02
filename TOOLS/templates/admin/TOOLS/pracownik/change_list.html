@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block object-tools-items %}
+    <li>
+        <a href="{% url 'admin:pracownik_sync_all' %}" class="btn btn-danger" style="padding: 8px 16px; font-weight: bold; color: white;">
+            Synchronizuj wszystkich z User
+        </a>
+    </li>
+    {{ block.super }}
+{% endblock %}
