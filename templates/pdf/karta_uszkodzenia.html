@@ -1,0 +1,133 @@
+{% extends "pdf/base_pdf.html" %}
+
+{% block title %}Karta uszkodzenia {{ numer_karty }}{% endblock %}
+
+{% block document_title %}KARTA USZKODZENIA{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .info-grid {
+        display: table;
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    .info-row {
+        display: table-row;
+    }
+    .info-cell {
+        display: table-cell;
+        padding: 8px 10px;
+        border: 1px solid #dee2e6;
+        vertical-align: top;
+    }
+    .info-cell.label {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        width: 200px;
+        color: #495057;
+    }
+    .info-cell.value {
+        background-color: #ffffff;
+    }
+    .info-cell.label-wide {
+        background-color: #f8f9fa;
+        font-weight: bold;
+        width: 220px;
+        color: #495057;
+    }
+    .highlight {
+        color: #dc3545;
+        font-weight: bold;
+    }
+    .section-title {
+        background-color: #343a40;
+        color: white;
+        padding: 8px 12px;
+        font-weight: bold;
+        margin-bottom: 0;
+        font-size: 11pt;
+    }
+    .description-box {
+        border: 1px solid #dee2e6;
+        border-top: none;
+        padding: 12px;
+        min-height: 80px;
+        background-color: #ffffff;
+    }
+    .mb-20 {
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <!-- Sekcja informacyjna - nagłówek -->
+    <div class="info-section" style="margin-bottom: 20px;">
+        <div class="info-item">
+            <div class="info-label">Nr karty</div>
+            <div class="info-value highlight">{{ numer_karty|default:"-" }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Data uszkodzenia</div>
+            <div class="info-value">{{ data_uszkodzenia }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Maszyna</div>
+            <div class="info-value">{{ maszyna|default:"-" }}</div>
+        </div>
+        <div class="info-item">
+            <div class="info-label">Zgłaszający</div>
+            <div class="info-value">{{ zglaszajacy|default:"-" }}</div>
+        </div>
+    </div>
+
+    <!-- Dane narzędzia -->
+    <div class="info-grid mb-20">
+        <div class="info-row">
+            <div class="info-cell label">Kategoria</div>
+            <div class="info-cell value">{{ kategoria|default:"-" }}</div>
+        </div>
+        <div class="info-row">
+            <div class="info-cell label">Nazwa narzędzia</div>
+            <div class="info-cell value"><strong>{{ narzedzie|default:"-" }}</strong></div>
+        </div>
+        <div class="info-row">
+            <div class="info-cell label">Numer katalogowy</div>
+            <div class="info-cell value">{{ numer_katalogowy|default:"-" }}</div>
+        </div>
+    </div>
+
+    <!-- Przyczyna uszkodzenia -->
+    <div class="mb-20">
+        <div class="section-title">Przyczyna uszkodzenia</div>
+        <div class="description-box">{{ przyczyna|default:"-" }}</div>
+    </div>
+
+    <!-- Stracony czas -->
+    <div class="info-grid mb-20">
+        <div class="info-row">
+            <div class="info-cell label-wide">Stracony czas na maszynach</div>
+            <div class="info-cell value">{{ stracony_czas|default:"-" }}</div>
+        </div>
+    </div>
+
+    <!-- Uwagi -->
+    <div class="mb-20">
+        <div class="section-title">Uwagi</div>
+        <div class="description-box">{{ uwagi|default:"-" }}</div>
+    </div>
+{% endblock %}
+
+{% block signatures %}
+    <div class="signatures-section">
+        <div class="signature-box">
+            <div class="signature-line">Zgłaszający</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Narzędziowiec</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Osoba przyjmująca</div>
+        </div>
+    </div>
+{% endblock %}

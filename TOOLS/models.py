@@ -2,6 +2,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 class Kategoria(models.Model):
@@ -233,6 +234,12 @@ class EgzemplarzNarzedzia(models.Model):
     )
     data_zakupu = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     data_modyfikacji = models.DateTimeField(auto_now=True)
+    oznaczenie = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name='Oznaczenie'
+    )
     jednostka = models.CharField(
         max_length=10,
         choices=JEDNOSTKA_CHOICES,
@@ -277,6 +284,7 @@ class HistoriaUzyciaNarzedzia(models.Model):
     data_wydania = models.DateTimeField(auto_now_add=True)
     data_zwrotu = models.DateTimeField(null=True, blank=True)
     uwagi = models.TextField(blank=True)
+    stan_po_zwrocie = models.CharField(max_length=30, blank=True, null=True)
 
     class Meta:
         verbose_name_plural = "Historia użycia narzędzi"
@@ -320,10 +328,55 @@ class Uszkodzenie(models.Model):
         blank=True,
         related_name='zgloszone_uszkodzenia'
     )
+    # Pola karty uszkodzenia
+    numer_karty = models.CharField(max_length=15, unique=True, blank=True, null=True)
+    przyczyna_uszkodzenia = models.TextField(blank=True)
+    stracony_czas = models.CharField(max_length=100, blank=True)
+    typ_zglaszajacego = models.CharField(max_length=20, blank=True)  # 'pobierajacy' lub 'zwracajacy'
+    nazwisko_zglaszajacego = models.CharField(max_length=200, blank=True)
 
     class Meta:
         verbose_name_plural = "Uszkodzenia"
         ordering = ['-data_uszkodzenia']
+
+    @classmethod
+    def generuj_numer_karty(cls):
+        """Generuje unikalny numer karty uszkodzenia w formacie ROK/NNN"""
+        rok = timezone.now().year
+        # Filtruj tylko karty bez sufiksu R (czyli zwykłe uszkodzenia)
+        ostatnia = cls.objects.filter(
+            numer_karty__startswith=f'{rok}/'
+        ).exclude(
+            numer_karty__endswith='R'
+        ).order_by('-numer_karty').first()
+        if ostatnia:
+            try:
+                ostatni_numer = int(ostatnia.numer_karty.split('/')[1])
+            except (ValueError, IndexError):
+                ostatni_numer = 0
+        else:
+            ostatni_numer = 0
+        return f'{rok}/{ostatni_numer + 1:03d}'
+
+    @classmethod
+    def generuj_numer_karty_regeneracji(cls):
+        """Generuje unikalny numer karty regeneracji w formacie ROK/NNNR"""
+        rok = timezone.now().year
+        # Filtruj tylko karty z sufiksem R (regeneracje)
+        ostatnia = cls.objects.filter(
+            numer_karty__startswith=f'{rok}/',
+            numer_karty__endswith='R'
+        ).order_by('-numer_karty').first()
+        if ostatnia:
+            try:
+                # Usuń sufiks R i pobierz numer
+                numer_str = ostatnia.numer_karty.split('/')[1].rstrip('R')
+                ostatni_numer = int(numer_str)
+            except (ValueError, IndexError):
+                ostatni_numer = 0
+        else:
+            ostatni_numer = 0
+        return f'{rok}/{ostatni_numer + 1:03d}R'
 
     def __str__(self):
         if self.egzemplarz:

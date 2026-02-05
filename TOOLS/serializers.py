@@ -215,10 +215,22 @@ class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    stan_po_zwrocie_display = serializers.SerializerMethodField()
 
     class Meta:
         model = HistoriaUzyciaNarzedzia
         fields = '__all__'
+
+    def get_stan_po_zwrocie_display(self, obj):
+        if not obj.stan_po_zwrocie:
+            return None
+        stan_map = {
+            'nowe': 'Nowe',
+            'uzywane': 'Używane',
+            'uszkodzone': 'Uszkodzone',
+            'uszkodzone_regeneracja': 'Do regeneracji'
+        }
+        return stan_map.get(obj.stan_po_zwrocie, obj.stan_po_zwrocie)
 
 
 class UszkodzenieSerializer(serializers.ModelSerializer):
@@ -253,6 +265,9 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
             'lokalizacja_opis', 'stan', 'maszyna_nazwa',
             'pracownik_nazwisko', 'pracownik_imie', 'data_uszkodzenia', 'opis_uszkodzenia',
             'pracownik', 'pracownik_id',
+            # Pola karty uszkodzenia
+            'numer_karty', 'przyczyna_uszkodzenia', 'stracony_czas',
+            'typ_zglaszajacego', 'nazwisko_zglaszajacego',
             # SerializerMethodFields (nadpisują pola modelu o tej samej nazwie)
             'kategoria_narzedzia', 'opis_narzedzia', 'numer_katalogowy', 'ostatnia_lokalizacja',
             'maszyna_uszkodzenia', 'ostatni_pracownik', 'stan_egzemplarza'

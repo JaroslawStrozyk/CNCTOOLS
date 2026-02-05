@@ -12,10 +12,22 @@ from .logging_service import app_logger, get_user_display_name
 
 
 def get_info_program():
-    """Pobiera informacje o programie z settings"""
+    """Pobiera informacje o programie z settings, włącznie z ustawieniami PDF"""
+    info = {}
     if hasattr(settings, 'INFO_PROGRAM') and settings.INFO_PROGRAM:
-        return settings.INFO_PROGRAM[0]
-    return {}
+        info = dict(settings.INFO_PROGRAM[0])
+
+    # Dodaj ustawienia PDF
+    info['PDF_ZAPOTRZEBOWANIE_WERSJA'] = getattr(settings, 'PDF_ZAPOTRZEBOWANIE_WERSJA', 1)
+    info['PDF_ZAPOTRZEBOWANIE_DATA'] = getattr(settings, 'PDF_ZAPOTRZEBOWANIE_DATA', '')
+    info['PDF_USZKODZENIE_WERSJA'] = getattr(settings, 'PDF_USZKODZENIE_WERSJA', 1)
+    info['PDF_USZKODZENIE_DATA'] = getattr(settings, 'PDF_USZKODZENIE_DATA', '')
+    info['PDF_LOGI_WERSJA'] = getattr(settings, 'PDF_LOGI_WERSJA', 1)
+    info['PDF_LOGI_DATA'] = getattr(settings, 'PDF_LOGI_DATA', '')
+    info['PDF_LISTA_USZKODZEN_WERSJA'] = getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1)
+    info['PDF_LISTA_USZKODZEN_DATA'] = getattr(settings, 'PDF_LISTA_USZKODZEN_DATA', '')
+
+    return info
 
 
 def get_common_urls():

@@ -99,4 +99,7 @@ urlpatterns = [
     path('api/logi/pliki/', views.logi_pliki_view, name='logi-pliki'),
     path('api/logi/pliki/<str:filename>/', views.logi_plik_content_view, name='logi-plik-content'),
     path('api/logi/pliki/<str:filename>/pdf/', views.logi_pdf_archiwum_view, name='logi-archiwum-pdf'),
+
+    # Wzory dokumentów (dla ISO)
+    path('api/dokumenty/wzor/<str:typ>/', views.dokument_wzor_view, name='dokument-wzor'),
 ]

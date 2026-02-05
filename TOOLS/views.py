@@ -8,6 +8,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
+from django.conf import settings
 from django.db.models import Count, Q, Sum
 from django.db import transaction
 from django.utils import timezone
@@ -981,62 +982,14 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """
-        Usuwa egzemplarz:
-        - Jeśli stan = 'uszkodzone' lub 'uszkodzone_regeneracja' → tworzy wpis w Uszkodzenie i usuwa egzemplarz
-        - W pozostałych przypadkach → usuwa fizycznie
+        Usuwa egzemplarz narzędzia i loguje operację.
         """
         egzemplarz = self.get_object()
 
-        # Sprawdź czy egzemplarz jest uszkodzony
-        if egzemplarz.stan in ['uszkodzone', 'uszkodzone_regeneracja']:
-            # Przygotuj dane lokalizacji
-            lokalizacja_opis = ''
-            if egzemplarz.lokalizacja:
-                lokalizacja_opis = f"{egzemplarz.lokalizacja.szafa}/{egzemplarz.lokalizacja.polka}/{egzemplarz.lokalizacja.kolumna}"
-
-            # Przygotuj kategorię
-            kategoria_narzedzia = ''
-            if egzemplarz.narzedzie_typ and egzemplarz.narzedzie_typ.podkategoria:
-                kategoria_narzedzia = f"{egzemplarz.narzedzie_typ.podkategoria.kategoria.nazwa} / {egzemplarz.narzedzie_typ.podkategoria.nazwa}"
-
-            # Pobierz ostatnią historię użycia
-            ostatnia_historia = egzemplarz.historia.order_by('-data_wydania').first()
-            maszyna_nazwa = ''
-            pracownik_nazwisko = ''
-            pracownik_imie = ''
-
-            if ostatnia_historia:
-                if ostatnia_historia.maszyna:
-                    maszyna_nazwa = ostatnia_historia.maszyna.nazwa
-                if ostatnia_historia.pracownik:
-                    pracownik_nazwisko = ostatnia_historia.pracownik.nazwisko
-                    pracownik_imie = ostatnia_historia.pracownik.imie
-
-            # Mapowanie stanu na czytelny tekst
-            stan_tekst = 'Uszkodzone' if egzemplarz.stan == 'uszkodzone' else 'Uszkodzone do regeneracji'
-
-            # Utwórz wpis w tabeli Uszkodzenie z pełnymi danymi
-            Uszkodzenie.objects.create(
-                egzemplarz=None,
-                narzedzie_typ=egzemplarz.narzedzie_typ,
-                narzedzie_opis=egzemplarz.narzedzie_typ.opis,
-                numer_katalogowy=egzemplarz.narzedzie_typ.numer_katalogowy or '',
-                kategoria_narzedzia=kategoria_narzedzia,
-                lokalizacja_opis=lokalizacja_opis,
-                stan=stan_tekst,
-                maszyna_nazwa=maszyna_nazwa,
-                pracownik_nazwisko=pracownik_nazwisko,
-                pracownik_imie=pracownik_imie,
-                opis_uszkodzenia=''  # Pusty jak wymagane
-            )
-
         # Loguj usunięcie
         user_name = get_user_display_name(request.user)
-        opis = f"{egzemplarz.narzedzie_typ.opis} (ID: {egzemplarz.id})"
-        if egzemplarz.stan in ['uszkodzone', 'uszkodzone_regeneracja']:
-            app_logger.warning(user_name, f"Usunięto uszkodzony egzemplarz: {opis}")
-        else:
-            app_logger.warning(user_name, f"Usunięto egzemplarz narzędzia: {opis}")
+        opis = f"{egzemplarz.narzedzie_typ.opis} (ID: {egzemplarz.id}, stan: {egzemplarz.get_stan_display()})"
+        app_logger.warning(user_name, f"Usunięto egzemplarz narzędzia: {opis}")
 
         # Usuń egzemplarz
         egzemplarz.delete()
@@ -1109,6 +1062,7 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
         pracownik_zwracajacy_id = request.data.get('pracownik_zwracajacy_id')
         czesciowy_zwrot = request.data.get('czesciowy_zwrot', False)
         ilosc_sztuk = request.data.get('ilosc_sztuk')
+        karta_uszkodzenia = request.data.get('karta_uszkodzenia')  # Dane karty uszkodzenia
 
         try:
             result = EgzemplarzService.zwroc_egzemplarz(
@@ -1136,24 +1090,92 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
                 except Pracownik.DoesNotExist:
                     pass
 
+            # Zapisz stan po zwrocie w historii
+            historia_updated.stan_po_zwrocie = stan_po_zwrocie
+            historia_updated.save()
+
+            # Zapisz opis narzędzia do logowania (przed ewentualnym usunięciem egzemplarza)
+            narzedzie_opis_do_logu = historia.egzemplarz.narzedzie_typ.opis if historia.egzemplarz and historia.egzemplarz.narzedzie_typ else 'nieznane'
+
             # Jeśli uszkodzone lub uszkodzone_regeneracja, utwórz wpis w tabeli uszkodzeń
             if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
-                opis_domyslny = 'Uszkodzenie podczas użycia' if stan_po_zwrocie == 'uszkodzone' else 'Uszkodzenie do regeneracji'
-                Uszkodzenie.objects.create(
-                    egzemplarz=egzemplarz_zwrocony,
-                    opis_uszkodzenia=request.data.get('uwagi', opis_domyslny),
-                    pracownik=historia.pracownik
-                )
+                # Przygotuj dane do zapisu w uszkodzeniu (snapshot przed usunięciem egzemplarza)
+                narzedzie_typ = egzemplarz_zwrocony.narzedzie_typ
+                narzedzie_opis = narzedzie_typ.opis if narzedzie_typ else ''
+                numer_katalogowy = (narzedzie_typ.numer_katalogowy or '') if narzedzie_typ else ''
+                kategoria_narzedzia = ''
+                if narzedzie_typ and narzedzie_typ.podkategoria:
+                    kategoria_narzedzia = f"{narzedzie_typ.podkategoria.kategoria.nazwa} / {narzedzie_typ.podkategoria.nazwa}"
+                lokalizacja_opis = ''
+                if egzemplarz_zwrocony.lokalizacja:
+                    lok = egzemplarz_zwrocony.lokalizacja
+                    lokalizacja_opis = f"{lok.szafa}/{lok.polka}/{lok.kolumna}"
+                maszyna_nazwa = historia.maszyna.nazwa if historia.maszyna else ''
+                pracownik_nazwisko = historia.pracownik.nazwisko if historia.pracownik else ''
+                pracownik_imie = historia.pracownik.imie if historia.pracownik else ''
+                stan = egzemplarz_zwrocony.get_stan_display() if hasattr(egzemplarz_zwrocony, 'get_stan_display') else egzemplarz_zwrocony.stan
+
+                if stan_po_zwrocie == 'uszkodzone' and karta_uszkodzenia:
+                    # Uszkodzone z kartą uszkodzenia - generuj numer karty i zapisz pełne dane
+                    numer_karty = Uszkodzenie.generuj_numer_karty()
+                    uszkodzenie = Uszkodzenie.objects.create(
+                        egzemplarz=None,  # Egzemplarz zostanie usunięty
+                        narzedzie_typ=narzedzie_typ,
+                        narzedzie_opis=narzedzie_opis,
+                        numer_katalogowy=numer_katalogowy,
+                        kategoria_narzedzia=kategoria_narzedzia,
+                        lokalizacja_opis=lokalizacja_opis,
+                        stan=stan,
+                        maszyna_nazwa=maszyna_nazwa,
+                        pracownik_nazwisko=pracownik_nazwisko,
+                        pracownik_imie=pracownik_imie,
+                        opis_uszkodzenia=karta_uszkodzenia.get('uwagi', ''),
+                        pracownik=historia.pracownik,
+                        numer_karty=numer_karty,
+                        przyczyna_uszkodzenia=karta_uszkodzenia.get('przyczyna_uszkodzenia', ''),
+                        stracony_czas=karta_uszkodzenia.get('stracony_czas', ''),
+                        typ_zglaszajacego=karta_uszkodzenia.get('typ_zglaszajacego', ''),
+                        nazwisko_zglaszajacego=karta_uszkodzenia.get('nazwisko_zglaszajacego', '')
+                    )
+                    # Usuń egzemplarz
+                    egzemplarz_zwrocony.delete()
+                elif stan_po_zwrocie == 'uszkodzone_regeneracja':
+                    # Uszkodzone do regeneracji - z kartą w formacie RRRR/XXXR
+                    numer_karty_regen = Uszkodzenie.generuj_numer_karty_regeneracji()
+                    Uszkodzenie.objects.create(
+                        egzemplarz=None,  # Egzemplarz zostanie usunięty
+                        narzedzie_typ=narzedzie_typ,
+                        narzedzie_opis=narzedzie_opis,
+                        numer_katalogowy=numer_katalogowy,
+                        kategoria_narzedzia=kategoria_narzedzia,
+                        lokalizacja_opis=lokalizacja_opis,
+                        stan='Uszkodzone do regeneracji',
+                        maszyna_nazwa=maszyna_nazwa,
+                        pracownik_nazwisko=pracownik_nazwisko,
+                        pracownik_imie=pracownik_imie,
+                        opis_uszkodzenia=request.data.get('uwagi', 'Zużyte do regeneracji'),
+                        pracownik=historia.pracownik,
+                        numer_karty=numer_karty_regen
+                    )
+                    # Usuń egzemplarz
+                    egzemplarz_zwrocony.delete()
+                else:
+                    # Fallback - uszkodzone bez karty (stary tryb)
+                    opis_domyslny = 'Uszkodzenie podczas użycia'
+                    Uszkodzenie.objects.create(
+                        egzemplarz=egzemplarz_zwrocony,
+                        opis_uszkodzenia=request.data.get('uwagi', opis_domyslny),
+                        pracownik=historia.pracownik
+                    )
 
             # Logowanie zwrotu
             user_name = get_user_display_name(request.user)
-            narzedzie_opis = historia.egzemplarz.narzedzie_typ.opis
             stan_map = {'nowe': 'nowe', 'uzywane': 'używane', 'uszkodzone': 'uszkodzone', 'uszkodzone_regeneracja': 'do regeneracji'}
             stan_tekst = stan_map.get(stan_po_zwrocie, stan_po_zwrocie)
             if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
-                app_logger.warning(user_name, f"Zwrócono narzędzie jako {stan_tekst}: {narzedzie_opis}")
+                app_logger.warning(user_name, f"Zwrócono narzędzie jako {stan_tekst}: {narzedzie_opis_do_logu}")
             else:
-                app_logger.success(user_name, f"Zwrócono narzędzie ({stan_tekst}): {narzedzie_opis}")
+                app_logger.success(user_name, f"Zwrócono narzędzie ({stan_tekst}): {narzedzie_opis_do_logu}")
 
             serializer = self.get_serializer(historia_updated)
             return Response(serializer.data)
@@ -1178,6 +1200,148 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return super().get_queryset().order_by('-data_uszkodzenia')
+
+    @action(detail=False, methods=['get'])
+    def nastepny_numer_karty(self, request):
+        """Zwraca następny numer karty uszkodzenia"""
+        numer = Uszkodzenie.generuj_numer_karty()
+        return Response({'numer_karty': numer})
+
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """
+        Generuje PDF karty uszkodzenia (WeasyPrint + HTML template).
+        """
+        import os
+        from django.http import HttpResponse
+        from django.template.loader import render_to_string
+        from django.conf import settings
+        from weasyprint import HTML
+
+        uszkodzenie = self.get_object()
+
+        # Ścieżka do logo
+        logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+        # Przygotowanie danych zgłaszającego
+        zglaszajacy = uszkodzenie.nazwisko_zglaszajacego
+        if not zglaszajacy and uszkodzenie.pracownik_nazwisko:
+            zglaszajacy = f"{uszkodzenie.pracownik_nazwisko} {uszkodzenie.pracownik_imie}".strip()
+
+        # Dane narzędzia
+        kategoria = uszkodzenie.kategoria_narzedzia
+        narzedzie = uszkodzenie.narzedzie_opis
+        numer_katalogowy = uszkodzenie.numer_katalogowy
+
+        # Jeśli nie ma snapshotów, próbuj pobrać z egzemplarza
+        if uszkodzenie.egzemplarz:
+            egz = uszkodzenie.egzemplarz
+            if egz.narzedzie_typ:
+                if not narzedzie:
+                    narzedzie = egz.narzedzie_typ.opis
+                if not numer_katalogowy:
+                    numer_katalogowy = egz.narzedzie_typ.numer_katalogowy
+                if not kategoria and egz.narzedzie_typ.podkategoria:
+                    kategoria = f"{egz.narzedzie_typ.podkategoria.kategoria.nazwa} / {egz.narzedzie_typ.podkategoria.nazwa}"
+
+        context = {
+            'numer_karty': uszkodzenie.numer_karty or '-',
+            'data_uszkodzenia': uszkodzenie.data_uszkodzenia.strftime('%Y-%m-%d %H:%M'),
+            'maszyna': uszkodzenie.maszyna_nazwa,
+            'zglaszajacy': zglaszajacy,
+            'kategoria': kategoria,
+            'narzedzie': narzedzie,
+            'numer_katalogowy': numer_katalogowy,
+            'przyczyna': uszkodzenie.przyczyna_uszkodzenia,
+            'stracony_czas': uszkodzenie.stracony_czas,
+            'uwagi': uszkodzenie.opis_uszkodzenia,
+            'logo_path': f'file://{logo_path}',
+            'data_wydruku': getattr(settings, 'PDF_USZKODZENIE_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_USZKODZENIE_WERSJA', 1),
+        }
+
+        # Renderowanie HTML
+        html_string = render_to_string('pdf/karta_uszkodzenia.html', context)
+
+        # Generowanie PDF
+        pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+        filename = f"Karta_uszkodzenia_{uszkodzenie.numer_karty or uszkodzenie.id}.pdf".replace('/', '-')
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
+    @action(detail=False, methods=['post'])
+    def pdf_lista(self, request):
+        """
+        Generuje zbiorczy PDF z listą uszkodzeń.
+        Przyjmuje listę ID uszkodzeń w body: {"ids": [1, 2, 3], "typ": "uszkodzone"|"regeneracja"}
+        """
+        import os
+        from django.http import HttpResponse
+        from django.template.loader import render_to_string
+        from weasyprint import HTML
+
+        ids = request.data.get('ids', [])
+        typ = request.data.get('typ', 'uszkodzone')
+
+        if not ids:
+            return Response({'error': 'Brak ID uszkodzeń'}, status=status.HTTP_400_BAD_REQUEST)
+
+        uszkodzenia = Uszkodzenie.objects.filter(id__in=ids).order_by('-data_uszkodzenia')
+
+        logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+        # Ustawienia zależne od typu
+        if typ == 'regeneracja':
+            typ_raportu = 'Do regeneracji'
+            tytul_dokumentu = 'LISTA NARZĘDZI DO REGENERACJI'
+            filename_prefix = 'Lista_do_regeneracji'
+        else:
+            typ_raportu = 'Uszkodzenia'
+            tytul_dokumentu = 'LISTA USZKODZONYCH NARZĘDZI'
+            filename_prefix = 'Lista_uszkodzen'
+
+        # Przygotuj dane do szablonu
+        lista = []
+        for u in uszkodzenia:
+            zglaszajacy = u.nazwisko_zglaszajacego
+            if not zglaszajacy and u.pracownik_nazwisko:
+                zglaszajacy = f"{u.pracownik_nazwisko} {u.pracownik_imie}".strip()
+
+            lista.append({
+                'numer_karty': u.numer_karty or '-',
+                'data_uszkodzenia': u.data_uszkodzenia.strftime('%Y-%m-%d %H:%M'),
+                'maszyna': u.maszyna_nazwa or '-',
+                'zglaszajacy': zglaszajacy or '-',
+                'kategoria': u.kategoria_narzedzia or '-',
+                'narzedzie': u.narzedzie_opis or '-',
+                'numer_katalogowy': u.numer_katalogowy or '-',
+                'przyczyna': u.przyczyna_uszkodzenia or '-',
+                'stracony_czas': u.stracony_czas or '-',
+                'uwagi': u.opis_uszkodzenia or '-',
+            })
+
+        context = {
+            'uszkodzenia': lista,
+            'liczba': len(lista),
+            'typ_raportu': typ_raportu,
+            'tytul_dokumentu': tytul_dokumentu,
+            'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'logo_path': f'file://{logo_path}',
+            'wersja_dokumentu': getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1),
+        }
+
+        # Renderowanie HTML
+        html_string = render_to_string('pdf/lista_uszkodzen.html', context)
+
+        # Generowanie PDF
+        pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename_prefix}_{today}.pdf"'
+        return response
 
 
 class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
@@ -1591,8 +1755,8 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         context = {
             'numer': numer,
             'data_utworzenia': zapotrzebowanie.data_utworzenia.strftime('%Y-%m-%d'),
-            'data_wydruku': settings.PDF_DATA_DOKUMENTU,
-            'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+            'data_wydruku': getattr(settings, 'PDF_ZAPOTRZEBOWANIE_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_ZAPOTRZEBOWANIE_WERSJA', 1),
             'technolog': technolog_nazwa,
             'dzial': dzial,
             'status': status_display,
@@ -1757,8 +1921,8 @@ def logi_pdf_biezace_view(request):
         'data_logu': today,
         'filtr_statusu': status_filter or 'Wszystkie',
         'logi': logi_formatted,
-        'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+        'data_wydruku': getattr(settings, 'PDF_LOGI_DATA', datetime.now().strftime('%Y-%m-%d')),
+        'wersja_dokumentu': getattr(settings, 'PDF_LOGI_WERSJA', 1),
         'logo_path': f'file://{logo_path}',
     }
 
@@ -1825,8 +1989,8 @@ def logi_pdf_archiwum_view(request, filename):
         'data_logu': data_logu,
         'filtr_statusu': status_filter or 'Wszystkie',
         'logi': logi_formatted,
-        'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'wersja_dokumentu': getattr(settings, 'PDF_WERSJA_DOKUMENTU', 1),
+        'data_wydruku': getattr(settings, 'PDF_LOGI_DATA', datetime.now().strftime('%Y-%m-%d')),
+        'wersja_dokumentu': getattr(settings, 'PDF_LOGI_WERSJA', 1),
         'logo_path': f'file://{logo_path}',
     }
 
@@ -1839,4 +2003,105 @@ def logi_pdf_archiwum_view(request, filename):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     pdf_filename = f'logi_{data_logu}.pdf'
     response['Content-Disposition'] = f'inline; filename="{pdf_filename}"'
+    return response
+
+
+# ========== WZORY DOKUMENTÓW (puste szablony do ISO) ==========
+
+@login_required
+@require_http_methods(["GET"])
+def dokument_wzor_view(request, typ):
+    """
+    Generuje pusty wzór dokumentu PDF dla dokumentacji ISO.
+    Dostępne typy: zapotrzebowanie, uszkodzenie, logi
+    """
+    import os
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+
+    logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+    if typ == 'zapotrzebowanie':
+        context = {
+            'numer': 'ZAM-XXXX',
+            'data_utworzenia': 'RRRR-MM-DD',
+            'data_wydruku': getattr(settings, 'PDF_ZAPOTRZEBOWANIE_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_ZAPOTRZEBOWANIE_WERSJA', 1),
+            'technolog': '..................',
+            'dzial': '..................',
+            'status': 'WZÓR',
+            'uwagi': '',
+            'pozycje': [
+                {'nr_klienta': '', 'nr_zlecenia': '', 'kategoria_nazwa': '', 'podkategoria_nazwa': '',
+                 'specyfikacja': '', 'numer_katalogowy': '', 'ilosc': '', 'uwagi': ''},
+            ],
+            'logo_path': f'file://{logo_path}',
+        }
+        template = 'pdf/zapotrzebowanie.html'
+        filename = 'Wzor_Karta_zapotrzebowania.pdf'
+
+    elif typ == 'uszkodzenie':
+        context = {
+            'numer_karty': 'RRRR/XXX',
+            'data_uszkodzenia': 'RRRR-MM-DD GG-MM',
+            'maszyna': '..................',
+            'zglaszajacy': '..................',
+            'kategoria': '..................',
+            'narzedzie': '..................',
+            'numer_katalogowy': '..................',
+            'przyczyna': '',
+            'stracony_czas': '',
+            'uwagi': '',
+            'logo_path': f'file://{logo_path}',
+            'data_wydruku': getattr(settings, 'PDF_USZKODZENIE_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_USZKODZENIE_WERSJA', 1),
+        }
+        template = 'pdf/karta_uszkodzenia.html'
+        filename = 'Wzor_Karta_uszkodzenia.pdf'
+
+    elif typ == 'logi':
+        context = {
+            'typ_logow': 'WZÓR',
+            'data_logu': 'RRRR-MM-DD',
+            'filtr_statusu': 'Wszystkie',
+            'logi': [
+                {'timestamp': 'RRRR-MM-DD HH:MM:SS', 'status': 'INFO', 'osoba': '...............', 'operacja': '...............'},
+                {'timestamp': 'RRRR-MM-DD HH:MM:SS', 'status': 'SUCCESS', 'osoba': '...............', 'operacja': '...............'},
+                {'timestamp': 'RRRR-MM-DD HH:MM:SS', 'status': 'WARNING', 'osoba': '...............', 'operacja': '...............'},
+                {'timestamp': 'RRRR-MM-DD HH:MM:SS', 'status': 'ERROR', 'osoba': '...............', 'operacja': '...............'},
+            ],
+            'data_wydruku': getattr(settings, 'PDF_LOGI_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_LOGI_WERSJA', 1),
+            'logo_path': f'file://{logo_path}',
+        }
+        template = 'pdf/logi.html'
+        filename = 'Wzor_Raport_logow.pdf'
+
+    elif typ == 'lista_uszkodzen':
+        context = {
+            'data_wydruku': getattr(settings, 'PDF_LISTA_USZKODZEN_DATA', ''),
+            'wersja_dokumentu': getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1),
+            'liczba': 'X',
+            'uszkodzenia': [
+                {'numer_karty': 'RRRR/XXX', 'data_uszkodzenia': 'RRRR-MM-DD', 'maszyna': '........',
+                 'zglaszajacy': '............', 'kategoria': '........', 'narzedzie': '............',
+                 'przyczyna': '...............', 'stracony_czas': '...'},
+            ],
+            'logo_path': f'file://{logo_path}',
+        }
+        template = 'pdf/lista_uszkodzen.html'
+        filename = 'Wzor_Lista_uszkodzen.pdf'
+
+    else:
+        return HttpResponse('Nieznany typ dokumentu', status=400)
+
+    # Renderowanie HTML
+    html_string = render_to_string(template, context)
+
+    # Generowanie PDF
+    pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
     return response

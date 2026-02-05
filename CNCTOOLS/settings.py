@@ -44,8 +44,21 @@ ALLOWED_HOSTS = ['*']  # Akceptuje polaczenia z wszystkich adresow (tylko dla DE
 
 
 # Dokumenty PDF - wersja i data (ręcznie zmieniane w razie potrzeby)
-PDF_WERSJA_DOKUMENTU = 2
-PDF_DATA_DOKUMENTU = '2026-01-22'
+# Karta zapotrzebowania
+PDF_ZAPOTRZEBOWANIE_WERSJA = 2
+PDF_ZAPOTRZEBOWANIE_DATA = '2026-01-22'
+
+# Karta uszkodzenia
+PDF_USZKODZENIE_WERSJA = 1
+PDF_USZKODZENIE_DATA = '2026-02-05'
+
+# Logi
+PDF_LOGI_WERSJA = 1
+PDF_LOGI_DATA = '2026-01-30'
+
+# Lista uszkodzeń
+PDF_LISTA_USZKODZEN_WERSJA = 1
+PDF_LISTA_USZKODZEN_DATA = '2026-02-05'
 
 
 # Application definition
@@ -192,8 +205,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '0.94.0g',
-        'MODYFIKACJA': '31.01.2026r.',
+        'WERSJA'     : '0.95.0g',
+        'MODYFIKACJA': '05.02.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

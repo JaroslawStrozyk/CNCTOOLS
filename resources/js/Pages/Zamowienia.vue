@@ -19,7 +19,7 @@
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
                         <i class="pi pi-user"></i>
-                        {{ auth.user.firstName }} {{ auth.user.lastName }}
+                        {{ auth.user.first_name }} {{ auth.user.last_name }}
                         <i class="pi pi-chevron-down"></i>
                     </button>
                     <Menu ref="userMenu" :model="userMenuItems" :popup="true" />

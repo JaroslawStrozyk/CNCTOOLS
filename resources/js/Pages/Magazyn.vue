@@ -174,6 +174,11 @@
                                                 {{ formatCustomDate(data.data_modyfikacji) }}
                                             </template>
                                         </Column>
+                                        <Column header="Oznaczenie">
+                                            <template #body="{ data }">
+                                                {{ data.oznaczenie || '' }}
+                                            </template>
+                                        </Column>
                                         <Column header="Opakowanie">
                                             <template #body="{ data }">
                                                 {{ data.jednostka === 'kompl' ? `Komplet (${data.ilosc_w_komplecie} szt.)` : 'Sztuka' }}
@@ -268,6 +273,14 @@
                                 <Column header="Zwrócił">
                                     <template #body="{ data }">
                                         <span v-if="data.pracownik_zwracajacy">{{ data.pracownik_zwracajacy.nazwisko }} {{ data.pracownik_zwracajacy.imie }}</span>
+                                        <span v-else-if="data.data_zwrotu">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Stan">
+                                    <template #body="{ data }">
+                                        <Tag v-if="data.stan_po_zwrocie_display"
+                                             :value="data.stan_po_zwrocie_display"
+                                             :severity="getStanSeverity(data.stan_po_zwrocie)" />
                                         <span v-else-if="data.data_zwrotu">-</span>
                                     </template>
                                 </Column>
@@ -548,6 +561,10 @@
                     <label>W jakim stanie technicznym zwracasz narzędzie?</label>
                     <div class="return-status-options">
                         <div class="field-radiobutton">
+                            <RadioButton v-model="returnStatus" inputId="stanNowe" value="nowe" />
+                            <label for="stanNowe">Nowym (nie używane)</label>
+                        </div>
+                        <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanUzywane" value="uzywane" />
                             <label for="stanUzywane">Dobrym (jako używane)</label>
                         </div>
@@ -565,6 +582,79 @@
             <template #footer>
                 <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="returnModalVisible = false" />
                 <Button label="Potwierdź zwrot" icon="pi pi-check" class="p-button-success" @click="confirmReturnTool" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Karta uszkodzenia -->
+        <Dialog v-model:visible="kartaUszkodzeniaModalVisible" header="Karta uszkodzenia" :modal="true" :style="{ width: '1100px' }">
+            <div class="p-fluid">
+                <div class="karta-row">
+                    <div class="field">
+                        <label>Nr karty</label>
+                        <InputText :value="kartaUszkodzenia.numer_karty" disabled class="karta-numer" />
+                    </div>
+                    <div class="field">
+                        <label>Data wystawienia</label>
+                        <InputText :value="kartaUszkodzenia.data_wystawienia" disabled />
+                    </div>
+                </div>
+                <div class="karta-row">
+                    <div class="field">
+                        <label>Maszyna</label>
+                        <InputText :value="kartaUszkodzenia.maszyna" disabled />
+                    </div>
+                    <div class="field">
+                        <label>Uszkodzone narzędzie</label>
+                        <InputText :value="kartaUszkodzenia.narzedzie" disabled />
+                    </div>
+                </div>
+                <div class="karta-row">
+                    <div class="field">
+                        <label>Kto zgłasza uszkodzenie?</label>
+                        <Dropdown
+                            v-model="kartaUszkodzenia.typ_zglaszajacego"
+                            :options="typZglaszajacegoOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            @change="onTypZglaszajacegoChange"
+                        />
+                    </div>
+                    <div class="field">
+                        <label>Nazwisko zgłaszającego</label>
+                        <InputText v-model="kartaUszkodzenia.nazwisko_zglaszajacego" disabled />
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Przyczyna uszkodzenia</label>
+                    <Textarea
+                        v-model="kartaUszkodzenia.przyczyna_uszkodzenia"
+                        rows="3"
+                        :autoResize="false"
+                        class="karta-textarea"
+                    />
+                </div>
+                <div class="field">
+                    <label>Uwagi</label>
+                    <Textarea
+                        v-model="kartaUszkodzenia.uwagi"
+                        rows="3"
+                        :autoResize="false"
+                        class="karta-textarea"
+                    />
+                </div>
+                <div class="field">
+                    <label>Stracony czas na maszynach</label>
+                    <InputText v-model="kartaUszkodzenia.stracony_czas" />
+                </div>
+                <Message v-if="kartaUszkodzeniaError" severity="error" :closable="false">{{ kartaUszkodzeniaError }}</Message>
+            </div>
+            <template #footer>
+                <Button class="p-button-text" @click="anulujKarteUszkodzenia">
+                    <i class="pi pi-arrow-left mr-2"></i> Wróć
+                </Button>
+                <Button class="p-button-danger" @click="zatwierdzKarteUszkodzenia">
+                    <i class="pi pi-check mr-2"></i> Zatwierdź kartę
+                </Button>
             </template>
         </Dialog>
 
@@ -684,6 +774,10 @@
                         optionValue="value"
                         placeholder="-- Wybierz lokalizację --"
                     />
+                </div>
+                <div class="field">
+                    <label>Oznaczenie (opcjonalne)</label>
+                    <InputText v-model="instanceModal.currentInstance.oznaczenie" placeholder="np. numer seryjny, partia" />
                 </div>
                 <template v-if="instanceModal.mode === 'add'">
                     <!-- Wybór typu dodawania dla narzędzi typu komplet (tylko gdy można wydawać sztuki) -->
@@ -817,6 +911,7 @@ import Message from 'primevue/message';
 import Menu from 'primevue/menu';
 import RadioButton from 'primevue/radiobutton';
 import ProgressSpinner from 'primevue/progressspinner';
+import Textarea from 'primevue/textarea';
 
 const API_URL = '/api';
 
@@ -891,6 +986,7 @@ const toolModalVisible = ref(false);
 const instanceModalVisible = ref(false);
 const deleteInstanceModalVisible = ref(false);
 const aboutModalVisible = ref(false);
+const kartaUszkodzeniaModalVisible = ref(false);
 
 // Modal data
 const issueData = ref({
@@ -921,6 +1017,26 @@ const returnData = ref({
 const typZwrotuOptions = [
     { label: 'Całość', value: 'calosc' },
     { label: 'Tylko część', value: 'czesc' }
+];
+
+// Karta uszkodzenia
+const kartaUszkodzenia = ref({
+    numer_karty: '',
+    data_wystawienia: '',
+    maszyna: '',
+    narzedzie: '',
+    typ_zglaszajacego: 'pobierajacy',
+    nazwisko_zglaszajacego: '',
+    przyczyna_uszkodzenia: '',
+    uwagi: '',
+    stracony_czas: ''
+});
+const kartaUszkodzeniaError = ref('');
+
+// Opcje dla typu zgłaszającego
+const typZglaszajacegoOptions = [
+    { label: 'Osoba pobierająca', value: 'pobierajacy' },
+    { label: 'Osoba zwracająca', value: 'zwracajacy' }
 ];
 
 const instanceModal = ref({
@@ -1174,6 +1290,16 @@ const getInstanceStatusLabel = (stan) => {
     return map[stan] || stan;
 };
 
+const getStanSeverity = (stan) => {
+    const map = {
+        'nowe': 'success',
+        'uzywane': 'info',
+        'uszkodzone': 'danger',
+        'uszkodzone_regeneracja': 'warning'
+    };
+    return map[stan] || 'secondary';
+};
+
 const onKategoriaChange = () => {
     selectedPodkategoriaId.value = null;
 };
@@ -1314,6 +1440,101 @@ const confirmReturnTool = async () => {
         }
     }
 
+    // Jeśli stan to 'uszkodzone', otwórz modal karty uszkodzenia
+    if (returnStatus.value === 'uszkodzone') {
+        otworzKarteUszkodzenia();
+        return;
+    }
+
+    // Dla innych stanów (w tym uszkodzone_regeneracja) - bezpośredni zwrot
+    await wykonajZwrot();
+};
+
+// Otwiera modal karty uszkodzenia z wypełnionymi danymi
+const otworzKarteUszkodzenia = async () => {
+    const usage = returnData.value.usage;
+    const today = new Date();
+    const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+
+    // Pobierz nazwisko pracownika pobierającego
+    const pracownikPobierajacy = usage?.pracownik;
+    const nazwiskoPobierajacy = pracownikPobierajacy
+        ? `${pracownikPobierajacy.nazwisko} ${pracownikPobierajacy.imie}`
+        : '';
+
+    // Pobierz nazwisko pracownika zwracającego
+    const pracownikZwracajacyObj = pracownicy.value.find(p => p.id === returnPracownikId.value);
+    const nazwiskoZwracajacy = pracownikZwracajacyObj
+        ? `${pracownikZwracajacyObj.nazwisko} ${pracownikZwracajacyObj.imie}`
+        : '';
+
+    // Pobierz następny numer karty z backendu
+    let numerKarty = `${today.getFullYear()}/1`;
+    try {
+        const response = await axios.get(`${API_URL}/uszkodzenia/nastepny_numer_karty/`);
+        numerKarty = response.data.numer_karty;
+    } catch (error) {
+        console.warn('Nie udało się pobrać numeru karty z backendu:', error);
+    }
+
+    kartaUszkodzenia.value = {
+        numer_karty: numerKarty,
+        data_wystawienia: formattedDate,
+        maszyna: usage?.maszyna?.nazwa || 'Brak',
+        narzedzie: usage?.egzemplarz?.narzedzie_typ?.opis || '',
+        typ_zglaszajacego: 'pobierajacy',
+        nazwisko_zglaszajacego: nazwiskoPobierajacy,
+        przyczyna_uszkodzenia: '',
+        uwagi: '',
+        stracony_czas: '',
+        // Dodatkowe dane do późniejszego użycia
+        _nazwisko_pobierajacy: nazwiskoPobierajacy,
+        _nazwisko_zwracajacy: nazwiskoZwracajacy
+    };
+    kartaUszkodzeniaError.value = '';
+
+    returnModalVisible.value = false;
+    kartaUszkodzeniaModalVisible.value = true;
+};
+
+// Zmiana typu zgłaszającego - aktualizuje nazwisko
+const onTypZglaszajacegoChange = () => {
+    if (kartaUszkodzenia.value.typ_zglaszajacego === 'pobierajacy') {
+        kartaUszkodzenia.value.nazwisko_zglaszajacego = kartaUszkodzenia.value._nazwisko_pobierajacy;
+    } else {
+        kartaUszkodzenia.value.nazwisko_zglaszajacego = kartaUszkodzenia.value._nazwisko_zwracajacy;
+    }
+};
+
+// Anuluj kartę i wróć do modalu zwrotu
+const anulujKarteUszkodzenia = () => {
+    kartaUszkodzeniaModalVisible.value = false;
+    returnModalVisible.value = true;
+};
+
+// Zatwierdź kartę uszkodzenia i wykonaj zwrot
+const zatwierdzKarteUszkodzenia = async () => {
+    kartaUszkodzeniaError.value = '';
+
+    // Wykonaj zwrot z danymi karty uszkodzenia
+    await wykonajZwrot({
+        przyczyna_uszkodzenia: kartaUszkodzenia.value.przyczyna_uszkodzenia,
+        uwagi: kartaUszkodzenia.value.uwagi,
+        stracony_czas: kartaUszkodzenia.value.stracony_czas,
+        typ_zglaszajacego: kartaUszkodzenia.value.typ_zglaszajacego,
+        nazwisko_zglaszajacego: kartaUszkodzenia.value.nazwisko_zglaszajacego
+    });
+
+    kartaUszkodzeniaModalVisible.value = false;
+};
+
+// Wykonuje faktyczny zwrot narzędzia
+const wykonajZwrot = async (kartaData = null) => {
+    const usage = returnData.value.usage;
+    const isPartialReturn = usage && usage.egzemplarz &&
+        usage.egzemplarz.ilosc_w_komplecie > 1 &&
+        returnData.value.typZwrotu === 'czesc';
+
     try {
         const payload = {
             stan_po_zwrocie: returnStatus.value,
@@ -1324,6 +1545,11 @@ const confirmReturnTool = async () => {
         if (isPartialReturn) {
             payload.czesciowy_zwrot = true;
             payload.ilosc_sztuk = returnData.value.iloscSztuk;
+        }
+
+        // Dodaj dane karty uszkodzenia jeśli są
+        if (kartaData) {
+            payload.karta_uszkodzenia = kartaData;
         }
 
         await axios.post(`${API_URL}/historia/${usageToReturnId.value}/zwrot/`, payload);
@@ -1459,6 +1685,7 @@ const openInstanceModal = (mode, instance = null) => {
             lokalizacja_id: null,
             faktura_zakupu_id: null,
             zamowienie_id: null,
+            oznaczenie: '',
             ilosc: 1,
             typDodawania: 'komplet',
             iloscSztukLuznych: 1
@@ -1502,7 +1729,8 @@ const saveInstance = async () => {
         lokalizacja_id: instanceModal.value.currentInstance.lokalizacja_id,
         narzedzie_typ_id: instanceModal.value.currentInstance.narzedzie_typ_id,
         faktura_zakupu_id: instanceModal.value.currentInstance.faktura_zakupu_id,
-        zamowienie_id: instanceModal.value.currentInstance.zamowienie_id
+        zamowienie_id: instanceModal.value.currentInstance.zamowienie_id,
+        oznaczenie: instanceModal.value.currentInstance.oznaczenie || null
     };
 
     // Obsługa luźnych sztuk dla narzędzi typu komplet
@@ -1582,11 +1810,7 @@ const openDeleteInstanceModal = (instance) => {
         ? `${instance.narzedzie_typ.podkategoria.kategoria.nazwa} / ${instance.narzedzie_typ.podkategoria.nazwa} - ${instance.narzedzie_typ.opis}`
         : instance.narzedzie_typ.opis;
 
-    if (instance.stan === 'uszkodzone') {
-        deleteModalMessage.value = `Ten egzemplarz (<strong>${toolName}</strong>) jest oznaczony jako uszkodzony. Zostanie przeniesiony do archiwum. Czy chcesz kontynuować?`;
-    } else {
-        deleteModalMessage.value = `Czy na pewno chcesz trwale usunąć egzemplarz: <strong>${toolName}</strong>?`;
-    }
+    deleteModalMessage.value = `Czy na pewno chcesz usunąć egzemplarz: <strong>${toolName}</strong>?`;
 
     deleteInstanceModalVisible.value = true;
 };
@@ -2471,6 +2695,30 @@ onMounted(() => {
 /* === WARTOŚĆ ZEROWA W TABELI === */
 .zero-value {
     color: #6c757d !important;
+}
+
+/* === KARTA USZKODZENIA === */
+.karta-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.karta-row .field {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.karta-numer {
+    font-weight: bold !important;
+    color: #ffc107 !important;
+    background-color: #3d444d !important;
+}
+
+:deep(.karta-textarea.p-inputtextarea) {
+    height: 76px !important;
+    min-height: 76px !important;
+    resize: none;
 }
 
 /* === ZAPOTRZEBOWANIA - EXPANSION === */

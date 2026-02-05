@@ -219,8 +219,87 @@
                         </div>
                     </div>
                 </TabPanel>
+
+                <!-- Dokumenty -->
+                <TabPanel header="Dokumenty">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Wzory dokumentów</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="documents-grid">
+                                <!-- Karta zapotrzebowania -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-file-pdf document-icon"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Karta zapotrzebowania</h4>
+                                        <p class="text-muted">Wzór dokumentu zamówienia narzędzi</p>
+                                        <p class="document-version">Wersja: {{ infoProgram?.PDF_ZAPOTRZEBOWANIE_WERSJA || '-' }} | Data: {{ infoProgram?.PDF_ZAPOTRZEBOWANIE_DATA || '-' }}</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-download" class="p-button-info p-button-sm" @click="downloadDocumentTemplate('zapotrzebowanie')" />
+                                        <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('zapotrzebowanie')" />
+                                    </div>
+                                </div>
+
+                                <!-- Karta uszkodzenia -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-file-pdf document-icon"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Karta uszkodzenia</h4>
+                                        <p class="text-muted">Wzór dokumentu zgłoszenia uszkodzenia narzędzia</p>
+                                        <p class="document-version">Wersja: {{ infoProgram?.PDF_USZKODZENIE_WERSJA || '-' }} | Data: {{ infoProgram?.PDF_USZKODZENIE_DATA || '-' }}</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-download" class="p-button-info p-button-sm" @click="downloadDocumentTemplate('uszkodzenie')" />
+                                        <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('uszkodzenie')" />
+                                    </div>
+                                </div>
+
+                                <!-- Logi -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-file-pdf document-icon"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Raport logów</h4>
+                                        <p class="text-muted">Wzór raportu z logów systemowych</p>
+                                        <p class="document-version">Wersja: {{ infoProgram?.PDF_LOGI_WERSJA || '-' }} | Data: {{ infoProgram?.PDF_LOGI_DATA || '-' }}</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-download" class="p-button-info p-button-sm" @click="downloadDocumentTemplate('logi')" />
+                                        <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('logi')" />
+                                    </div>
+                                </div>
+
+                                <!-- Lista uszkodzeń -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-file-pdf document-icon"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Lista uszkodzeń</h4>
+                                        <p class="text-muted">Wzór listy uszkodzonych narzędzi</p>
+                                        <p class="document-version">Wersja: {{ infoProgram?.PDF_LISTA_USZKODZEN_WERSJA || '-' }} | Data: {{ infoProgram?.PDF_LISTA_USZKODZEN_DATA || '-' }}</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-download" class="p-button-info p-button-sm" @click="downloadDocumentTemplate('lista_uszkodzen')" />
+                                        <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('lista_uszkodzen')" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TabPanel>
             </TabView>
         </main>
+
+        <!-- Ukryty iframe do drukowania -->
+        <iframe id="print-frame" style="display: none;"></iframe>
 
         <!-- Modal: Edycja/Dodawanie -->
         <Dialog v-model:visible="modalVisible" :header="modal.title" :modal="true" :style="{ width: '500px' }">
@@ -328,7 +407,8 @@ import ProgressSpinner from 'primevue/progressspinner';
 const API_URL = '/api';
 
 const props = defineProps({
-    urls: { type: Object, default: () => ({ magazyn: '/magazyn-inertia/', zakupy: '/zakupy-inertia/' }) }
+    urls: { type: Object, default: () => ({ magazyn: '/magazyn-inertia/', zakupy: '/zakupy-inertia/' }) },
+    infoProgram: { type: Object, default: () => ({}) }
 });
 
 // Oblicz URL powrotu na podstawie referrer lub parametru URL
@@ -563,6 +643,61 @@ const fetchAllData = async () => {
     }
 };
 
+// Computed dla infoProgram
+const infoProgram = computed(() => props.infoProgram);
+
+// Funkcje dokumentów
+const downloadDocumentTemplate = async (type) => {
+    try {
+        const response = await axios.get(`${API_URL}/dokumenty/wzor/${type}/`, {
+            responseType: 'blob'
+        });
+
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+
+        const filenames = {
+            'zapotrzebowanie': 'Wzor_Karta_zapotrzebowania.pdf',
+            'uszkodzenie': 'Wzor_Karta_uszkodzenia.pdf',
+            'logi': 'Wzor_Raport_logow.pdf',
+            'lista_uszkodzen': 'Wzor_Lista_uszkodzen.pdf'
+        };
+        link.setAttribute('download', filenames[type] || `Wzor_${type}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Błąd pobierania wzoru:', error);
+        alert('Nie udało się pobrać wzoru dokumentu.');
+    }
+};
+
+const printDocumentTemplate = async (type) => {
+    try {
+        const response = await axios.get(`${API_URL}/dokumenty/wzor/${type}/`, {
+            responseType: 'blob'
+        });
+
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const printFrame = document.getElementById('print-frame');
+        printFrame.src = url;
+
+        printFrame.onload = () => {
+            try {
+                printFrame.contentWindow.print();
+            } catch (e) {
+                // Jeśli drukowanie z iframe nie działa, otwórz w nowym oknie
+                window.open(url, '_blank');
+            }
+        };
+    } catch (error) {
+        console.error('Błąd drukowania wzoru:', error);
+        alert('Nie udało się wydrukować wzoru dokumentu.');
+    }
+};
+
 onMounted(async () => {
     await fetchAllData();
     await fetchEmailConfig();
@@ -733,5 +868,71 @@ code {
 
 .email-test-info {
     font-size: 14px;
+}
+
+/* Dokumenty */
+.documents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    padding: 10px;
+}
+
+.document-card {
+    background: linear-gradient(to bottom, #3d444d, #343a40);
+    border: 1px solid #495057;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.document-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.document-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 80px;
+    background: #2b3035;
+    border-radius: 6px;
+}
+
+.document-icon {
+    font-size: 3rem;
+    color: #dc3545;
+}
+
+.document-info h4 {
+    margin: 0 0 8px 0;
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+.document-info .text-muted {
+    color: #adb5bd;
+    font-size: 0.9rem;
+    margin: 0 0 8px 0;
+}
+
+.document-version {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin: 0;
+}
+
+.document-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: auto;
+}
+
+.document-actions .p-button {
+    flex: 1;
 }
 </style>
