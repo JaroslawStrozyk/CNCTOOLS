@@ -1,0 +1,5 @@
+# Ruff - konfiguracja dla projektu Django CNC-Tools
+
+[lint]
+# Ignoruj F401 (unused imports) w plikach gdzie Django wymaga importów w namespace
+per-file-ignores = { "settings.py" = ["F401"], "__init__.py" = ["F401"] }

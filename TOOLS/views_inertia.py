@@ -26,6 +26,8 @@ def get_info_program():
     info['PDF_LOGI_DATA'] = getattr(settings, 'PDF_LOGI_DATA', '')
     info['PDF_LISTA_USZKODZEN_WERSJA'] = getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1)
     info['PDF_LISTA_USZKODZEN_DATA'] = getattr(settings, 'PDF_LISTA_USZKODZEN_DATA', '')
+    info['PDF_INWENTURA_WERSJA'] = getattr(settings, 'PDF_INWENTURA_WERSJA', 1)
+    info['PDF_INWENTURA_DATA'] = getattr(settings, 'PDF_INWENTURA_DATA', '')
 
     return info
 

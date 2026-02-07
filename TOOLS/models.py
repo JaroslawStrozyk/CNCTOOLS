@@ -284,6 +284,7 @@ class HistoriaUzyciaNarzedzia(models.Model):
     data_wydania = models.DateTimeField(auto_now_add=True)
     data_zwrotu = models.DateTimeField(null=True, blank=True)
     uwagi = models.TextField(blank=True)
+    nr_zlecenia = models.CharField(max_length=100, blank=True, null=True, verbose_name='Nr zlecenia')
     stan_po_zwrocie = models.CharField(max_length=30, blank=True, null=True)
 
     class Meta:

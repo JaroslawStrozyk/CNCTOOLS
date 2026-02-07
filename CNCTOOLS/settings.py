@@ -60,6 +60,10 @@ PDF_LOGI_DATA = '2026-01-30'
 PDF_LISTA_USZKODZEN_WERSJA = 1
 PDF_LISTA_USZKODZEN_DATA = '2026-02-05'
 
+# Inwentura startowa
+PDF_INWENTURA_WERSJA = 1
+PDF_INWENTURA_DATA = '2026-02-07'
+
 
 # Application definition
 
@@ -205,8 +209,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '0.95.0g',
-        'MODYFIKACJA': '05.02.2026r.',
+        'WERSJA'     : '0.96.0g',
+        'MODYFIKACJA': '07.02.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

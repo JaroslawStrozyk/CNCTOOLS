@@ -115,7 +115,7 @@
             <TabPanel>
               <template #header>
                 <i class="pi pi-refresh mr-2"></i>
-                <span>Uszkodzone do regeneracji</span>
+                <span>Zużyte</span>
                 <Badge :value="filteredDamagesRegeneracja.length" style="background-color: #8B4513;" class="ml-2" />
               </template>
               <ProgressSpinner v-if="isLoading" class="loading-spinner" />

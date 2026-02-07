@@ -284,6 +284,12 @@
                                         <span v-else-if="data.data_zwrotu">-</span>
                                     </template>
                                 </Column>
+                                <Column header="Oznaczenie">
+                                    <template #body="{ data }">
+                                        {{ data.egzemplarz?.oznaczenie }}
+                                    </template>
+                                </Column>
+                                <Column field="nr_zlecenia" header="Nr zlecenia" />
                                 <Column field="uwagi" header="Uwagi" />
                                 <template #empty>
                                     <div class="empty-state">Brak historii użycia dla tego narzędzia.</div>
@@ -343,6 +349,12 @@
                                         {{ formatCustomDate(data.data_wydania) }}
                                     </template>
                                 </Column>
+                                <Column header="Oznaczenie">
+                                    <template #body="{ data }">
+                                        {{ data.egzemplarz?.oznaczenie }}
+                                    </template>
+                                </Column>
+                                <Column field="nr_zlecenia" header="Nr zlecenia" />
                                 <Column header="Akcje" style="width: 80px; text-align: center;">
                                     <template #body="{ data }">
                                         <Button icon="pi pi-undo" class="p-button-success p-button-sm" @click="showReturnModal(data.id)" title="Zwróć" />
@@ -504,6 +516,10 @@
                         :filter="true"
                     />
                 </div>
+                <div class="field">
+                    <label for="nr_zlecenia">Nr zlecenia (opcjonalne)</label>
+                    <InputText id="nr_zlecenia" v-model="issueData.nr_zlecenia" placeholder="Nr zlecenia" />
+                </div>
                 <Message v-if="issueError" severity="error" :closable="false">{{ issueError }}</Message>
             </div>
             <template #footer>
@@ -574,7 +590,7 @@
                         </div>
                         <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanUszkodzoneRegen" value="uszkodzone_regeneracja" />
-                            <label for="stanUszkodzoneRegen">Zużytym do regeneracji</label>
+                            <label for="stanUszkodzoneRegen">Zużytym</label>
                         </div>
                     </div>
                 </div>
@@ -773,6 +789,8 @@
                         optionLabel="label"
                         optionValue="value"
                         placeholder="-- Wybierz lokalizację --"
+                        :filter="true"
+                        filterPlaceholder="Szukaj..."
                     />
                 </div>
                 <div class="field">
@@ -994,7 +1012,8 @@ const issueData = ref({
     instance: null,
     pracownik_id: null,
     typWydania: 'komplet',  // 'komplet' lub 'sztuki' - dla narzędzi typu komplet
-    iloscSztuk: 1           // ilość sztuk do wydania, gdy typWydania === 'sztuki'
+    iloscSztuk: 1,          // ilość sztuk do wydania, gdy typWydania === 'sztuki'
+    nr_zlecenia: ''
 });
 
 // Opcje dla typu wydania (komplet vs sztuki)
@@ -1224,7 +1243,10 @@ const filteredUsagesInUse = computed(() => {
                 pracownikTekst = `${pracownik.nazwisko || ''} ${pracownik.imie || ''}`.toLowerCase();
             }
 
-            return narzedzieTekst.includes(query) || pracownikTekst.includes(query);
+            const zlecenieTekst = (usage.nr_zlecenia || '').toLowerCase();
+            const oznaczenieTekst = (usage.egzemplarz?.oznaczenie || '').toLowerCase();
+
+            return narzedzieTekst.includes(query) || pracownikTekst.includes(query) || zlecenieTekst.includes(query) || oznaczenieTekst.includes(query);
         });
     }
 
@@ -1240,8 +1262,7 @@ const opakowanieOptions = [
 const stanOptions = [
     { label: 'Nowe', value: 'nowe' },
     { label: 'Używane', value: 'uzywane' },
-    { label: 'Uszkodzone', value: 'uszkodzone' },
-    { label: 'Uszkodzone do regeneracji', value: 'uszkodzone_regeneracja' }
+    { label: 'Uszkodzone', value: 'uszkodzone' }
 ];
 
 // Methods
@@ -1380,7 +1401,8 @@ const issueTool = async () => {
         const payload = {
             egzemplarz_id: instance.id,
             maszyna_id: issueData.value.machine_id,
-            pracownik_id: issueData.value.pracownik_id
+            pracownik_id: issueData.value.pracownik_id,
+            nr_zlecenia: issueData.value.nr_zlecenia || null
         };
 
         // Dodaj info o częściowym wydaniu
@@ -3281,6 +3303,7 @@ onMounted(() => {
 .p-button {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
     font-weight: 500 !important;
+    gap: 0.5rem;
 }
 
 .p-button.p-button-success {

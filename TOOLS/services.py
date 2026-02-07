@@ -70,7 +70,7 @@ class EgzemplarzService:
     @staticmethod
     @transaction.atomic
     def wydaj_egzemplarz(egzemplarz_id, maszyna_id=None, pracownik_id=None,
-                         czesciowe_wydanie=False, ilosc_sztuk=None):
+                         czesciowe_wydanie=False, ilosc_sztuk=None, nr_zlecenia=None):
         """
         Wydaje egzemplarz narzędzia pracownikowi.
 
@@ -153,14 +153,16 @@ class EgzemplarzService:
             historia = HistoriaUzyciaNarzedzia.objects.create(
                 egzemplarz=egzemplarz_wydany,
                 maszyna_id=maszyna_id,
-                pracownik_id=pracownik_id
+                pracownik_id=pracownik_id,
+                nr_zlecenia=nr_zlecenia
             )
         else:
             # Standardowe wydanie całego egzemplarza
             historia = HistoriaUzyciaNarzedzia.objects.create(
                 egzemplarz=egzemplarz,
                 maszyna_id=maszyna_id,
-                pracownik_id=pracownik_id
+                pracownik_id=pracownik_id,
+                nr_zlecenia=nr_zlecenia
             )
 
         return historia

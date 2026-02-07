@@ -119,7 +119,7 @@
                             <DataTable :value="locations" :scrollable="true" scrollHeight="flex">
                                 <Column field="szafa" header="Szafa" />
                                 <Column field="polka" header="Półka" />
-                                <Column field="kolumna" header="Pozycja" />
+                                <Column field="kolumna" header="Kolumna" />
                                 <Column header="Akcje" style="width: 120px; text-align: center;">
                                     <template #body="{ data }">
                                         <button class="btn btn-secondary btn-icon mr-1" @click="openModal('location', 'edit', data)" title="Edycja">
@@ -291,6 +291,50 @@
                                         <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('lista_uszkodzen')" />
                                     </div>
                                 </div>
+
+                                <!-- Inwentura startowa -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-file-pdf document-icon"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Inwentura startowa</h4>
+                                        <p class="text-muted">Wzór arkusza do przeprowadzenia inwentury magazynowej</p>
+                                        <p class="document-version">Wersja: {{ infoProgram?.PDF_INWENTURA_WERSJA || '-' }} | Data: {{ infoProgram?.PDF_INWENTURA_DATA || '-' }}</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-download" class="p-button-info p-button-sm" @click="downloadDocumentTemplate('inwentura')" />
+                                        <Button label="Drukuj" icon="pi pi-print" class="p-button-secondary p-button-sm" @click="printDocumentTemplate('inwentura')" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TabPanel>
+
+                <!-- Eksporty -->
+                <TabPanel header="Eksporty">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Eksport danych</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="documents-grid">
+                                <!-- Inwentura startowa -->
+                                <div class="document-card">
+                                    <div class="document-preview">
+                                        <i class="pi pi-box document-icon" style="color: #198754;"></i>
+                                    </div>
+                                    <div class="document-info">
+                                        <h4>Inwentura startowa</h4>
+                                        <p class="text-muted">Pełny stan magazynowy na dzień wydruku - do przeprowadzenia inwentury</p>
+                                        <p class="document-version">Generuje listę wszystkich narzędzi z ilościami i lokalizacjami</p>
+                                    </div>
+                                    <div class="document-actions">
+                                        <Button label="PDF" icon="pi pi-file-pdf" class="p-button-danger p-button-sm" @click="downloadInwenturaPdf" :loading="inwenturaLoading.pdf" />
+                                        <Button label="XLS" icon="pi pi-file-excel" class="p-button-success p-button-sm" @click="downloadInwenturaXls" :loading="inwenturaLoading.xls" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -338,7 +382,7 @@
                 <template v-if="modal.type === 'location'">
                     <div class="field"><label>Szafa</label><InputText v-model="modal.currentItem.szafa" /></div>
                     <div class="field"><label>Półka</label><InputText v-model="modal.currentItem.polka" /></div>
-                    <div class="field"><label>Pozycja</label><InputText v-model="modal.currentItem.kolumna" /></div>
+                    <div class="field"><label>Kolumna</label><InputText v-model="modal.currentItem.kolumna" /></div>
                 </template>
 
                 <!-- Dostawca -->
@@ -373,7 +417,7 @@
             <div class="p-fluid">
                 <div class="field"><label>Nazwa/Numer szafy</label><InputText v-model="bulkAddData.szafa" placeholder="np. SZAFA-01" /></div>
                 <div class="field"><label>Liczba półek (oś Y)</label><InputNumber v-model="bulkAddData.liczba_polek" :min="1" /></div>
-                <div class="field"><label>Liczba pozycji (oś X)</label><InputNumber v-model="bulkAddData.liczba_kolumn" :min="1" /></div>
+                <div class="field"><label>Liczba kolumn (oś X)</label><InputNumber v-model="bulkAddData.liczba_kolumn" :min="1" /></div>
             </div>
             <template #footer>
                 <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="bulkAddModalVisible = false" />
@@ -440,6 +484,9 @@ const emailConfig = ref({});
 const emailLoading = ref(false);
 const emailTestSending = ref(false);
 const emailTestResult = ref(null);
+
+// Inwentura
+const inwenturaLoading = ref({ pdf: false, xls: false });
 
 // Modals
 const modalVisible = ref(false);
@@ -661,7 +708,8 @@ const downloadDocumentTemplate = async (type) => {
             'zapotrzebowanie': 'Wzor_Karta_zapotrzebowania.pdf',
             'uszkodzenie': 'Wzor_Karta_uszkodzenia.pdf',
             'logi': 'Wzor_Raport_logow.pdf',
-            'lista_uszkodzen': 'Wzor_Lista_uszkodzen.pdf'
+            'lista_uszkodzen': 'Wzor_Lista_uszkodzen.pdf',
+            'inwentura': 'Wzor_Inwentura_startowa.pdf'
         };
         link.setAttribute('download', filenames[type] || `Wzor_${type}.pdf`);
         document.body.appendChild(link);
@@ -695,6 +743,55 @@ const printDocumentTemplate = async (type) => {
     } catch (error) {
         console.error('Błąd drukowania wzoru:', error);
         alert('Nie udało się wydrukować wzoru dokumentu.');
+    }
+};
+
+// Funkcje eksportu inwentury
+const downloadInwenturaPdf = async () => {
+    inwenturaLoading.value.pdf = true;
+    try {
+        const response = await axios.get(`${API_URL}/eksport/inwentura/pdf/`, {
+            responseType: 'blob'
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Inwentura_${today}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Błąd pobierania inwentury PDF:', error);
+        alert('Nie udało się wygenerować dokumentu PDF inwentury.');
+    } finally {
+        inwenturaLoading.value.pdf = false;
+    }
+};
+
+const downloadInwenturaXls = async () => {
+    inwenturaLoading.value.xls = true;
+    try {
+        const response = await axios.get(`${API_URL}/eksport/inwentura/xls/`, {
+            responseType: 'blob'
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Inwentura_${today}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Błąd pobierania inwentury XLS:', error);
+        alert('Nie udało się wygenerować pliku Excel inwentury.');
+    } finally {
+        inwenturaLoading.value.xls = false;
     }
 };
 

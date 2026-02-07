@@ -35,3 +35,6 @@ django-jazzmin==3.0.1
 
 # === PDF Generation ===
 weasyprint==66.0
+
+# === Excel Generation ===
+openpyxl==3.1.5

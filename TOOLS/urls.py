@@ -102,4 +102,8 @@ urlpatterns = [
 
     # Wzory dokumentów (dla ISO)
     path('api/dokumenty/wzor/<str:typ>/', views.dokument_wzor_view, name='dokument-wzor'),
+
+    # Eksport inwentury
+    path('api/eksport/inwentura/pdf/', views.inwentura_pdf_view, name='inwentura-pdf'),
+    path('api/eksport/inwentura/xls/', views.inwentura_xls_view, name='inwentura-xls'),
 ]

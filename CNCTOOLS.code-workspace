@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "python.defaultInterpreterPath": "/opt/PROJEKTY/CNC-Tools/env/bin/python3",
+        "python.terminal.activateEnvironment": true,
+        "files.autoSave": "afterDelay"
+    },
+    "launch": {
+        "version": "0.2.0",
+        "configurations": []
+    }
+}

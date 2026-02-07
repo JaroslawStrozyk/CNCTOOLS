@@ -1028,6 +1028,7 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
         pracownik_id = request.data.get('pracownik_id')
         czesciowe_wydanie = request.data.get('czesciowe_wydanie', False)
         ilosc_sztuk = request.data.get('ilosc_sztuk')
+        nr_zlecenia = request.data.get('nr_zlecenia')
 
         try:
             historia = EgzemplarzService.wydaj_egzemplarz(
@@ -1035,7 +1036,8 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
                 maszyna_id=maszyna_id,
                 pracownik_id=pracownik_id,
                 czesciowe_wydanie=czesciowe_wydanie,
-                ilosc_sztuk=ilosc_sztuk
+                ilosc_sztuk=ilosc_sztuk,
+                nr_zlecenia=nr_zlecenia
             )
             # Logowanie wydania
             user_name = get_user_display_name(request.user)
@@ -2093,6 +2095,25 @@ def dokument_wzor_view(request, typ):
         template = 'pdf/lista_uszkodzen.html'
         filename = 'Wzor_Lista_uszkodzen.pdf'
 
+    elif typ == 'inwentura':
+        context = {
+            'data_wydruku': getattr(settings, 'PDF_INWENTURA_DATA', ''),
+            'godzina_wydruku': 'GG:MM',
+            'wersja_dokumentu': getattr(settings, 'PDF_INWENTURA_WERSJA', 1),
+            'liczba_pozycji': 'X',
+            'narzedzia': [
+                {'lp': '1', 'kategoria': '..................', 'opis': '..................',
+                 'numer_katalogowy': '..................', 'lokalizacja': '........', 'razem': '...'},
+                {'lp': '2', 'kategoria': '..................', 'opis': '..................',
+                 'numer_katalogowy': '..................', 'lokalizacja': '........', 'razem': '...'},
+                {'lp': '3', 'kategoria': '..................', 'opis': '..................',
+                 'numer_katalogowy': '..................', 'lokalizacja': '........', 'razem': '...'},
+            ],
+            'logo_path': f'file://{logo_path}',
+        }
+        template = 'pdf/inwentura.html'
+        filename = 'Wzor_Inwentura_startowa.pdf'
+
     else:
         return HttpResponse('Nieznany typ dokumentu', status=400)
 
@@ -2104,4 +2125,289 @@ def dokument_wzor_view(request, typ):
 
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return response
+
+
+# ========== EKSPORT INWENTURY ==========
+
+@login_required
+def inwentura_pdf_view(request):
+    """
+    Generuje PDF ze stanem magazynowym do przeprowadzenia inwentury.
+    Zawiera wszystkie narzędzia z ilościami i lokalizacjami.
+    """
+    import os
+    from django.http import HttpResponse
+    from django.template.loader import render_to_string
+    from weasyprint import HTML
+
+    logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+    today = datetime.now()
+
+    # Pobierz wszystkie typy narzędzi z egzemplarzami
+    narzedzia = NarzedzieMagazynowe.objects.prefetch_related(
+        'egzemplarze__lokalizacja',
+        'podkategoria__kategoria'
+    ).order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
+
+    # Przygotuj dane do inwentury
+    inwentura_data = []
+    lp = 0
+
+    for narzedzie in narzedzia:
+        # Grupuj egzemplarze po lokalizacji i stanie
+        egzemplarze = narzedzie.egzemplarze.filter(
+            stan__in=['nowe', 'uzywane']
+        ).order_by('lokalizacja__szafa', 'lokalizacja__polka', 'lokalizacja__kolumna', 'stan')
+
+        # Sprawdź też ile jest w użyciu
+        w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            egzemplarz__narzedzie_typ=narzedzie,
+            data_zwrotu__isnull=True
+        ).count()
+
+        # Zlicz egzemplarze wg stanu
+        nowe_count = egzemplarze.filter(stan='nowe').count()
+        uzywane_count = egzemplarze.filter(stan='uzywane').count()
+        razem = nowe_count + uzywane_count + w_uzyciu
+
+        if razem == 0:
+            continue  # Pomiń narzędzia bez egzemplarzy
+
+        lp += 1
+
+        # Kategoria/Podkategoria
+        if narzedzie.podkategoria:
+            kategoria = f"{narzedzie.podkategoria.kategoria.nazwa} / {narzedzie.podkategoria.nazwa}"
+        else:
+            kategoria = "Brak kategorii"
+
+        # Lokalizacje (unikalne)
+        lokalizacje = set()
+        for egz in egzemplarze:
+            if egz.lokalizacja:
+                lokalizacje.add(f"{egz.lokalizacja.szafa}/{egz.lokalizacja.polka}/{egz.lokalizacja.kolumna}")
+
+        inwentura_data.append({
+            'lp': lp,
+            'kategoria': kategoria,
+            'opis': narzedzie.opis,
+            'numer_katalogowy': narzedzie.numer_katalogowy or '-',
+            'lokalizacja': ', '.join(sorted(lokalizacje)) if lokalizacje else '-',
+            'razem': razem,
+        })
+
+    context = {
+        'data_wydruku': today.strftime('%Y-%m-%d'),
+        'godzina_wydruku': today.strftime('%H:%M'),
+        'narzedzia': inwentura_data,
+        'liczba_pozycji': len(inwentura_data),
+        'logo_path': f'file://{logo_path}',
+        'wersja_dokumentu': getattr(settings, 'PDF_INWENTURA_WERSJA', 1),
+    }
+
+    html_string = render_to_string('pdf/inwentura.html', context)
+    pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+    filename = f'Inwentura_{today.strftime("%Y-%m-%d")}.pdf'
+    response = HttpResponse(pdf_file, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def inwentura_xls_view(request):
+    """
+    Generuje plik Excel ze stanem magazynowym do przeprowadzenia inwentury.
+    Profesjonalny styl, gotowy do wydruku A4 landscape.
+    """
+    from django.http import HttpResponse
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    today = datetime.now()
+
+    # Utwórz nowy workbook
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Inwentura"
+
+    # Ustawienia strony - A4 landscape
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.print_options.horizontalCentered = True
+    ws.page_margins.left = 0.4
+    ws.page_margins.right = 0.4
+    ws.page_margins.top = 0.5
+    ws.page_margins.bottom = 0.5
+
+    # Style - zielony motyw (spójny z PDF)
+    green_color = "198754"
+    green_light = "d4edda"
+    title_font = Font(bold=True, size=14, color="FFFFFF")
+    title_fill = PatternFill(start_color=green_color, end_color=green_color, fill_type="solid")
+    header_font = Font(bold=True, size=10, color="FFFFFF")
+    header_fill = PatternFill(start_color=green_color, end_color=green_color, fill_type="solid")
+    info_fill = PatternFill(start_color=green_light, end_color=green_light, fill_type="solid")
+    info_font = Font(size=10, italic=True, color="155724")
+    data_font = Font(size=9)
+    data_font_bold = Font(size=9, bold=True)
+    alt_fill = PatternFill(start_color="f8f9fa", end_color="f8f9fa", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin', color='dee2e6'),
+        right=Side(style='thin', color='dee2e6'),
+        top=Side(style='thin', color='dee2e6'),
+        bottom=Side(style='thin', color='dee2e6')
+    )
+    center_align = Alignment(horizontal='center', vertical='center')
+    left_align = Alignment(horizontal='left', vertical='center', wrap_text=False)
+    right_align = Alignment(horizontal='right', vertical='center')
+
+    # Nagłówek dokumentu (wiersz 1)
+    ws.merge_cells('A1:H1')
+    ws['A1'] = f'INWENTURA MAGAZYNU NARZĘDZI'
+    ws['A1'].font = title_font
+    ws['A1'].fill = title_fill
+    ws['A1'].alignment = center_align
+    ws.row_dimensions[1].height = 25
+
+    # Info wiersz (wiersz 2)
+    ws.merge_cells('A2:H2')
+    ws['A2'] = f'Stan na dzień: {today.strftime("%Y-%m-%d")} godz. {today.strftime("%H:%M")} | Liczba pozycji: {{POZYCJE}}'
+    ws['A2'].fill = info_fill
+    ws['A2'].font = info_font
+    ws['A2'].font = Font(size=10, italic=True)
+    ws['A2'].alignment = center_align
+    ws.row_dimensions[2].height = 18
+
+    # Nagłówki kolumn (wiersz 3)
+    # Szerokości kolumn zoptymalizowane dla A4 landscape (~277mm - marginesy = ~250mm użyteczne)
+    headers = ['Lp.', 'Kategoria', 'Opis / Specyfikacja', 'Nr katalogowy', 'Lokalizacja', 'Stan', 'Stan fakt.', 'Uwagi']
+    col_widths = [5, 32, 50, 18, 20, 8, 12, 40]
+
+    for col_idx, (header, width) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=3, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = center_align
+        ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+    ws.row_dimensions[3].height = 20
+
+    # Pobierz dane
+    narzedzia = NarzedzieMagazynowe.objects.prefetch_related(
+        'egzemplarze__lokalizacja',
+        'podkategoria__kategoria'
+    ).order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
+
+    row_idx = 4
+    lp = 0
+
+    for narzedzie in narzedzia:
+        egzemplarze = narzedzie.egzemplarze.filter(stan__in=['nowe', 'uzywane'])
+
+        w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            egzemplarz__narzedzie_typ=narzedzie,
+            data_zwrotu__isnull=True
+        ).count()
+
+        nowe_count = egzemplarze.filter(stan='nowe').count()
+        uzywane_count = egzemplarze.filter(stan='uzywane').count()
+        razem = nowe_count + uzywane_count + w_uzyciu
+
+        if razem == 0:
+            continue
+
+        lp += 1
+
+        if narzedzie.podkategoria:
+            kategoria = f"{narzedzie.podkategoria.kategoria.nazwa} / {narzedzie.podkategoria.nazwa}"
+        else:
+            kategoria = "Brak kategorii"
+
+        lokalizacje = set()
+        for egz in egzemplarze:
+            if egz.lokalizacja:
+                lokalizacje.add(f"{egz.lokalizacja.szafa}/{egz.lokalizacja.polka}/{egz.lokalizacja.kolumna}")
+
+        row_data = [
+            lp,
+            kategoria,
+            narzedzie.opis,
+            narzedzie.numer_katalogowy or '-',
+            ', '.join(sorted(lokalizacje)) if lokalizacje else '-',
+            razem,
+            '',  # Stan faktyczny - puste
+            '',  # Uwagi - puste
+        ]
+
+        # Alternatywne tło dla parzystych wierszy
+        use_alt_fill = (lp % 2 == 0)
+
+        for col_idx, value in enumerate(row_data, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = thin_border
+            cell.font = data_font_bold if col_idx == 6 else data_font
+
+            if col_idx in [1, 6, 7]:
+                cell.alignment = center_align
+            else:
+                cell.alignment = left_align
+
+            if use_alt_fill:
+                cell.fill = alt_fill
+
+        ws.row_dimensions[row_idx].height = 16
+        row_idx += 1
+
+    # Aktualizuj liczbę pozycji w wierszu info
+    ws['A2'] = f'Stan na dzień: {today.strftime("%Y-%m-%d")} godz. {today.strftime("%H:%M")} | Liczba pozycji: {lp}'
+
+    # Pusta linia
+    row_idx += 1
+
+    # Podsumowanie
+    ws.merge_cells(f'A{row_idx}:C{row_idx}')
+    ws[f'A{row_idx}'] = f'Razem pozycji do sprawdzenia: {lp}'
+    ws[f'A{row_idx}'].font = Font(bold=True, size=10)
+    row_idx += 1
+
+    ws.merge_cells(f'A{row_idx}:C{row_idx}')
+    ws[f'A{row_idx}'] = f'Data wydruku: {today.strftime("%Y-%m-%d %H:%M")}'
+    ws[f'A{row_idx}'].font = Font(size=9)
+    row_idx += 2
+
+    # Podpisy
+    ws.merge_cells(f'A{row_idx}:D{row_idx}')
+    ws[f'A{row_idx}'] = 'Podpis osoby przeprowadzającej inwenturę: _______________________________'
+    ws[f'A{row_idx}'].font = Font(size=9)
+    row_idx += 1
+
+    ws.merge_cells(f'A{row_idx}:D{row_idx}')
+    ws[f'A{row_idx}'] = 'Podpis osoby odpowiedzialnej za magazyn: _______________________________'
+    ws[f'A{row_idx}'].font = Font(size=9)
+
+    # Stopka drukowania
+    ws.oddFooter.center.text = "Strona &P z &N"
+    ws.oddFooter.center.size = 9
+    ws.oddHeader.left.text = "CNC Tools - Inwentura magazynu"
+    ws.oddHeader.left.size = 8
+    ws.oddHeader.right.text = today.strftime("%Y-%m-%d")
+    ws.oddHeader.right.size = 8
+
+    # Powtarzanie nagłówków na każdej stronie
+    ws.print_title_rows = '1:3'
+
+    # Zwróć plik
+    response = HttpResponse(
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    filename = f'Inwentura_{today.strftime("%Y-%m-%d")}.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
     return response
