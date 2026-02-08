@@ -246,6 +246,11 @@ class EgzemplarzNarzedzia(models.Model):
         default='szt'
     )
     ilosc_w_komplecie = models.PositiveIntegerField(default=1)
+    nowy_wpis = models.BooleanField(
+        default=False,
+        verbose_name='Nowy wpis',
+        help_text='Egzemplarz z auto-wygenerowanym oznaczeniem oczekujący na pobranie etykiety'
+    )
 
     class Meta:
         verbose_name_plural = "Egzemplarze narzędzi"

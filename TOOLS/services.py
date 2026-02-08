@@ -9,6 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
+import re
 from .models import (
     EgzemplarzNarzedzia,
     HistoriaUzyciaNarzedzia,
@@ -66,6 +67,53 @@ class EgzemplarzService:
     """
     Serwis zawierający logikę biznesową związaną z egzemplarzami narzędzi.
     """
+
+    @staticmethod
+    def generuj_oznaczenie(narzedzie_typ):
+        """
+        Generuje oznaczenie w formacie XX-MMRR-NN dla narzędzi z wydawanie_sztuk=True.
+
+        Args:
+            narzedzie_typ: Instancja NarzedzieMagazynowe
+
+        Returns:
+            str lub None: Wygenerowane oznaczenie lub None jeśli nie dotyczy
+        """
+        if narzedzie_typ.opakowanie != 'szt' or not narzedzie_typ.podkategoria:
+            return None
+
+        # Buduj skrót XX: usuń tekst w nawiasach, weź pierwsze litery słów
+        def skrot(nazwa):
+            czysta = re.sub(r'\(.*?\)', '', nazwa).strip()
+            return ''.join(word[0] for word in czysta.split() if word)
+
+        kategoria_nazwa = narzedzie_typ.podkategoria.kategoria.nazwa
+        podkategoria_nazwa = narzedzie_typ.podkategoria.nazwa
+        prefix_xx = (skrot(kategoria_nazwa) + skrot(podkategoria_nazwa)).upper()
+
+        # MMRR — miesiąc (2 cyfry) + rok (2 ostatnie cyfry)
+        now = timezone.now()
+        mm = f"{now.month:02d}"
+        rr = f"{now.year % 100:02d}"
+        prefix = f"{prefix_xx}-{mm}{rr}"
+
+        # Znajdź max NN wśród istniejących oznaczeń z tym samym prefixem
+        pattern = f"{prefix}-"
+        istniejace = EgzemplarzNarzedzia.objects.filter(
+            oznaczenie__startswith=pattern
+        ).values_list('oznaczenie', flat=True)
+
+        max_nn = 0
+        for ozn in istniejace:
+            try:
+                nn = int(ozn.split('-')[-1])
+                if nn > max_nn:
+                    max_nn = nn
+            except (ValueError, IndexError):
+                pass
+
+        nowy_nn = max_nn + 1
+        return f"{prefix}-{nowy_nn:02d}"
 
     @staticmethod
     @transaction.atomic

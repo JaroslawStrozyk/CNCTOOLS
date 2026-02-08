@@ -980,6 +980,47 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
         return queryset.order_by('-data_zakupu')
 
+    @action(detail=True, methods=['get'])
+    def etykieta(self, request, pk=None):
+        """Generuje etykietę PNG z oznaczeniem egzemplarza."""
+        from PIL import Image, ImageDraw, ImageFont
+        import io
+
+        egzemplarz = self.get_object()
+
+        if not egzemplarz.oznaczenie:
+            return Response(
+                {'error': 'Egzemplarz nie ma oznaczenia'},
+                status=400
+            )
+
+        # Generuj PNG: 400x100px, 200 DPI
+        img = Image.new('RGB', (400, 100), color='white')
+        draw = ImageDraw.Draw(img)
+
+        try:
+            font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 40)
+        except OSError:
+            font = ImageFont.load_default()
+
+        # Wycentruj tekst
+        bbox = draw.textbbox((0, 0), egzemplarz.oznaczenie, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (400 - text_width) / 2
+        y = (100 - text_height) / 2
+
+        draw.text((x, y), egzemplarz.oznaczenie, fill='black', font=font)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG', dpi=(200, 200))
+        buffer.seek(0)
+
+        from django.http import HttpResponse
+        response = HttpResponse(buffer.getvalue(), content_type='image/png')
+        response['Content-Disposition'] = f'attachment; filename="{egzemplarz.oznaczenie}.png"'
+        return response
+
     def destroy(self, request, *args, **kwargs):
         """
         Usuwa egzemplarz narzędzia i loguje operację.
@@ -1499,6 +1540,14 @@ class RealizacjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
                             ilosc_w_komplecie=pozycja.pozycja_zamowienia.ilosc_w_komplecie,
                             faktura_zakupu=pozycja.faktura_zakupu
                         )
+
+                        # Auto-generowanie oznaczenia dla narzędzi kupowanych na sztuki
+                        if narzedzie_typ.opakowanie == 'szt' and not egzemplarz.oznaczenie:
+                            oznaczenie = EgzemplarzService.generuj_oznaczenie(narzedzie_typ)
+                            if oznaczenie:
+                                egzemplarz.oznaczenie = oznaczenie
+                                egzemplarz.nowy_wpis = True
+                                egzemplarz.save(update_fields=['oznaczenie', 'nowy_wpis'])
 
                         utworzone_egzemplarze.append({
                             'narzedzie': narzedzie_typ.opis,

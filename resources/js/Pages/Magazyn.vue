@@ -161,7 +161,7 @@
                             </div>
                             <div v-else class="details-content">
                                 <div class="instances-table">
-                                    <DataTable :value="toolInstances" :scrollable="true" scrollHeight="flex" class="instances-datatable">
+                                    <DataTable :value="toolInstances" :scrollable="true" scrollHeight="flex" class="instances-datatable" :rowClass="instanceRowClass">
                                         <Column header="Lokalizacja">
                                             <template #body="{ data }">
                                                 <span :title="data.faktura_zakupu ? `Faktura: ${data.faktura_zakupu.numer_faktury}` : ''">
@@ -176,7 +176,16 @@
                                         </Column>
                                         <Column header="Oznaczenie">
                                             <template #body="{ data }">
-                                                {{ data.oznaczenie || '' }}
+                                                <div class="oznaczenie-cell">
+                                                    <span>{{ data.oznaczenie || '' }}</span>
+                                                    <Button
+                                                        v-if="data.nowy_wpis && data.oznaczenie"
+                                                        icon="pi pi-tag"
+                                                        class="p-button-sm p-button-text etykieta-btn"
+                                                        title="Pobierz etykietę PNG"
+                                                        @click="downloadEtykieta(data)"
+                                                    />
+                                                </div>
                                             </template>
                                         </Column>
                                         <Column header="Opakowanie">
@@ -793,7 +802,7 @@
                         filterPlaceholder="Szukaj..."
                     />
                 </div>
-                <div class="field">
+                <div class="field" v-if="!(instanceModal.mode === 'add' && selectedToolForDetails && selectedToolForDetails.opakowanie === 'szt')">
                     <label>Oznaczenie (opcjonalne)</label>
                     <InputText v-model="instanceModal.currentInstance.oznaczenie" placeholder="np. numer seryjny, partia" />
                 </div>
@@ -1272,6 +1281,10 @@ const toggleUserMenu = (event) => {
 
 const rowClass = (data) => {
     return selectedToolForDetails.value && selectedToolForDetails.value.id === data.id ? 'selected-row' : '';
+};
+
+const instanceRowClass = (data) => {
+    return data.nowy_wpis ? 'nowy-wpis-row' : '';
 };
 
 const formatCustomDate = (dateString) => {
@@ -1825,6 +1838,76 @@ const saveInstance = async () => {
     }
 };
 
+// Referencja do katalogu wybranego przez użytkownika (File System Access API)
+let savedDirHandle = null;
+
+const downloadEtykieta = async (instance) => {
+    try {
+        const response = await axios.get(`${API_URL}/egzemplarze/${instance.id}/etykieta/`, {
+            responseType: 'blob'
+        });
+
+        const blob = new Blob([response.data], { type: 'image/png' });
+        const fileName = `${instance.oznaczenie}.png`;
+        let saved = false;
+
+        // File System Access API — pozwala wybrać katalog i zapamiętuje go
+        if (window.showSaveFilePicker) {
+            try {
+                const opts = {
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'Obraz PNG',
+                        accept: { 'image/png': ['.png'] }
+                    }]
+                };
+
+                // Jeśli mamy zapamiętany katalog, użyj go jako startowego
+                if (savedDirHandle) {
+                    opts.startIn = savedDirHandle;
+                }
+
+                const fileHandle = await window.showSaveFilePicker(opts);
+
+                // Zapamiętaj katalog nadrzędny (nie da się go pobrać bezpośrednio,
+                // ale przeglądarka zapamiętuje ostatni wybór w showSaveFilePicker)
+                savedDirHandle = fileHandle;
+
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                saved = true;
+            } catch (err) {
+                // Użytkownik anulował dialog — nie robimy nic
+                if (err.name === 'AbortError') return;
+                console.warn('File System Access API fallback:', err);
+            }
+        }
+
+        // Fallback dla przeglądarek bez File System Access API
+        if (!saved) {
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Po pobraniu — oznacz jako nie-nowy
+        await axios.patch(`${API_URL}/egzemplarze/${instance.id}/`, { nowy_wpis: false });
+
+        // Odśwież listę egzemplarzy
+        if (selectedToolForDetails.value) {
+            await getToolInstances(selectedToolForDetails.value);
+        }
+    } catch (error) {
+        console.error('Błąd pobierania etykiety:', error);
+    }
+};
+
 const openDeleteInstanceModal = (instance) => {
     instanceToDelete.value = instance;
 
@@ -2355,6 +2438,31 @@ onMounted(() => {
 :deep(.selected-row td) {
     background-color: #4a3728 !important;
     color: #fff !important;
+}
+
+/* Nowy wpis - brązowe wyróżnienie (jak przycisk Zwroty) */
+:deep(.nowy-wpis-row),
+:deep(.nowy-wpis-row td) {
+    background-color: #3b2510 !important;
+    border-left: 3px solid #8B4513 !important;
+}
+
+.oznaczenie-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.etykieta-btn {
+    padding: 0.15rem 0.3rem !important;
+    min-width: unset !important;
+    color: #cd7f32 !important;
+    flex-shrink: 0;
+}
+
+.etykieta-btn:hover {
+    color: #ffc107 !important;
+    background-color: rgba(139, 69, 19, 0.2) !important;
 }
 
 /* Sticky header dla tabel */

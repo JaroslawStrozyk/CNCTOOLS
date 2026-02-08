@@ -1,6 +1,7 @@
 # tools/serializers.py
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db import transaction
 from .models import (
     Kategoria, Podkategoria, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
@@ -170,6 +171,8 @@ class EgzemplarzNarzedziaSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def create(self, validated_data):
+        from .services import EgzemplarzService
+
         # Pobierz typ narzędzia
         narzedzie_typ = validated_data.get('narzedzie_typ')
 
@@ -181,7 +184,18 @@ class EgzemplarzNarzedziaSerializer(serializers.ModelSerializer):
             if 'ilosc_w_komplecie' not in validated_data:
                 validated_data['ilosc_w_komplecie'] = narzedzie_typ.ilosc_w_opakowaniu
 
-        return super().create(validated_data)
+        with transaction.atomic():
+            instance = super().create(validated_data)
+
+            # Auto-generowanie oznaczenia dla narzędzi kupowanych na sztuki
+            if narzedzie_typ and narzedzie_typ.opakowanie == 'szt' and not instance.oznaczenie:
+                oznaczenie = EgzemplarzService.generuj_oznaczenie(narzedzie_typ)
+                if oznaczenie:
+                    instance.oznaczenie = oznaczenie
+                    instance.nowy_wpis = True
+                    instance.save(update_fields=['oznaczenie', 'nowy_wpis'])
+
+        return instance
 
 
 class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
