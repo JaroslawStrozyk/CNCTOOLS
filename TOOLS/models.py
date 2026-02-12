@@ -246,6 +246,14 @@ class EgzemplarzNarzedzia(models.Model):
         default='szt'
     )
     ilosc_w_komplecie = models.PositiveIntegerField(default=1)
+    komplet_zrodlowy = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='wydane_sztuki',
+        help_text='Komplet, z którego wydano te sztuki'
+    )
     nowy_wpis = models.BooleanField(
         default=False,
         verbose_name='Nowy wpis',

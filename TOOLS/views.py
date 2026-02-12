@@ -978,12 +978,15 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
         if narzedzie_typ_id:
             queryset = queryset.filter(narzedzie_typ_id=narzedzie_typ_id)
 
+        # Ukryj egzemplarze z ilosc_w_komplecie=0 (duchy po scaleniu, istnieją dla historii)
+        queryset = queryset.filter(ilosc_w_komplecie__gt=0)
+
         return queryset.order_by('-data_zakupu')
 
     @action(detail=True, methods=['get'])
     def etykieta(self, request, pk=None):
-        """Generuje etykietę PNG z oznaczeniem egzemplarza."""
-        from PIL import Image, ImageDraw, ImageFont
+        """Generuje etykietę DXF z oznaczeniem egzemplarza."""
+        import ezdxf
         import io
 
         egzemplarz = self.get_object()
@@ -994,31 +997,26 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
                 status=400
             )
 
-        # Generuj PNG: 400x100px, 200 DPI
-        img = Image.new('RGB', (400, 100), color='white')
-        draw = ImageDraw.Draw(img)
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
 
-        try:
-            font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 40)
-        except OSError:
-            font = ImageFont.load_default()
+        msp.add_text(
+            egzemplarz.oznaczenie,
+            dxfattribs={
+                'height': 10,
+                'halign': ezdxf.enums.TextHAlign.CENTER,
+                'valign': ezdxf.enums.TextVAlign.MIDDLE,
+                'insert': (0, 0),
+                'align_point': (0, 0),
+            }
+        )
 
-        # Wycentruj tekst
-        bbox = draw.textbbox((0, 0), egzemplarz.oznaczenie, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        x = (400 - text_width) / 2
-        y = (100 - text_height) / 2
-
-        draw.text((x, y), egzemplarz.oznaczenie, fill='black', font=font)
-
-        buffer = io.BytesIO()
-        img.save(buffer, format='PNG', dpi=(200, 200))
-        buffer.seek(0)
+        buffer = io.StringIO()
+        doc.write(buffer)
 
         from django.http import HttpResponse
-        response = HttpResponse(buffer.getvalue(), content_type='image/png')
-        response['Content-Disposition'] = f'attachment; filename="{egzemplarz.oznaczenie}.png"'
+        response = HttpResponse(buffer.getvalue().encode('utf-8'), content_type='application/dxf')
+        response['Content-Disposition'] = f'attachment; filename="{egzemplarz.oznaczenie}.dxf"'
         return response
 
     def destroy(self, request, *args, **kwargs):

@@ -171,7 +171,7 @@
                                         </Column>
                                         <Column header="Data">
                                             <template #body="{ data }">
-                                                {{ formatCustomDate(data.data_modyfikacji) }}
+                                                <span v-html="formatCustomDate(data.data_modyfikacji)"></span>
                                             </template>
                                         </Column>
                                         <Column header="Oznaczenie">
@@ -190,7 +190,9 @@
                                         </Column>
                                         <Column header="Opakowanie">
                                             <template #body="{ data }">
-                                                {{ data.jednostka === 'kompl' ? `Komplet (${data.ilosc_w_komplecie} szt.)` : 'Sztuka' }}
+                                                <template v-if="data.jednostka === 'kompl'">Komplet ({{ data.ilosc_w_komplecie }} szt.)</template>
+                                                <template v-else-if="data.narzedzie_typ && data.narzedzie_typ.opakowanie === 'kompl'">{{ data.ilosc_w_komplecie }} z kompletu</template>
+                                                <template v-else>Sztuka</template>
                                             </template>
                                         </Column>
                                         <Column header="Stan">
@@ -270,12 +272,12 @@
                                 </Column>
                                 <Column header="Data pobrania">
                                     <template #body="{ data }">
-                                        {{ formatCustomDate(data.data_wydania) }}
+                                        <span v-html="formatCustomDate(data.data_wydania)"></span>
                                     </template>
                                 </Column>
                                 <Column header="Data zwrotu">
                                     <template #body="{ data }">
-                                        <span v-if="data.data_zwrotu">{{ formatCustomDate(data.data_zwrotu) }}</span>
+                                        <span v-if="data.data_zwrotu" v-html="formatCustomDate(data.data_zwrotu)"></span>
                                         <Tag v-else severity="danger" value="W użyciu" />
                                     </template>
                                 </Column>
@@ -291,6 +293,13 @@
                                              :value="data.stan_po_zwrocie_display"
                                              :severity="getStanSeverity(data.stan_po_zwrocie)" />
                                         <span v-else-if="data.data_zwrotu">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Opakowanie">
+                                    <template #body="{ data }">
+                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet ({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</template>
+                                        <template v-else-if="data.egzemplarz?.narzedzie_typ?.opakowanie === 'kompl'">{{ data.egzemplarz.ilosc_w_komplecie }} z kompletu</template>
+                                        <template v-else>Sztuka</template>
                                     </template>
                                 </Column>
                                 <Column header="Oznaczenie">
@@ -355,12 +364,19 @@
                                 </Column>
                                 <Column header="Data pobrania">
                                     <template #body="{ data }">
-                                        {{ formatCustomDate(data.data_wydania) }}
+                                        <span v-html="formatCustomDate(data.data_wydania)"></span>
                                     </template>
                                 </Column>
                                 <Column header="Oznaczenie">
                                     <template #body="{ data }">
                                         {{ data.egzemplarz?.oznaczenie }}
+                                    </template>
+                                </Column>
+                                <Column header="Opakowanie">
+                                    <template #body="{ data }">
+                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet ({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</template>
+                                        <template v-else-if="data.egzemplarz?.narzedzie_typ?.opakowanie === 'kompl'">{{ data.egzemplarz.ilosc_w_komplecie }} z kompletu</template>
+                                        <template v-else>Sztuka</template>
                                     </template>
                                 </Column>
                                 <Column field="nr_zlecenia" header="Nr zlecenia" />
@@ -406,7 +422,7 @@
                                 </Column>
                                 <Column header="Data wysłania">
                                     <template #body="{ data }">
-                                        {{ formatCustomDate(data.data_wyslania) }}
+                                        <span v-html="formatCustomDate(data.data_wyslania)"></span>
                                     </template>
                                 </Column>
                                 <Column header="Pozycji" style="width: 80px; text-align: center;">
@@ -472,7 +488,7 @@
                 <!-- Info o egzemplarzu - czy komplet czy sztuki -->
                 <div class="field" v-if="issueData.instance">
                     <small class="text-muted">
-                        <template v-if="issueData.instance.jednostka === 'kompl'">
+                        <template v-if="issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.opakowanie === 'kompl'">
                             Komplet ({{ issueData.instance.ilosc_w_komplecie }} szt.)
                         </template>
                         <template v-else>
@@ -481,7 +497,7 @@
                     </small>
                 </div>
                 <!-- Wybór typu wydania dla kompletów (tylko gdy narzędzie pozwala na wydawanie sztuk) -->
-                <div class="field" v-if="issueData.instance && issueData.instance.jednostka === 'kompl' && issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.wydawanie_sztuk">
+                <div class="field" v-if="issueData.instance && issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.wydawanie_sztuk && issueData.instance.ilosc_w_komplecie > 1">
                     <label>Typ wydania</label>
                     <Dropdown
                         v-model="issueData.typWydania"
@@ -491,12 +507,12 @@
                     />
                 </div>
                 <!-- Ilość sztuk do wydania -->
-                <div class="field" v-if="issueData.instance && issueData.instance.jednostka === 'kompl' && issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.wydawanie_sztuk && issueData.typWydania === 'sztuki'">
+                <div class="field" v-if="issueData.instance && issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.wydawanie_sztuk && issueData.instance.ilosc_w_komplecie > 1 && issueData.typWydania === 'sztuki'">
                     <label>Ilość sztuk do wydania</label>
                     <InputNumber
                         v-model="issueData.iloscSztuk"
                         :min="1"
-                        :max="issueData.instance.ilosc_w_komplecie - 1"
+                        :max="issueData.instance.ilosc_w_komplecie"
                     />
                     <small class="text-muted">
                         Pozostanie w magazynie: {{ issueData.instance.ilosc_w_komplecie - issueData.iloscSztuk }} szt.
@@ -514,7 +530,7 @@
                     />
                 </div>
                 <div class="field">
-                    <label for="employee">Wybierz pracownika</label>
+                    <label for="employee">Wybierz pracownika <span class="required-mark">*</span></label>
                     <Dropdown
                         id="employee"
                         v-model="issueData.pracownik_id"
@@ -526,7 +542,7 @@
                     />
                 </div>
                 <div class="field">
-                    <label for="nr_zlecenia">Nr zlecenia (opcjonalne)</label>
+                    <label for="nr_zlecenia">Nr zlecenia</label>
                     <InputText id="nr_zlecenia" v-model="issueData.nr_zlecenia" placeholder="Nr zlecenia" />
                 </div>
                 <Message v-if="issueError" severity="error" :closable="false">{{ issueError }}</Message>
@@ -550,7 +566,7 @@
                     </small>
                 </div>
                 <div class="field">
-                    <label>Pracownik zwracający</label>
+                    <label>Pracownik zwracający <span class="required-mark">*</span></label>
                     <Dropdown
                         v-model="returnPracownikId"
                         :options="pracownicy"
@@ -699,21 +715,22 @@
                     />
                 </div>
                 <div class="field">
-                    <label>Opis / Specyfikacja</label>
+                    <label>Opis / Specyfikacja <span class="required-mark">*</span></label>
                     <InputText v-model="currentTool.opis" />
                 </div>
                 <div class="field">
-                    <label>Numer katalogowy (opcjonalnie)</label>
+                    <label>Numer katalogowy</label>
                     <InputText v-model="currentTool.numer_katalogowy" />
                 </div>
                 <div class="field">
-                    <label>Domyślna lokalizacja (opcjonalnie)</label>
+                    <label>Domyślna lokalizacja</label>
                     <Dropdown
                         v-model="currentTool.domyslna_lokalizacja_id"
                         :options="locationOptions"
                         optionLabel="label"
                         optionValue="value"
                         placeholder="-- Brak --"
+                        :filter="true"
                     />
                 </div>
 
@@ -803,7 +820,7 @@
                     />
                 </div>
                 <div class="field" v-if="!(instanceModal.mode === 'add' && selectedToolForDetails && selectedToolForDetails.opakowanie === 'szt')">
-                    <label>Oznaczenie (opcjonalne)</label>
+                    <label>Oznaczenie</label>
                     <InputText v-model="instanceModal.currentInstance.oznaczenie" placeholder="np. numer seryjny, partia" />
                 </div>
                 <template v-if="instanceModal.mode === 'add'">
@@ -833,7 +850,7 @@
                         </small>
                     </div>
                     <div class="field">
-                        <label>Zamówienie (opcjonalne)</label>
+                        <label>Zamówienie</label>
                         <Dropdown
                             v-model="instanceModal.currentInstance.zamowienie_id"
                             :options="zamowieniaOptions"
@@ -1297,7 +1314,7 @@ const formatCustomDate = (dateString) => {
         const day = String(date.getDate()).padStart(2, '0');
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day} [${hours}:${minutes}]`;
+        return `${year}-${month}-${day} <span class="date-time">[${hours}:${minutes}]</span>`;
     } catch (e) {
         console.error("Błąd formatowania daty:", dateString, e);
         return 'Błąd daty';
@@ -1395,13 +1412,12 @@ const issueTool = async () => {
     }
 
     const instance = issueData.value.instance;
-    const isKomplet = instance && instance.jednostka === 'kompl';
-    const isPartialIssue = isKomplet && issueData.value.typWydania === 'sztuki';
+    const isPartialIssue = instance && instance.narzedzie_typ && instance.narzedzie_typ.wydawanie_sztuk && instance.ilosc_w_komplecie > 1 && issueData.value.typWydania === 'sztuki';
 
     // Walidacja ilości przy częściowym wydaniu
     if (isPartialIssue) {
         const iloscSztuk = issueData.value.iloscSztuk;
-        const maxSztuk = instance.ilosc_w_komplecie - 1;
+        const maxSztuk = instance.ilosc_w_komplecie;
         if (!Number.isInteger(iloscSztuk) || iloscSztuk < 1 || iloscSztuk > maxSztuk) {
             issueError.value = `Ilość sztuk musi być liczbą od 1 do ${maxSztuk}.`;
             return;
@@ -1692,7 +1708,7 @@ const saveTool = async () => {
     const url = isEditMode.value ? `${API_URL}/narzedzia/${currentTool.value.id}/` : `${API_URL}/narzedzia/`;
 
     try {
-        await axios({
+        const response = await axios({
             method: method,
             url: url,
             data: formData,
@@ -1700,7 +1716,17 @@ const saveTool = async () => {
         });
 
         toolModalVisible.value = false;
+        const savedToolId = response.data?.id || selectedToolForDetails.value?.id;
         await fetchInitialData();
+
+        // Odśwież selectedToolForDetails świeżymi danymi (w tym domyslna_lokalizacja)
+        if (savedToolId) {
+            const freshTool = tools.value.find(t => t.id === savedToolId);
+            if (freshTool) {
+                selectedToolForDetails.value = freshTool;
+                await getToolInstances(freshTool);
+            }
+        }
     } catch (error) {
         console.error("Błąd zapisu typu narzędzia:", error.response?.data || error.message);
         toolValidationError.value = 'Wystąpił błąd zapisu narzędzia: ' + JSON.stringify(error.response?.data || error.message);
@@ -1799,11 +1825,9 @@ const saveInstance = async () => {
 
     try {
         if (instanceModal.value.mode === 'add' && ilosc > 1) {
-            const requests = [];
             for (let i = 0; i < ilosc; i++) {
-                requests.push(axios.post(url, payload));
+                await axios.post(url, payload);
             }
-            await Promise.all(requests);
         } else {
             await axios({ method, url, data: payload });
         }
@@ -1847,8 +1871,8 @@ const downloadEtykieta = async (instance) => {
             responseType: 'blob'
         });
 
-        const blob = new Blob([response.data], { type: 'image/png' });
-        const fileName = `${instance.oznaczenie}.png`;
+        const blob = new Blob([response.data], { type: 'application/dxf' });
+        const fileName = `${instance.oznaczenie}.dxf`;
         let saved = false;
 
         // File System Access API — pozwala wybrać katalog i zapamiętuje go
@@ -1857,8 +1881,8 @@ const downloadEtykieta = async (instance) => {
                 const opts = {
                     suggestedName: fileName,
                     types: [{
-                        description: 'Obraz PNG',
-                        accept: { 'image/png': ['.png'] }
+                        description: 'Plik DXF',
+                        accept: { 'application/dxf': ['.dxf'] }
                     }]
                 };
 
@@ -2800,6 +2824,15 @@ onMounted(() => {
 /* === UTILITY === */
 .text-muted {
     color: #6c757d;
+}
+
+:deep(.date-time) {
+    color: #7a8a9a;
+}
+
+.required-mark {
+    color: #5a6570;
+    font-size: 0.85em;
 }
 
 .text-danger {

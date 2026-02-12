@@ -38,3 +38,6 @@ weasyprint==66.0
 
 # === Excel Generation ===
 openpyxl==3.1.5
+
+# === DXF Generation (etykiety laserowe) ===
+ezdxf

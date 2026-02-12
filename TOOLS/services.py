@@ -168,15 +168,15 @@ class EgzemplarzService:
 
         # Obsługa częściowego wydania (rozbicie kompletu)
         if czesciowe_wydanie:
-            if egzemplarz.jednostka != 'kompl':
-                raise ValidationError("Częściowe wydanie możliwe tylko dla kompletów.")
+            if not egzemplarz.narzedzie_typ.wydawanie_sztuk or egzemplarz.ilosc_w_komplecie <= 1:
+                raise ValidationError("Częściowe wydanie możliwe tylko dla kompletów z wieloma sztukami.")
 
             if not ilosc_sztuk or ilosc_sztuk < 1:
                 raise ValidationError("Podaj poprawną ilość sztuk do wydania.")
 
-            if ilosc_sztuk >= egzemplarz.ilosc_w_komplecie:
+            if ilosc_sztuk > egzemplarz.ilosc_w_komplecie:
                 raise ValidationError(
-                    f"Ilość sztuk musi być mniejsza niż {egzemplarz.ilosc_w_komplecie}."
+                    f"Ilość sztuk nie może przekraczać {egzemplarz.ilosc_w_komplecie}."
                 )
 
             pozostale_sztuki = egzemplarz.ilosc_w_komplecie - ilosc_sztuk
@@ -189,11 +189,11 @@ class EgzemplarzService:
                 faktura_zakupu=egzemplarz.faktura_zakupu,
                 zamowienie=egzemplarz.zamowienie,
                 jednostka='szt',  # Luźne sztuki
-                ilosc_w_komplecie=ilosc_sztuk
+                ilosc_w_komplecie=ilosc_sztuk,
+                komplet_zrodlowy=egzemplarz
             )
 
             # Zmodyfikuj oryginalny egzemplarz - pozostałe sztuki
-            egzemplarz.jednostka = 'szt'
             egzemplarz.ilosc_w_komplecie = pozostale_sztuki
             egzemplarz.save()
 
@@ -281,8 +281,26 @@ class EgzemplarzService:
             egzemplarz.ilosc_w_komplecie = pozostale_sztuki
             egzemplarz.save()
 
+            # Scalanie zwróconych sztuk z kompletem-źródłem
+            if stan_po_zwrocie in ('nowe', 'uzywane') and egzemplarz.komplet_zrodlowy_id:
+                try:
+                    komplet = EgzemplarzNarzedzia.objects.select_for_update().get(
+                        id=egzemplarz.komplet_zrodlowy_id
+                    )
+                    # Scalaj tylko gdy komplet nie jest w użyciu
+                    in_use = HistoriaUzyciaNarzedzia.objects.filter(
+                        egzemplarz=komplet, data_zwrotu__isnull=True
+                    ).exists()
+                    if not in_use and komplet.ilosc_w_komplecie >= 0:
+                        komplet.ilosc_w_komplecie += ilosc_sztuk
+                        komplet.save()
+                        egzemplarz_zwrocony.ilosc_w_komplecie = 0
+                        egzemplarz_zwrocony.komplet_zrodlowy = komplet
+                        egzemplarz_zwrocony.save()
+                except EgzemplarzNarzedzia.DoesNotExist:
+                    pass
+
             # Historia pozostaje otwarta (dla pozostałych sztuk nadal w użyciu)
-            # Ale aktualizujemy ją, żeby frontend wiedział o zmianie
             return (historia, egzemplarz_zwrocony)
 
         else:
@@ -293,6 +311,51 @@ class EgzemplarzService:
             # Aktualizuj stan egzemplarza
             egzemplarz.stan = stan_po_zwrocie
             egzemplarz.save()
+
+            # Scalanie zwróconych sztuk z kompletem-źródłem
+            if (egzemplarz.jednostka == 'szt'
+                    and stan_po_zwrocie in ('nowe', 'uzywane')
+                    and egzemplarz.komplet_zrodlowy_id):
+                try:
+                    komplet = EgzemplarzNarzedzia.objects.select_for_update().get(
+                        id=egzemplarz.komplet_zrodlowy_id
+                    )
+                    in_use = HistoriaUzyciaNarzedzia.objects.filter(
+                        egzemplarz=komplet, data_zwrotu__isnull=True
+                    ).exists()
+                    if not in_use and komplet.ilosc_w_komplecie >= 0:
+                        komplet.ilosc_w_komplecie += egzemplarz.ilosc_w_komplecie
+                        komplet.save()
+                        egzemplarz.ilosc_w_komplecie = 0
+                        egzemplarz.save()
+                except EgzemplarzNarzedzia.DoesNotExist:
+                    pass
+
+            # Po zwrocie kompletu — wchłoń jego luźne sztuki z magazynu
+            elif (egzemplarz.jednostka == 'kompl'
+                    and stan_po_zwrocie in ('nowe', 'uzywane')):
+                egz_w_uzyciu_ids = HistoriaUzyciaNarzedzia.objects.filter(
+                    data_zwrotu__isnull=True
+                ).values_list('egzemplarz_id', flat=True)
+
+                luźne_sztuki = list(
+                    EgzemplarzNarzedzia.objects.select_for_update().filter(
+                        komplet_zrodlowy=egzemplarz,
+                        jednostka='szt',
+                        ilosc_w_komplecie__gt=0,
+                        stan__in=('nowe', 'uzywane'),
+                    ).exclude(
+                        id__in=egz_w_uzyciu_ids
+                    )
+                )
+
+                for piece in luźne_sztuki:
+                    egzemplarz.ilosc_w_komplecie += piece.ilosc_w_komplecie
+                    piece.ilosc_w_komplecie = 0
+                    piece.save()
+
+                if luźne_sztuki:
+                    egzemplarz.save()
 
             return historia
 
