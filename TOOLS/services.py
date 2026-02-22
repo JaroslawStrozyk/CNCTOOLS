@@ -292,11 +292,15 @@ class EgzemplarzService:
                         egzemplarz=komplet, data_zwrotu__isnull=True
                     ).exists()
                     if not in_use and komplet.ilosc_w_komplecie >= 0:
-                        komplet.ilosc_w_komplecie += ilosc_sztuk
-                        komplet.save()
-                        egzemplarz_zwrocony.ilosc_w_komplecie = 0
-                        egzemplarz_zwrocony.komplet_zrodlowy = komplet
-                        egzemplarz_zwrocony.save()
+                        stany_zgodne = (komplet.ilosc_w_komplecie == 0) or (komplet.stan == stan_po_zwrocie)
+                        if stany_zgodne:
+                            if komplet.ilosc_w_komplecie == 0:
+                                komplet.stan = stan_po_zwrocie
+                            komplet.ilosc_w_komplecie += ilosc_sztuk
+                            komplet.save()
+                            egzemplarz_zwrocony.ilosc_w_komplecie = 0
+                            egzemplarz_zwrocony.komplet_zrodlowy = komplet
+                            egzemplarz_zwrocony.save()
                 except EgzemplarzNarzedzia.DoesNotExist:
                     pass
 
@@ -324,10 +328,14 @@ class EgzemplarzService:
                         egzemplarz=komplet, data_zwrotu__isnull=True
                     ).exists()
                     if not in_use and komplet.ilosc_w_komplecie >= 0:
-                        komplet.ilosc_w_komplecie += egzemplarz.ilosc_w_komplecie
-                        komplet.save()
-                        egzemplarz.ilosc_w_komplecie = 0
-                        egzemplarz.save()
+                        stany_zgodne = (komplet.ilosc_w_komplecie == 0) or (komplet.stan == stan_po_zwrocie)
+                        if stany_zgodne:
+                            if komplet.ilosc_w_komplecie == 0:
+                                komplet.stan = stan_po_zwrocie
+                            komplet.ilosc_w_komplecie += egzemplarz.ilosc_w_komplecie
+                            komplet.save()
+                            egzemplarz.ilosc_w_komplecie = 0
+                            egzemplarz.save()
                 except EgzemplarzNarzedzia.DoesNotExist:
                     pass
 
@@ -343,7 +351,7 @@ class EgzemplarzService:
                         komplet_zrodlowy=egzemplarz,
                         jednostka='szt',
                         ilosc_w_komplecie__gt=0,
-                        stan__in=('nowe', 'uzywane'),
+                        stan=stan_po_zwrocie,
                     ).exclude(
                         id__in=egz_w_uzyciu_ids
                     )

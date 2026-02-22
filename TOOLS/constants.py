@@ -34,6 +34,7 @@ STANY_DOSTEPNE_DO_WYDANIA = [
 
 # Stany możliwe po zwrocie narzędzia
 STANY_PO_ZWROCIE = [
+    StanEgzemplarza.NOWE,
     StanEgzemplarza.UZYWANE,
     StanEgzemplarza.USZKODZONE,
     StanEgzemplarza.USZKODZONE_REGENERACJA,

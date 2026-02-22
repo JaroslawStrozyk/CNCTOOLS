@@ -14,15 +14,13 @@
                     >
                         <i class="pi pi-list"></i> Logi
                     </a>
-                    <a :href="urls.ustawienia" class="btn btn-secondary">
-                        <i class="pi pi-cog"></i> Ustawienia
-                    </a>
-                    <a :href="urls.zwroty" class="btn btn-zwroty">
-                        <i class="pi pi-undo"></i> Zwroty
-                    </a>
-                    <a :href="urls.zamowienia" class="btn btn-success">
-                        <i class="pi pi-file"></i> Zamówienia
-                    </a>
+                    <div class="dropdown-wrapper">
+                        <button class="btn btn-success" @click="toggleDzialaniaMenu">
+                            <i class="pi pi-th-large"></i> Działania
+                            <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                        </button>
+                        <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
+                    </div>
                     <a v-if="auth.isLogistyka" :href="urls.zakupy" class="btn btn-primary">
                         <i class="pi pi-truck"></i> Zakupy
                     </a>
@@ -88,6 +86,7 @@
                 <div class="panel-body">
                     <DataTable
                         :value="filteredTools"
+                        :loading="isLoadingTools"
                         :scrollable="true"
                         scrollHeight="flex"
                         selectionMode="single"
@@ -392,88 +391,6 @@
                         </div>
                     </TabPanel>
 
-                    <TabPanel v-if="!trybProdukcja">
-                        <template #header>
-                            <span>Zapotrzebowania</span>
-                            <Badge v-if="zapotrzebowania.length > 0" :value="zapotrzebowania.length" severity="warning" class="ml-2" />
-                        </template>
-                        <div class="tab-content-wrapper">
-                            <div v-if="isLoadingZapotrzebowania" class="loading-spinner">
-                                <ProgressSpinner />
-                            </div>
-                            <DataTable
-                                v-else
-                                :value="zapotrzebowania"
-                                :scrollable="true"
-                                scrollHeight="flex"
-                                v-model:expandedRows="expandedZapotrzebowania"
-                                dataKey="id"
-                            >
-                                <Column :expander="true" style="width: 40px;" />
-                                <Column header="Numer">
-                                    <template #body="{ data }">
-                                        <strong>ZAM-{{ String(data.id).padStart(4, '0') }}</strong>
-                                    </template>
-                                </Column>
-                                <Column header="Technolog">
-                                    <template #body="{ data }">
-                                        {{ data.technolog ? `${data.technolog.first_name} ${data.technolog.last_name}` : 'Nieznany' }}
-                                    </template>
-                                </Column>
-                                <Column header="Data wysłania">
-                                    <template #body="{ data }">
-                                        <span v-html="formatCustomDate(data.data_wyslania)"></span>
-                                    </template>
-                                </Column>
-                                <Column header="Pozycji" style="width: 80px; text-align: center;">
-                                    <template #body="{ data }">
-                                        <Badge :value="data.pozycje_count" />
-                                    </template>
-                                </Column>
-                                <Column header="Akcje" style="width: 100px; text-align: center;">
-                                    <template #body="{ data }">
-                                        <Button
-                                            icon="pi pi-check"
-                                            class="p-button-success p-button-sm"
-                                            @click="zrealizujZapotrzebowanie(data.id)"
-                                            title="Zrealizuj zapotrzebowanie"
-                                        />
-                                    </template>
-                                </Column>
-                                <template #expansion="slotProps">
-                                    <div class="expansion-content">
-                                        <h5>Pozycje zapotrzebowania ZAM-{{ String(slotProps.data.id).padStart(4, '0') }}</h5>
-                                        <DataTable :value="slotProps.data.pozycje" class="expansion-table">
-                                            <Column field="nr_klienta" header="Nr klienta">
-                                                <template #body="{ data }">{{ data.nr_klienta || '-' }}</template>
-                                            </Column>
-                                            <Column field="nr_zlecenia" header="Nr zlecenia">
-                                                <template #body="{ data }">{{ data.nr_zlecenia || '-' }}</template>
-                                            </Column>
-                                            <Column header="Kategoria">
-                                                <template #body="{ data }">
-                                                    {{ data.kategoria_nazwa || '-' }} / {{ data.podkategoria_nazwa || '-' }}
-                                                </template>
-                                            </Column>
-                                            <Column field="specyfikacja" header="Specyfikacja">
-                                                <template #body="{ data }">{{ data.specyfikacja || '-' }}</template>
-                                            </Column>
-                                            <Column field="numer_katalogowy" header="Nr katalogowy">
-                                                <template #body="{ data }">{{ data.numer_katalogowy || '-' }}</template>
-                                            </Column>
-                                            <Column field="ilosc" header="Ilość" style="width: 60px; text-align: center;" />
-                                            <Column field="uwagi" header="Uwagi">
-                                                <template #body="{ data }">{{ data.uwagi || '-' }}</template>
-                                            </Column>
-                                        </DataTable>
-                                    </div>
-                                </template>
-                                <template #empty>
-                                    <div class="empty-state">Brak wysłanych zapotrzebowań do realizacji.</div>
-                                </template>
-                            </DataTable>
-                        </div>
-                    </TabPanel>
                 </TabView>
             </div>
         </main>
@@ -975,6 +892,7 @@ const props = defineProps({
             ustawienia: '/ustawienia/',
             zwroty: '/zwroty/',
             zamowienia: '/zamowienia/',
+            zapotrzebowania: '/zapotrzebowania/',
             zakupy: '/zakupy/',
             logi: '/logi/',
             logout: '/logout/',
@@ -1003,10 +921,6 @@ const usagesInUse = ref([]);
 const toolInstances = ref([]);
 const toolHistory = ref([]);
 const locations = ref([]);
-const zapotrzebowania = ref([]);
-const expandedZapotrzebowania = ref([]);
-const isLoadingZapotrzebowania = ref(false);
-
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
 const selectedToolForDetails = ref(null);
@@ -1015,6 +929,7 @@ const inUseSearchQuery = ref('');
 const searchQuery = ref('');
 
 const activeTabIndex = ref(0);
+const isLoadingTools = ref(true);
 const isLoadingDetails = ref(false);
 const isLoadingHistory = ref(false);
 const isEditMode = ref(false);
@@ -1117,6 +1032,11 @@ const toolImageFile = ref(null);
 const userMenu = ref(null);
 const userMenuItems = ref([
     {
+        label: 'Ustawienia',
+        icon: 'pi pi-cog',
+        command: () => { window.location.href = props.urls.ustawienia; }
+    },
+    {
         label: 'O programie',
         icon: 'pi pi-info-circle',
         command: () => { aboutModalVisible.value = true; }
@@ -1128,6 +1048,15 @@ const userMenuItems = ref([
         command: () => { window.location.href = props.urls.logout; }
     }
 ]);
+
+// Menu Działania
+const dzialaniaMenu = ref(null);
+const dzialaniaMenuItems = ref([
+    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania; } },
+    { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
+    { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
+]);
+const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 
 // Computed
 const filteredTools = computed(() => {
@@ -1965,63 +1894,40 @@ const confirmDeleteInstance = async () => {
     }
 };
 
-// Zapotrzebowania - funkcje
-const fetchZapotrzebowania = async () => {
-    isLoadingZapotrzebowania.value = true;
-    try {
-        const response = await axios.get(`${API_URL}/zapotrzebowania/lista_dla_magazynu/`);
-        zapotrzebowania.value = response.data;
-    } catch (error) {
-        console.error("Błąd pobierania zapotrzebowań:", error.response?.data || error.message);
-    } finally {
-        isLoadingZapotrzebowania.value = false;
-    }
-};
-
-const zrealizujZapotrzebowanie = async (id) => {
-    if (!confirm('Czy na pewno chcesz oznaczyć to zapotrzebowanie jako zrealizowane?')) {
-        return;
-    }
-    try {
-        await axios.post(`${API_URL}/zapotrzebowania/${id}/zrealizuj/`);
-        // Odśwież listę
-        await fetchZapotrzebowania();
-    } catch (error) {
-        console.error("Błąd realizacji zapotrzebowania:", error.response?.data || error.message);
-        alert('Nie udało się zrealizować zapotrzebowania: ' + (error.response?.data?.error || error.message));
-    }
-};
-
 const fetchInitialData = async () => {
+    // Faza 1: dane krytyczne dla głównej tabeli narzędzi (wyświetl jak najszybciej)
     try {
-        const [
-            toolsRes,
-            categoriesRes,
-            machinesRes,
-            usagesRes,
-            locationsRes,
-            podkategorieRes,
-            pracownicyRes,
-            fakturyRes,
-            zamowieniaRes
-        ] = await Promise.all([
+        const [toolsRes, categoriesRes, podkategorieRes] = await Promise.all([
             axios.get(`${API_URL}/narzedzia/`),
             axios.get(`${API_URL}/kategorie/`),
+            axios.get(`${API_URL}/podkategorie/`)
+        ]);
+
+        tools.value = toolsRes.data.results || toolsRes.data;
+        kategorie.value = categoriesRes.data;
+        podkategorie.value = podkategorieRes.data;
+        isLoadingTools.value = false;
+    } catch (error) {
+        console.error("Błąd ładowania danych głównych:", error.response?.data || error.message);
+        isLoadingTools.value = false;
+        alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
+        return;
+    }
+
+    // Faza 2: dane pomocnicze (modale, zakładki, formularze) — w tle
+    try {
+        const [machinesRes, usagesRes, locationsRes, pracownicyRes, fakturyRes, zamowieniaRes] = await Promise.all([
             axios.get(`${API_URL}/maszyny/`),
             axios.get(`${API_URL}/historia/?w_uzyciu=true`),
             axios.get(`${API_URL}/lokalizacje/`),
-            axios.get(`${API_URL}/podkategorie/`),
             axios.get(`${API_URL}/pracownicy/`),
             axios.get(`${API_URL}/faktury/`),
             axios.get(`${API_URL}/zamowienia/`)
         ]);
 
-        tools.value = toolsRes.data.results || toolsRes.data;
-        kategorie.value = categoriesRes.data;
         machines.value = machinesRes.data;
         usagesInUse.value = usagesRes.data.results || usagesRes.data;
         locations.value = locationsRes.data;
-        podkategorie.value = podkategorieRes.data;
 
         // Dodaj fullName do pracowników dla dropdown
         // (...) = tylko karta (stara tabela, brak konta użytkownika)
@@ -2035,12 +1941,8 @@ const fetchInitialData = async () => {
 
         faktury.value = fakturyRes.data.results || fakturyRes.data;
         zamowienia.value = zamowieniaRes.data.results || zamowieniaRes.data;
-
-        // Pobierz zapotrzebowania dla magazynu
-        await fetchZapotrzebowania();
     } catch (error) {
-        console.error("Błąd ładowania danych początkowych:", error.response?.data || error.message);
-        alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
+        console.error("Błąd ładowania danych pomocniczych:", error.response?.data || error.message);
     }
 };
 
@@ -2128,17 +2030,6 @@ onMounted(() => {
 .btn-secondary:hover {
     background-color: #5c636a;
     border-color: #565e64;
-    color: #fff;
-}
-
-.btn-zwroty {
-    background-color: #8B4513;
-    border-color: #8B4513;
-    color: #fff;
-}
-.btn-zwroty:hover {
-    background-color: #7a3d11;
-    border-color: #6d360f;
     color: #fff;
 }
 
@@ -2417,6 +2308,16 @@ onMounted(() => {
 :deep(.p-datatable) {
     font-size: 0.9rem;
     background: transparent;
+}
+
+:deep(.p-datatable-loading-overlay) {
+    background: rgba(33, 37, 41, 0.7) !important;
+    backdrop-filter: blur(2px);
+}
+
+:deep(.p-datatable-loading-icon) {
+    color: #ffc107 !important;
+    font-size: 2.5rem !important;
 }
 
 :deep(.p-datatable .p-datatable-thead > tr > th) {
@@ -2884,35 +2785,6 @@ onMounted(() => {
     resize: none;
 }
 
-/* === ZAPOTRZEBOWANIA - EXPANSION === */
-.expansion-content {
-    padding: 16px;
-    background: rgba(52, 58, 64, 0.5);
-    border-radius: 6px;
-    margin: 8px 0;
-}
-
-.expansion-content h5 {
-    color: var(--dark-text-primary);
-    margin-bottom: 12px;
-    font-size: 0.95rem;
-}
-
-.expansion-table {
-    font-size: 0.85rem;
-}
-
-:deep(.expansion-table .p-datatable-tbody > tr > td) {
-    padding: 6px 8px;
-    background: transparent;
-}
-
-:deep(.expansion-table .p-datatable-thead > tr > th) {
-    padding: 8px;
-    background: var(--dark-bg-tertiary);
-    font-size: 0.8rem;
-}
-
 </style>
 
 <!-- Style dla menu popup (bez scoped - menu jest renderowane jako portal) - CIEMNY MOTYW -->
@@ -2979,6 +2851,63 @@ onMounted(() => {
     margin: 6px 0 !important;
     padding: 0 !important;
     height: 0 !important;
+}
+
+/* === MENU DZIAŁANIA === */
+#dzialania_menu {
+    min-width: 180px !important;
+    background: #2d3238 !important;
+    border: 1px solid #495057 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.5) !important;
+    padding: 6px 0 !important;
+}
+
+#dzialania_menu_list {
+    padding: 0 !important;
+    margin: 0 !important;
+    list-style: none !important;
+}
+
+#dzialania_menu_list li {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+#dzialania_menu_list li > div {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    cursor: pointer !important;
+    transition: background-color 0.15s !important;
+}
+
+#dzialania_menu_list li > div:hover {
+    background-color: #3d444d !important;
+}
+
+#dzialania_menu_list li > div > a,
+#dzialania_menu_list li > div > div {
+    display: flex !important;
+    align-items: center !important;
+    padding: 10px 16px !important;
+    color: #dee2e6 !important;
+    text-decoration: none !important;
+    gap: 10px !important;
+    cursor: pointer !important;
+}
+
+#dzialania_menu_list li > div span[class*="icon"],
+#dzialania_menu_list li > div i,
+#dzialania_menu_list li > div .pi {
+    color: #adb5bd !important;
+    font-size: 1rem !important;
+}
+
+#dzialania_menu_list li > div span:not([class*="icon"]):not(.pi) {
+    color: #dee2e6 !important;
+    font-size: 14px !important;
 }
 
 /* === MODALE PRIMEVUE - KOMPLETNY CIEMNY MOTYW === */

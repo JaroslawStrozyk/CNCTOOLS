@@ -43,6 +43,7 @@ def get_common_urls():
         'realizacja': '/realizacja/',
         'faktury': '/faktury/',
         'zwroty': '/zwroty/',
+        'zapotrzebowania': '/zapotrzebowania/',
         'produkcja': '/produkcja/',
         'technologia': '/technologia/',
         'logi': '/logi/',
@@ -183,6 +184,16 @@ def faktury_view(request):
 def zwroty_view(request):
     """Zwroty - Inertia"""
     return render(request, 'Zwroty', {
+        'auth': get_auth_data(request),
+        'urls': get_common_urls(),
+        'infoProgram': get_info_program(),
+    })
+
+
+@login_required
+def zapotrzebowania_view(request):
+    """Zapotrzebowania technologów - Inertia"""
+    return render(request, 'Zapotrzebowania', {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),

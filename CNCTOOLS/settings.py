@@ -209,8 +209,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '0.98.0g',
-        'MODYFIKACJA': '12.02.2026r.',
+        'WERSJA'     : '0.99.0g',
+        'MODYFIKACJA': '22.02.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',
