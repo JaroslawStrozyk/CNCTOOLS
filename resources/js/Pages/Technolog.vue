@@ -75,6 +75,9 @@
                 <div class="panel-body">
                     <DataTable
                         :value="filteredTools"
+                        :loading="isLoadingTools"
+                        :paginator="true"
+                        :rows="pageSize"
                         :scrollable="true"
                         scrollHeight="flex"
                         selectionMode="single"
@@ -635,12 +638,17 @@ const props = defineProps({
     infoProgram: {
         type: Object,
         default: () => ({})
+    },
+    pageSize: {
+        type: Number,
+        default: 50
     }
 });
 
 // Data
 const tools = ref([]);
 const kategorie = ref([]);
+const isLoadingTools = ref(true);
 
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
@@ -1103,6 +1111,8 @@ const fetchInitialData = async () => {
     } catch (error) {
         console.error("Błąd ładowania danych początkowych:", error.response?.data || error.message);
         alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
+    } finally {
+        isLoadingTools.value = false;
     }
 };
 
@@ -2333,11 +2343,6 @@ onMounted(() => {
     margin: 0;
 }
 
-/* Loading state dla DataTable */
-.p-datatable-loading-overlay {
-    background-color: rgba(33, 37, 41, 0.7) !important;
-}
-
 /* Expander button */
 .p-datatable .p-row-toggler {
     color: #adb5bd !important;
@@ -2347,4 +2352,5 @@ onMounted(() => {
     color: #ffc107 !important;
     background-color: rgba(255, 193, 7, 0.1) !important;
 }
+
 </style>

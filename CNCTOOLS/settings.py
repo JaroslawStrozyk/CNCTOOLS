@@ -207,10 +207,14 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # są importowane z pass_file.py
 
 
+# Auto-wylogowanie po bezczynności (minuty) — dotyczy grup produkcja / produkcja-magazyn
+AUTO_LOGOUT_IDLE_MINUTES = 2
+TECHNOLOG_PAGE_SIZE = 50
+
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '0.99.0g',
-        'MODYFIKACJA': '22.02.2026r.',
+        'WERSJA'     : '1.00.0g',
+        'MODYFIKACJA': '24.02.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

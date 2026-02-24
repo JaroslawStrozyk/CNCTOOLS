@@ -3,6 +3,10 @@
         <!-- Nagłówek -->
         <header class="magazyn-header">
             <h2 class="header-title">{{ trybProdukcja ? 'NARZĘDZIA' : 'MAGAZYN' }}</h2>
+            <!-- Tryb produkcja - imię na środku (poza header-buttons) -->
+            <div v-if="trybProdukcja" class="header-user-name-prod">
+                {{ auth.user.first_name }} {{ auth.user.last_name }}
+            </div>
             <div class="header-buttons">
                 <!-- Pełny tryb magazynu -->
                 <template v-if="!trybProdukcja">
@@ -33,15 +37,16 @@
                         <Menu ref="userMenu" id="user_menu" :model="userMenuItems" :popup="true" />
                     </div>
                 </template>
-                <!-- Tryb produkcja - tylko powrót -->
+                <!-- Tryb produkcja - buttony po prawej -->
                 <template v-else>
-                    <span class="user-name-label">
-                        <i class="pi pi-user"></i>
-                        {{ auth.user.first_name }} {{ auth.user.last_name }}
-                    </span>
-                    <a :href="urls.produkcja" class="btn btn-danger">
-                        <i class="pi pi-arrow-left"></i> Wróć do Produkcji
+                    <a :href="urls.produkcja" class="btn-narzedzia-prod">
+                        <i class="pi pi-arrow-left"></i>
+                        Wróć do Produkcji
                     </a>
+                    <button class="btn-exit-prod" @click="logout">
+                        <i class="pi pi-sign-out"></i>
+                        Wyjście
+                    </button>
                 </template>
             </div>
         </header>
@@ -246,7 +251,7 @@
                         </div>
                     </TabPanel>
 
-                    <TabPanel>
+                    <TabPanel v-if="!trybProdukcja">
                         <template #header>
                             <span>Historia użycia</span>
                             <span v-if="selectedToolForDetails" class="tab-badge">&nbsp;&nbsp;{{ selectedToolForDetails.opis }}&nbsp;&nbsp;</span>
@@ -379,7 +384,7 @@
                                     </template>
                                 </Column>
                                 <Column field="nr_zlecenia" header="Nr zlecenia" />
-                                <Column header="Akcje" style="width: 80px; text-align: center;">
+                                <Column v-if="!trybProdukcja" header="Akcje" style="width: 80px; text-align: center;">
                                     <template #body="{ data }">
                                         <Button icon="pi pi-undo" class="p-button-success p-button-sm" @click="showReturnModal(data.id)" title="Zwróć" />
                                     </template>
@@ -851,7 +856,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
 import defaultToolImage from '@images/cnc.png';
@@ -906,6 +911,10 @@ const props = defineProps({
     trybProdukcja: {
         type: Boolean,
         default: false
+    },
+    autoLogoutMinutes: {
+        type: Number,
+        default: 0
     }
 });
 
@@ -1054,9 +1063,39 @@ const dzialaniaMenu = ref(null);
 const dzialaniaMenuItems = ref([
     { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania; } },
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
+    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } },
+    { separator: true },
     { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
 ]);
 const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
+
+// Logout (tryb produkcja)
+const logout = () => {
+    window.location.href = props.urls.logout;
+};
+
+// Auto-wylogowanie po bezczynności
+let idleTimer = null;
+const idleEvents = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+
+const resetIdleTimer = () => {
+    if (!props.autoLogoutMinutes) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        logout();
+    }, props.autoLogoutMinutes * 60 * 1000);
+};
+
+const startIdleWatch = () => {
+    if (!props.autoLogoutMinutes) return;
+    idleEvents.forEach(ev => window.addEventListener(ev, resetIdleTimer));
+    resetIdleTimer();
+};
+
+const stopIdleWatch = () => {
+    clearTimeout(idleTimer);
+    idleEvents.forEach(ev => window.removeEventListener(ev, resetIdleTimer));
+};
 
 // Computed
 const filteredTools = computed(() => {
@@ -1948,6 +1987,11 @@ const fetchInitialData = async () => {
 
 onMounted(() => {
     fetchInitialData();
+    startIdleWatch();
+});
+
+onUnmounted(() => {
+    stopIdleWatch();
 });
 </script>
 
@@ -2137,6 +2181,65 @@ onMounted(() => {
     color: #ffc107;
 }
 
+/* === TRYB PRODUKCJA - NAGŁÓWEK === */
+.header-user-name-prod {
+    flex: 1;
+    text-align: center;
+    color: #e9ecef;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.header-buttons-prod {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.btn-narzedzia-prod {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid #17a2b8;
+    background-color: #17a2b8;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+}
+
+.btn-narzedzia-prod:hover {
+    background-color: #138496;
+    border-color: #117a8b;
+    color: #fff;
+}
+
+.btn-exit-prod {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid #dc3545;
+    background-color: #dc3545;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.15s ease-in-out;
+}
+
+.btn-exit-prod:hover {
+    background-color: #bb2d3b;
+    border-color: #b02a37;
+}
+
 /* === GŁÓWNA ZAWARTOŚĆ === */
 .magazyn-main {
     flex: 1;
@@ -2308,16 +2411,6 @@ onMounted(() => {
 :deep(.p-datatable) {
     font-size: 0.9rem;
     background: transparent;
-}
-
-:deep(.p-datatable-loading-overlay) {
-    background: rgba(33, 37, 41, 0.7) !important;
-    backdrop-filter: blur(2px);
-}
-
-:deep(.p-datatable-loading-icon) {
-    color: #ffc107 !important;
-    font-size: 2.5rem !important;
 }
 
 :deep(.p-datatable .p-datatable-thead > tr > th) {

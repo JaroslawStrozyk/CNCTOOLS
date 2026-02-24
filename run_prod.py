@@ -77,13 +77,13 @@ def main():
 
     # Banner
     print(f"{GREEN}")
-    print("╔══════════════════════════════════════════════════════════════╗")
-    print("║               CNC TOOLS - Production Server                  ║")
-    print("║                                                              ║")
-    print(f"║  Django:  http://0.0.0.0:{DJANGO_PORT}  (dostepny z kazdego IP)     ║")
-    print("║                                                              ║")
-    print("║  Zatrzymanie: Ctrl+C                                         ║")
-    print("╚══════════════════════════════════════════════════════════════╝")
+    print("╔════════════════════════════════════════════════════════════╗")
+    print("║             CNC TOOLS - Production Server                 ║")
+    print("║                                                           ║")
+    print(f"║  Django:  http://0.0.0.0:{DJANGO_PORT}  (dostepny z kazdego IP)  ║")
+    print("║                                                           ║")
+    print("║  Zatrzymanie: Ctrl+C                                      ║")
+    print("╚════════════════════════════════════════════════════════════╝")
     print(f"{NC}")
 
     # Sprawdź czy są zbudowane pliki statyczne

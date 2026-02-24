@@ -786,6 +786,79 @@
     color: #fff !important;
 }
 
+/* === LOADING SPINNER === */
+.p-datatable-loading-overlay {
+    background: rgba(33, 37, 41, 0.7) !important;
+    backdrop-filter: blur(2px);
+}
+
+.p-datatable-loading-icon,
+.p-datatable-loading-icon svg {
+    color: #ffc107 !important;
+    fill: #ffc107 !important;
+    font-size: 2.5rem !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+}
+
+/* === PAGINATOR === */
+.p-paginator {
+    background: linear-gradient(to bottom, #555d63, #343a40) !important;
+    border: none !important;
+    padding: 3px 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    min-height: 0 !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page {
+    color: #adb5bd !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    font-weight: 500;
+    font-size: 0.8rem;
+    transition: color 0.15s ease;
+    padding: 0 4px !important;
+    margin: 0 !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page:hover {
+    background: transparent !important;
+    color: #fff !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+    background: transparent !important;
+    color: #ffc107 !important;
+    font-weight: 700;
+}
+
+.p-paginator .p-paginator-first,
+.p-paginator .p-paginator-prev,
+.p-paginator .p-paginator-next,
+.p-paginator .p-paginator-last {
+    color: #adb5bd !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0;
+    width: 1.5rem !important;
+    height: 1.5rem !important;
+    min-width: 1.5rem !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    transition: color 0.15s ease;
+}
+
+.p-paginator .p-paginator-first:hover,
+.p-paginator .p-paginator-prev:hover,
+.p-paginator .p-paginator-next:hover,
+.p-paginator .p-paginator-last:hover {
+    background: transparent !important;
+    color: #fff !important;
+}
+
 /* === TABVIEW === */
 .p-tabview {
     background: transparent;

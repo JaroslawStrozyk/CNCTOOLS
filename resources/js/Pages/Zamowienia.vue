@@ -7,9 +7,6 @@
                 <a :href="urls.ustawienia" class="btn btn-secondary">
                     <i class="pi pi-cog"></i> Ustawienia
                 </a>
-                <a :href="urls.realizacja" class="btn btn-primary">
-                    <i class="pi pi-box"></i> Realizacje
-                </a>
                 <a :href="urls.magazyn" class="btn btn-primary">
                     <i class="pi pi-building"></i> Magazyn
                 </a>

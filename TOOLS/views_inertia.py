@@ -112,12 +112,18 @@ def magazyn_view(request):
     # Tryb produkcja - ograniczony dostęp (tylko wydanie/zwrot)
     tryb_produkcja = request.GET.get('tryb') == 'produkcja'
 
-    return render(request, 'Magazyn', {
+    data = {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
         'trybProdukcja': tryb_produkcja,
-    })
+    }
+
+    # Auto-wylogowanie dla grup produkcyjnych
+    if request.user.groups.filter(name__in=['produkcja', 'produkcja-magazyn']).exists():
+        data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
+
+    return render(request, 'Magazyn', data)
 
 
 @login_required
@@ -203,11 +209,17 @@ def zapotrzebowania_view(request):
 @login_required
 def produkcja_view(request):
     """Produkcja - Inertia (tylko podgląd)"""
-    return render(request, 'Produkcja', {
+    data = {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
-    })
+    }
+
+    # Auto-wylogowanie dla grup produkcyjnych
+    if request.user.groups.filter(name__in=['produkcja', 'produkcja-magazyn']).exists():
+        data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
+
+    return render(request, 'Produkcja', data)
 
 
 @login_required
@@ -217,6 +229,7 @@ def technologia_view(request):
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
+        'pageSize': getattr(settings, 'TECHNOLOG_PAGE_SIZE', 50),
     })
 
 

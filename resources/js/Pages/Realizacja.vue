@@ -4,7 +4,7 @@
     <div class="header-bar">
       <h2 class="header-title"><span class="yellow-text">REALIZACJE ZAMÓWIEŃ</span></h2>
       <div class="header-buttons">
-        <a :href="urls?.zamowienia || '/zamowienia/'" class="btn btn-danger">
+        <a :href="urls?.magazyn || '/magazyn/'" class="btn btn-danger">
           <i class="pi pi-arrow-left"></i> Wróć
         </a>
         <div class="dropdown-wrapper">

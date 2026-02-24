@@ -63,6 +63,7 @@
                 <div class="panel-body">
                     <DataTable
                         :value="filteredTools"
+                        :loading="isLoadingTools"
                         :scrollable="true"
                         scrollHeight="flex"
                         selectionMode="single"
@@ -213,7 +214,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import defaultToolImage from '@images/cnc.png';
 
@@ -242,6 +243,10 @@ const props = defineProps({
         default: () => ({
             logout: '/logout/'
         })
+    },
+    autoLogoutMinutes: {
+        type: Number,
+        default: 0
     }
 });
 
@@ -249,6 +254,7 @@ const props = defineProps({
 const tools = ref([]);
 const kategorie = ref([]);
 const usagesInUse = ref([]);
+const isLoadingTools = ref(true);
 
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
@@ -263,6 +269,29 @@ const selectedToolForUsage = ref(null);
 // Logout
 const logout = () => {
     window.location.href = props.urls.logout;
+};
+
+// Auto-wylogowanie po bezczynności
+let idleTimer = null;
+const idleEvents = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+
+const resetIdleTimer = () => {
+    if (!props.autoLogoutMinutes) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        logout();
+    }, props.autoLogoutMinutes * 60 * 1000);
+};
+
+const startIdleWatch = () => {
+    if (!props.autoLogoutMinutes) return;
+    idleEvents.forEach(ev => window.addEventListener(ev, resetIdleTimer));
+    resetIdleTimer();
+};
+
+const stopIdleWatch = () => {
+    clearTimeout(idleTimer);
+    idleEvents.forEach(ev => window.removeEventListener(ev, resetIdleTimer));
 };
 
 // Narzędzia (dla grupy produkcja-magazyn) - przekierowanie do magazynu w trybie ograniczonym
@@ -378,11 +407,18 @@ const fetchInitialData = async () => {
         usagesInUse.value = usagesRes.data.results || usagesRes.data;
     } catch (error) {
         console.error("Błąd ładowania danych:", error.response?.data || error.message);
+    } finally {
+        isLoadingTools.value = false;
     }
 };
 
 onMounted(() => {
     fetchInitialData();
+    startIdleWatch();
+});
+
+onUnmounted(() => {
+    stopIdleWatch();
 });
 </script>
 
@@ -927,4 +963,5 @@ onMounted(() => {
 ::-webkit-scrollbar-thumb:hover {
     background: #4d555d;
 }
+
 </style>
