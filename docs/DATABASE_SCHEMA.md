@@ -32,49 +32,277 @@
 
 ---
 
-## Diagram relacji (uproszczony)
+## Diagram relacji (Mermaid ER)
 
-```
-Kategoria ──1:N──► Podkategoria ──1:N──► NarzedzieMagazynowe
-                                              │
-                    Dostawca ──1:N─────────────┤ (ostatni_dostawca)
-                    Lokalizacja ──1:N──────────┤ (domyslna_lokalizacja)
-                                              │
-                                         1:N  ▼
-                                    EgzemplarzNarzedzia
-                                         │    │
-                      Lokalizacja ───────┘    │
-                      FakturaZakupu ──────────┤
-                      Zamowienie ─────────────┤
-                      self (komplet) ─────────┘
-                                              │
-                                         1:N  ▼
-                                  HistoriaUzyciaNarzedzia
-                                         │    │
-                      Maszyna ───────────┘    │
-                      Pracownik (wydanie) ────┤
-                      Pracownik (zwrot) ──────┘
+> Diagram renderuje się automatycznie na GitHubie. Legenda oznaczeń:
+> `||` = dokładnie jeden (wymagany), `|o` = zero lub jeden (opcjonalny), `o{` = zero lub wiele, `|{` = jeden lub wiele
 
-Dostawca ──1:N──► Zamowienie ──1:N──► PozycjaZamowienia
-                       │                     │
-                  1:N  ▼                1:N  ▼
-            RealizacjaZamowienia    PozycjaRealizacji
-                       │                │    │
-            Lokalizacja ───────────────┘    │
-            FakturaZakupu ──────────────────┘
+```mermaid
+erDiagram
+    %% ══════════ SŁOWNIKI ══════════
+    Kategoria {
+        bigint id PK
+        varchar nazwa UK "UNIQUE"
+    }
 
-NarzedzieMagazynowe ──1:1──► PozycjaGeneratora
-Dostawca ─────────────1:N──► PozycjaGeneratora
+    Podkategoria {
+        bigint id PK
+        varchar nazwa
+        bigint kategoria_id FK
+    }
 
-User ──1:N──► ZapotrzebowanieTechnologa ──1:N──► PozycjaZapotrzebowania
-                                                        │
-                              NarzedzieMagazynowe ──────┘
+    Dostawca {
+        bigint id PK
+        varchar kod_dostawcy UK "UNIQUE"
+        varchar nazwa_firmy
+        varchar nip
+        varchar telefon
+        varchar email
+    }
 
-NarzedzieMagazynowe ──1:N──► Uszkodzenie
-EgzemplarzNarzedzia ──1:N──► Uszkodzenie
-Pracownik ────────────1:N──► Uszkodzenie
+    Lokalizacja {
+        bigint id PK
+        varchar szafa
+        varchar kolumna
+        varchar polka
+    }
 
-Pracownik ──1:1──► User (Django auth)
+    Maszyna {
+        bigint id PK
+        varchar nazwa UK "UNIQUE"
+    }
+
+    Pracownik {
+        bigint id PK
+        varchar karta UK "UNIQUE"
+        varchar nazwisko
+        varchar imie
+        bigint user_id FK "OneToOne, SET_NULL"
+        boolean pobieranie_narzedzi
+    }
+
+    %% ══════════ MAGAZYN ══════════
+    NarzedzieMagazynowe {
+        bigint id PK
+        bigint podkategoria_id FK "SET_NULL"
+        text opis
+        varchar numer_katalogowy
+        int stan_minimalny
+        int stan_maksymalny
+        bigint ostatni_dostawca_id FK "SET_NULL"
+        bigint domyslna_lokalizacja_id FK "SET_NULL"
+        varchar opakowanie "szt lub kompl"
+        int ilosc_w_opakowaniu
+        boolean wydawanie_sztuk
+    }
+
+    EgzemplarzNarzedzia {
+        bigint id PK
+        bigint narzedzie_typ_id FK "CASCADE"
+        varchar stan "nowe uzywane uszkodzone"
+        bigint lokalizacja_id FK "SET_NULL"
+        bigint faktura_zakupu_id FK "SET_NULL"
+        bigint zamowienie_id FK "SET_NULL"
+        datetime data_zakupu
+        datetime data_modyfikacji
+        varchar oznaczenie
+        varchar jednostka "szt lub kompl"
+        int ilosc_w_komplecie
+        bigint komplet_zrodlowy_id FK "self SET_NULL"
+        boolean nowy_wpis
+    }
+
+    HistoriaUzyciaNarzedzia {
+        bigint id PK
+        bigint egzemplarz_id FK "CASCADE"
+        bigint maszyna_id FK "SET_NULL"
+        bigint pracownik_id FK "SET_NULL"
+        bigint pracownik_zwracajacy_id FK "SET_NULL"
+        datetime data_wydania
+        datetime data_zwrotu
+        text uwagi
+        varchar nr_zlecenia
+        varchar stan_po_zwrocie
+    }
+
+    %% ══════════ USZKODZENIA ══════════
+    Uszkodzenie {
+        bigint id PK
+        bigint egzemplarz_id FK "SET_NULL"
+        bigint narzedzie_typ_id FK "CASCADE"
+        bigint pracownik_id FK "SET_NULL"
+        varchar numer_karty UK "UNIQUE RRRR-NNN"
+        datetime data_uszkodzenia
+        text opis_uszkodzenia
+        text przyczyna_uszkodzenia
+        varchar stracony_czas
+    }
+
+    %% ══════════ FAKTURY ══════════
+    FakturaZakupu {
+        bigint id PK
+        varchar numer_faktury UK "UNIQUE"
+        date data_wystawienia
+        bigint dostawca_id FK "PROTECT"
+        file plik
+        boolean rozliczone
+    }
+
+    %% ══════════ ZAMÓWIENIA ══════════
+    Zamowienie {
+        bigint id PK
+        varchar numer UK "UNIQUE"
+        bigint dostawca_id FK "PROTECT"
+        varchar email_docelowy
+        datetime data_utworzenia
+        datetime data_wyslania
+        decimal wartosc_zamowienia "12 i 2"
+        varchar status "draft verified sent received completed"
+        text uwagi
+    }
+
+    PozycjaZamowienia {
+        bigint id PK
+        bigint zamowienie_id FK "CASCADE"
+        bigint narzedzie_typ_id FK "PROTECT"
+        int ilosc_zamowiona
+        varchar jednostka
+        decimal cena_jednostkowa "10 i 2"
+        decimal wartosc_pozycji "12 i 2"
+        int ilosc_dostarczona
+        boolean zrealizowane
+    }
+
+    RealizacjaZamowienia {
+        bigint id PK
+        bigint zamowienie_id FK "CASCADE"
+        datetime data_realizacji
+        bigint lokalizacja_domyslna_id FK "SET_NULL"
+        text uwagi
+    }
+
+    PozycjaRealizacji {
+        bigint id PK
+        bigint realizacja_id FK "CASCADE"
+        bigint pozycja_zamowienia_id FK "CASCADE"
+        int ilosc_przyjeta
+        bigint lokalizacja_id FK "SET_NULL"
+        bigint faktura_zakupu_id FK "SET_NULL"
+        decimal cena_jednostkowa "10 i 2"
+    }
+
+    %% ══════════ GENERATOR ZAMÓWIEŃ ══════════
+    PozycjaGeneratora {
+        bigint id PK
+        bigint narzedzie_typ_id FK "OneToOne CASCADE"
+        bigint dostawca_id FK "SET_NULL"
+        decimal cena_jednostkowa "10 i 2"
+        int ilosc_do_zamowienia
+        datetime data_utworzenia
+        datetime data_modyfikacji
+    }
+
+    %% ══════════ ZAPOTRZEBOWANIA ══════════
+    ZapotrzebowanieTechnologa {
+        bigint id PK
+        bigint technolog_id FK "SET_NULL User"
+        datetime data_utworzenia
+        datetime data_wyslania
+        datetime data_realizacji
+        bigint zrealizowany_przez_id FK "SET_NULL User"
+        varchar status "draft submitted completed cancelled"
+        text uwagi
+    }
+
+    PozycjaZapotrzebowania {
+        bigint id PK
+        bigint zapotrzebowanie_id FK "CASCADE"
+        bigint narzedzie_typ_id FK "SET_NULL"
+        varchar specyfikacja
+        varchar numer_katalogowy
+        varchar nr_klienta
+        varchar nr_zlecenia
+        int ilosc
+        text uwagi
+        datetime data_dodania
+    }
+
+    %% ══════════ LOGI ══════════
+    LogEntry {
+        bigint id PK
+        datetime timestamp "db_index"
+        varchar status "INFO SUCCESS WARNING ERROR"
+        varchar osoba
+        text operacja
+    }
+
+    %% ══════════ AUTH (Django) ══════════
+    User {
+        int id PK
+        varchar username UK
+        varchar first_name
+        varchar last_name
+        varchar email
+    }
+
+    %% ╔══════════════════════════════════════════╗
+    %% ║            R E L A C J E                 ║
+    %% ╚══════════════════════════════════════════╝
+
+    %% --- Hierarchia kategorii ---
+    Kategoria ||--o{ Podkategoria : "zawiera"
+    Podkategoria |o--o{ NarzedzieMagazynowe : "zawiera"
+
+    %% --- Narzędzie magazynowe - powiązania słownikowe ---
+    Dostawca |o--o{ NarzedzieMagazynowe : "ostatni dostawca"
+    Lokalizacja |o--o{ NarzedzieMagazynowe : "domyslna lokalizacja"
+
+    %% --- Egzemplarze narzędzi ---
+    NarzedzieMagazynowe ||--o{ EgzemplarzNarzedzia : "typ narzedzia"
+    Lokalizacja |o--o{ EgzemplarzNarzedzia : "aktualna lokalizacja"
+    FakturaZakupu |o--o{ EgzemplarzNarzedzia : "faktura zakupu"
+    Zamowienie |o--o{ EgzemplarzNarzedzia : "zamowienie zrodlowe"
+    EgzemplarzNarzedzia |o--o{ EgzemplarzNarzedzia : "komplet zrodlowy"
+
+    %% --- Historia użycia ---
+    EgzemplarzNarzedzia ||--o{ HistoriaUzyciaNarzedzia : "historia uzycia"
+    Maszyna |o--o{ HistoriaUzyciaNarzedzia : "maszyna"
+    Pracownik |o--o{ HistoriaUzyciaNarzedzia : "pobierajacy"
+    Pracownik |o--o{ HistoriaUzyciaNarzedzia : "zwracajacy"
+
+    %% --- Uszkodzenia ---
+    EgzemplarzNarzedzia |o--o{ Uszkodzenie : "uszkodzony egzemplarz"
+    NarzedzieMagazynowe |o--o{ Uszkodzenie : "typ narzedzia"
+    Pracownik |o--o{ Uszkodzenie : "zglaszajacy"
+
+    %% --- Faktury ---
+    Dostawca ||--o{ FakturaZakupu : "wystawca faktury"
+
+    %% --- Zamówienia ---
+    Dostawca ||--o{ Zamowienie : "dostawca"
+    Zamowienie ||--o{ PozycjaZamowienia : "pozycje zamowienia"
+    NarzedzieMagazynowe ||--o{ PozycjaZamowienia : "zamawiane narzedzie"
+
+    %% --- Realizacje zamówień ---
+    Zamowienie ||--o{ RealizacjaZamowienia : "realizacje"
+    Lokalizacja |o--o{ RealizacjaZamowienia : "lokalizacja domyslna"
+    RealizacjaZamowienia ||--o{ PozycjaRealizacji : "pozycje realizacji"
+    PozycjaZamowienia ||--o{ PozycjaRealizacji : "realizacja pozycji"
+    Lokalizacja |o--o{ PozycjaRealizacji : "lokalizacja docelowa"
+    FakturaZakupu |o--o{ PozycjaRealizacji : "faktura"
+
+    %% --- Generator zamówień ---
+    NarzedzieMagazynowe ||--|| PozycjaGeneratora : "pozycja generatora"
+    Dostawca |o--o{ PozycjaGeneratora : "dostawca"
+
+    %% --- Zapotrzebowania technologów ---
+    User |o--o{ ZapotrzebowanieTechnologa : "technolog"
+    User |o--o{ ZapotrzebowanieTechnologa : "realizujacy"
+    ZapotrzebowanieTechnologa ||--o{ PozycjaZapotrzebowania : "pozycje"
+    NarzedzieMagazynowe |o--o{ PozycjaZapotrzebowania : "narzedzie"
+
+    %% --- Auth ---
+    User |o--o| Pracownik : "konto uzytkownika"
 ```
 
 ---
