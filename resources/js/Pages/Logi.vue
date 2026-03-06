@@ -153,10 +153,7 @@
                                     <template #option="{ option }">
                                         <div class="file-item">
                                             <i class="pi pi-file"></i>
-                                            <div class="file-info">
-                                                <span class="file-name">{{ option.nazwa }}</span>
-                                                <span class="file-size">{{ formatFileSize(option.rozmiar) }}</span>
-                                            </div>
+                                            <span class="file-name">{{ option.nazwa }}</span>
                                         </div>
                                     </template>
                                 </Listbox>
@@ -763,6 +760,26 @@ onUnmounted(() => {
     font-size: 0.85rem;
 }
 
+:deep(.logi-table .p-datatable-thead > tr > th) {
+    padding: 0 10px !important;
+    height: 50px !important;
+    vertical-align: middle !important;
+}
+
+:deep(.logi-table .p-datatable-tbody > tr > td) {
+    padding: 2px 10px !important;
+}
+
+:deep(.logi-table .p-tag) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    padding: 1px 6px !important;
+    font-size: 0.75rem !important;
+    line-height: 1.2 !important;
+}
+
 .log-date {
     font-family: monospace;
     color: #adb5bd;
@@ -805,6 +822,23 @@ onUnmounted(() => {
     overflow: hidden;
 }
 
+:deep(.archiwum-content .p-datatable) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+:deep(.archiwum-content .p-datatable-wrapper) {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+:deep(.archiwum-content .p-paginator) {
+    flex-shrink: 0;
+}
+
 .section-header {
     margin-bottom: 12px;
 }
@@ -828,33 +862,23 @@ onUnmounted(() => {
 }
 
 :deep(.files-list .p-listbox-item) {
-    padding: 10px 12px;
+    padding: 6px 10px;
 }
 
 .file-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    font-size: 0.82rem;
 }
 
 .file-item i {
     color: #ffc107;
-    font-size: 1.2rem;
-}
-
-.file-info {
-    display: flex;
-    flex-direction: column;
+    font-size: 0.9rem;
 }
 
 .file-name {
     color: #dee2e6;
-    font-weight: 500;
-}
-
-.file-size {
-    color: #6c757d;
-    font-size: 0.8rem;
 }
 
 /* === STATES === */
@@ -915,15 +939,43 @@ onUnmounted(() => {
 :deep(.p-paginator) {
     background: var(--dark-bg-tertiary) !important;
     border: none !important;
+    padding: 4px 8px !important;
+    min-height: unset !important;
 }
 
 :deep(.p-paginator .p-paginator-pages .p-paginator-page) {
     color: var(--dark-text-primary) !important;
+    min-width: 1.8rem !important;
+    height: 1.8rem !important;
+    font-size: 0.8rem !important;
 }
 
 :deep(.p-paginator .p-paginator-pages .p-paginator-page.p-highlight) {
     background: #6f42c1 !important;
     color: #fff !important;
+}
+
+:deep(.p-paginator .p-paginator-first,
+       .p-paginator .p-paginator-prev,
+       .p-paginator .p-paginator-next,
+       .p-paginator .p-paginator-last) {
+    min-width: 1.8rem !important;
+    height: 1.8rem !important;
+    font-size: 0.8rem !important;
+}
+
+:deep(.p-paginator .p-dropdown) {
+    height: 1.8rem !important;
+}
+
+:deep(.p-paginator .p-dropdown .p-dropdown-label) {
+    padding: 2px 6px !important;
+    font-size: 0.8rem !important;
+}
+
+:deep(.p-paginator .p-paginator-current) {
+    font-size: 0.8rem !important;
+    height: 1.8rem !important;
 }
 
 /* === PODGLĄD PDF === */

@@ -59,7 +59,7 @@
                     <div class="search-box">
                         <input
                             type="text"
-                            v-model="searchQuery"
+                            v-model="searchInput"
                             placeholder="Szukaj..."
                             class="form-control search-input"
                         />
@@ -94,6 +94,8 @@
                         :loading="isLoadingTools"
                         :scrollable="true"
                         scrollHeight="flex"
+                        tableLayout="fixed"
+                        :virtualScrollerOptions="{ itemSize: 36 }"
                         selectionMode="single"
                         v-model:selection="selectedToolForDetails"
                         @row-select="onToolSelect"
@@ -856,7 +858,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
 import defaultToolImage from '@images/cnc.png';
@@ -935,7 +937,13 @@ const selectedPodkategoriaId = ref(null);
 const selectedToolForDetails = ref(null);
 const selectedMaszynaFilter = ref(null);
 const inUseSearchQuery = ref('');
+const searchInput = ref('');
 const searchQuery = ref('');
+let searchDebounceTimer = null;
+watch(searchInput, (val) => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => { searchQuery.value = val; }, 250);
+});
 
 const activeTabIndex = ref(0);
 const isLoadingTools = ref(true);

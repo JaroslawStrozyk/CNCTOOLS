@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.conf import settings
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.db import transaction
 from django.utils import timezone
 from datetime import datetime
@@ -888,15 +888,12 @@ class NarzedzieMagazynoweViewSet(LoggingMixin, viewsets.ModelViewSet):
             'podkategoria__kategoria',
             'ostatni_dostawca',
             'domyslna_lokalizacja'
-        ).prefetch_related('egzemplarze').annotate(
+        ).annotate(
             ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
             ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
         ).annotate(
-            # Razem = Nowe + Używane + W użyciu (suma wszystkich sztuk)
-            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) +
-                           Coalesce(Subquery(uzywane_subquery), Value(0)) +
-                           Coalesce(Subquery(w_uzyciu_subquery), Value(0))
+            calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
@@ -946,15 +943,12 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
             'podkategoria__kategoria',
             'ostatni_dostawca',
             'domyslna_lokalizacja'
-        ).prefetch_related('egzemplarze').annotate(
+        ).annotate(
             ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
             ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
         ).annotate(
-            # Razem = Nowe + Używane + W użyciu (suma wszystkich sztuk)
-            calkowita_ilosc=Coalesce(Subquery(nowe_subquery), Value(0)) +
-                           Coalesce(Subquery(uzywane_subquery), Value(0)) +
-                           Coalesce(Subquery(w_uzyciu_subquery), Value(0))
+            calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
         )
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
