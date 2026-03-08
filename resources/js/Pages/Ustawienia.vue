@@ -463,6 +463,10 @@ const backUrl = computed(() => {
     if (fromParam === 'zakupy') return props.urls.zakupy;
     if (fromParam === 'magazyn') return props.urls.magazyn;
     if (fromParam === 'kierownik') return props.urls.kierownik;
+    if (fromParam === 'zapotrzebowania') {
+        const origin = urlParams.get('origin');
+        return props.urls.zapotrzebowania + (origin ? '?from=' + origin : '');
+    }
 
     // Sprawdź referrer
     const referrer = document.referrer;

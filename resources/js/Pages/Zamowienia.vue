@@ -4,7 +4,7 @@
         <header class="app-header">
             <h2 class="header-title">ZAMÓWIENIA</h2>
             <div class="header-buttons">
-                <a :href="urls.ustawienia" class="btn btn-secondary">
+                <a :href="urls.ustawienia + '?from=zakupy'" class="btn btn-secondary">
                     <i class="pi pi-cog"></i> Ustawienia
                 </a>
                 <a :href="urls.magazyn" class="btn btn-primary">

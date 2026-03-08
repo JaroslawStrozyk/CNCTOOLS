@@ -1650,10 +1650,15 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         return f"ID: {instance.id} ({technolog})"
 
     def get_queryset(self):
-        """Filtrowanie - tylko zapotrzebowania aktualnego użytkownika"""
+        """Filtrowanie - technolog widzi swoje, magazynier/logistyk/kierownik widzi wysłane i zatwierdzone"""
         queryset = super().get_queryset()
         if self.request.user.is_authenticated and not self.request.user.is_superuser:
-            queryset = queryset.filter(technolog=self.request.user)
+            magazyn_groups = {'magazynier', 'logistyka', 'kierownik'}
+            user_groups = set(self.request.user.groups.values_list('name', flat=True))
+            if user_groups & magazyn_groups:
+                queryset = queryset.filter(status__in=['submitted', 'completed'])
+            else:
+                queryset = queryset.filter(technolog=self.request.user)
         return queryset.order_by('-data_utworzenia')
 
     def perform_create(self, serializer):
@@ -1752,12 +1757,12 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def lista_dla_magazynu(self, request):
         """
-        Zwraca wszystkie wysłane zapotrzebowania dla magazyniera.
-        Dostępne dla wszystkich użytkowników.
+        Zwraca wysłane i zatwierdzone zapotrzebowania dla magazyniera.
+        Sortowanie od najnowszych.
         """
         zapotrzebowania = ZapotrzebowanieTechnologa.objects.filter(
-            status='submitted'
-        ).select_related('technolog').prefetch_related('pozycje').order_by('-data_wyslania')
+            status__in=['submitted', 'completed']
+        ).select_related('technolog', 'zrealizowany_przez').prefetch_related('pozycje').order_by('-data_wyslania')
 
         serializer = self.get_serializer(zapotrzebowania, many=True)
         return Response(serializer.data)
@@ -1765,13 +1770,14 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def zrealizuj(self, request, pk=None):
         """
-        Zmienia status zapotrzebowania na 'completed'.
+        Zatwierdza zapotrzebowanie — zmienia status na 'completed'.
+        Pozycje będą widoczne dla generatora zamówień.
         """
         zapotrzebowanie = self.get_object()
 
         if zapotrzebowanie.status != 'submitted':
             return Response(
-                {'error': 'Tylko wysłane zapotrzebowanie może być zrealizowane'},
+                {'error': 'Tylko wysłane zapotrzebowanie może być zatwierdzone'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -1784,12 +1790,42 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         # Logowanie
         user_name = get_user_display_name(request.user)
         technolog = f"{zapotrzebowanie.technolog.first_name} {zapotrzebowanie.technolog.last_name}" if zapotrzebowanie.technolog else 'nieznany'
-        app_logger.success(user_name, f"Zrealizowano zapotrzebowanie (ID: {zapotrzebowanie.id}) od: {technolog}")
+        pozycje_count = zapotrzebowanie.pozycje.count()
+        app_logger.success(user_name, f"Zatwierdzono zapotrzebowanie ZAM-{zapotrzebowanie.id:04d} od: {technolog} ({pozycje_count} poz.)")
 
         serializer = self.get_serializer(zapotrzebowanie)
         return Response({
             'success': True,
-            'message': 'Zapotrzebowanie zostało zrealizowane',
+            'message': f'Zapotrzebowanie zatwierdzone ({pozycje_count} pozycji gotowych do zamówienia).',
+            'data': serializer.data
+        })
+
+    @action(detail=True, methods=['post'])
+    def cofnij(self, request, pk=None):
+        """
+        Cofa zatwierdzenie — zmienia status z 'completed' z powrotem na 'submitted'.
+        """
+        zapotrzebowanie = self.get_object()
+
+        if zapotrzebowanie.status != 'completed':
+            return Response(
+                {'error': 'Tylko zatwierdzone zapotrzebowanie może być cofnięte'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zapotrzebowanie.status = 'submitted'
+        zapotrzebowanie.data_realizacji = None
+        zapotrzebowanie.zrealizowany_przez = None
+        zapotrzebowanie.save()
+
+        # Logowanie
+        user_name = get_user_display_name(request.user)
+        app_logger.warning(user_name, f"Cofnięto zatwierdzenie zapotrzebowania ZAM-{zapotrzebowanie.id:04d}")
+
+        serializer = self.get_serializer(zapotrzebowanie)
+        return Response({
+            'success': True,
+            'message': 'Zatwierdzenie zapotrzebowania zostało cofnięte.',
             'data': serializer.data
         })
 
@@ -1869,10 +1905,19 @@ class PozycjaZapotrzebowaniaViewSet(LoggingMixin, viewsets.ModelViewSet):
         return instance.specyfikacja or str(instance.id)
 
     def get_queryset(self):
-        """Filtrowanie - tylko pozycje zapotrzebowań aktualnego użytkownika"""
+        """Filtrowanie pozycji zapotrzebowań.
+        Technolog widzi tylko swoje, magazynier/logistyk widzi wysłane."""
         queryset = super().get_queryset()
-        if not self.request.user.is_superuser:
-            queryset = queryset.filter(zapotrzebowanie__technolog=self.request.user)
+        user = self.request.user
+
+        if not user.is_superuser:
+            user_groups = set(user.groups.values_list('name', flat=True))
+            magazyn_groups = {'magazynier', 'logistyka', 'kierownik'}
+            if user_groups & magazyn_groups:
+                # Magazynier/logistyk widzi pozycje wysłanych zapotrzebowań
+                queryset = queryset.filter(zapotrzebowanie__status='submitted')
+            else:
+                queryset = queryset.filter(zapotrzebowanie__technolog=user)
 
         zapotrzebowanie_id = self.request.query_params.get('zapotrzebowanie_id', None)
         if zapotrzebowanie_id:

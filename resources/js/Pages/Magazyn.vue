@@ -1068,7 +1068,7 @@ const userMenuItems = ref([
 // Menu Działania
 const dzialaniaMenu = ref(null);
 const dzialaniaMenuItems = ref([
-    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania; } },
+    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania + '?from=magazyn'; } },
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
     { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
 ]);
@@ -1077,7 +1077,7 @@ const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 // Menu Miejsca
 const miejscaMenu = ref(null);
 const miejscaMenuItems = ref([
-    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia; } },
+    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia + '?from=magazyn'; } },
     { separator: true },
     { label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } },
     { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
