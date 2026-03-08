@@ -171,6 +171,17 @@ class NarzedzieMagazynowe(models.Model):
         default=1,
         verbose_name='Ilość w komplecie'
     )
+    # Ręczna kontrola zamówień - generator czyta pole reczne_dodanie zamiast min/max
+    reczna_kontrola = models.BooleanField(
+        default=False,
+        verbose_name='Ręczna kontrola zamówień',
+        help_text='Zaznacz, aby generator zamówień używał pola "Ręczne dodanie" zamiast automatycznego wyliczania z limitów min/max.'
+    )
+    reczne_dodanie = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Ręczne dodanie',
+        help_text='Ilość do zamówienia przy ręcznej kontroli. Po odczycie przez generator pole jest zerowane.'
+    )
     # Czy można wydawać pojedyncze sztuki z kompletu
     wydawanie_sztuk = models.BooleanField(
         default=False,

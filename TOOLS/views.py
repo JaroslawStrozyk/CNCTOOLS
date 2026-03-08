@@ -250,6 +250,9 @@ def generator_zamowien_api(request):
         'ostatni_dostawca'
     ).prefetch_related('egzemplarze').all()
 
+    # Lista narzędzi z ręczną kontrolą, których pole reczne_dodanie zostało odczytane — do wyzerowania
+    reczne_do_wyzerowania = []
+
     for narzedzie in narzedzia:
         # Pomiń jeśli już jest w PozycjaGeneratora
         if narzedzie.id in istniejace_narzedzia_ids:
@@ -266,6 +269,33 @@ def generator_zamowien_api(request):
         if ma_aktywne_zamowienie:
             continue
 
+        # --- Ręczna kontrola zamówień ---
+        if narzedzie.reczna_kontrola:
+            if narzedzie.reczne_dodanie > 0:
+                ilosc_do_zamowienia = narzedzie.reczne_dodanie
+
+                # Pobierz cenę z ostatniej pozycji zamówienia
+                cena_jednostkowa = 0
+                if narzedzie.ostatni_dostawca:
+                    ostatnia_pozycja = PozycjaZamowienia.objects.filter(
+                        narzedzie_typ=narzedzie,
+                        zamowienie__dostawca=narzedzie.ostatni_dostawca,
+                        cena_jednostkowa__isnull=False
+                    ).order_by('-zamowienie__data_utworzenia').first()
+                    if ostatnia_pozycja and ostatnia_pozycja.cena_jednostkowa:
+                        cena_jednostkowa = ostatnia_pozycja.cena_jednostkowa
+
+                PozycjaGeneratora.objects.create(
+                    narzedzie_typ=narzedzie,
+                    dostawca=narzedzie.ostatni_dostawca,
+                    ilosc_do_zamowienia=ilosc_do_zamowienia,
+                    cena_jednostkowa=cena_jednostkowa
+                )
+                reczne_do_wyzerowania.append(narzedzie.id)
+            # Jeśli reczne_dodanie == 0, pomijamy (nic do zamówienia)
+            continue
+
+        # --- Automatyczna kontrola (min/max) ---
         # Oblicz aktualny stan
         calkowita_ilosc = narzedzie.egzemplarze.exclude(
             stan='uszkodzone'
@@ -305,6 +335,10 @@ def generator_zamowien_api(request):
                 ilosc_do_zamowienia=ilosc_do_zamowienia,
                 cena_jednostkowa=cena_jednostkowa
             )
+
+    # Wyzeruj pole reczne_dodanie dla odczytanych narzędzi z ręczną kontrolą
+    if reczne_do_wyzerowania:
+        NarzedzieMagazynowe.objects.filter(id__in=reczne_do_wyzerowania).update(reczne_dodanie=0)
 
     # Teraz pobierz WSZYSTKIE pozycje z generatora (włącznie z nowo utworzonymi)
     wszystkie_pozycje = PozycjaGeneratora.objects.select_related(

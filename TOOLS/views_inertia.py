@@ -46,6 +46,7 @@ def get_common_urls():
         'zapotrzebowania': '/zapotrzebowania/',
         'produkcja': '/produkcja/',
         'technologia': '/technologia/',
+        'kierownik': '/kierownik/',
         'logi': '/logi/',
         'logout': '/logout/',
     }
@@ -59,6 +60,8 @@ def get_redirect_url_for_user(user):
         return 'produkcja'
     elif user.groups.filter(name='produkcja').exists():
         return 'produkcja'
+    elif user.groups.filter(name='kierownik').exists():
+        return 'kierownik'
     elif user.groups.filter(name='technologia').exists():
         return 'technologia'
     elif user.groups.filter(name='magazyn').exists():
@@ -220,6 +223,17 @@ def produkcja_view(request):
         data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
 
     return render(request, 'Produkcja', data)
+
+
+@login_required
+def kierownik_view(request):
+    """Kierownik - Inertia (podgląd stanów magazynowych)"""
+    return render(request, 'Kierownik', {
+        'auth': get_auth_data(request),
+        'urls': get_common_urls(),
+        'infoProgram': get_info_program(),
+        'pageSize': getattr(settings, 'TECHNOLOG_PAGE_SIZE', 50),
+    })
 
 
 @login_required

@@ -25,9 +25,13 @@
                         </button>
                         <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
                     </div>
-                    <a v-if="auth.isLogistyka" :href="urls.zakupy" class="btn btn-primary">
-                        <i class="pi pi-truck"></i> Zakupy
-                    </a>
+                    <div class="dropdown-wrapper">
+                        <button class="btn btn-primary" @click="toggleMiejscaMenu">
+                            <i class="pi pi-building"></i> Miejsca
+                            <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                        </button>
+                        <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
+                    </div>
                     <div class="dropdown-wrapper">
                         <button class="user-dropdown-btn" @click="toggleUserMenu">
                             <i class="pi pi-user"></i>
@@ -1049,11 +1053,6 @@ const toolImageFile = ref(null);
 const userMenu = ref(null);
 const userMenuItems = ref([
     {
-        label: 'Ustawienia',
-        icon: 'pi pi-cog',
-        command: () => { window.location.href = props.urls.ustawienia; }
-    },
-    {
         label: 'O programie',
         icon: 'pi pi-info-circle',
         command: () => { aboutModalVisible.value = true; }
@@ -1071,11 +1070,19 @@ const dzialaniaMenu = ref(null);
 const dzialaniaMenuItems = ref([
     { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania; } },
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
-    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } },
-    { separator: true },
-    { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
+    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
 ]);
 const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
+
+// Menu Miejsca
+const miejscaMenu = ref(null);
+const miejscaMenuItems = ref([
+    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia; } },
+    { separator: true },
+    { label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } },
+    { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
+]);
+const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 
 // Logout (tryb produkcja)
 const logout = () => {
@@ -2955,7 +2962,8 @@ onUnmounted(() => {
 }
 
 /* === MENU DZIAŁANIA === */
-#dzialania_menu {
+#dzialania_menu,
+#miejsca_menu {
     min-width: 180px !important;
     background: #2d3238 !important;
     border: 1px solid #495057 !important;
@@ -2964,18 +2972,21 @@ onUnmounted(() => {
     padding: 6px 0 !important;
 }
 
-#dzialania_menu_list {
+#dzialania_menu_list,
+#miejsca_menu_list {
     padding: 0 !important;
     margin: 0 !important;
     list-style: none !important;
 }
 
-#dzialania_menu_list li {
+#dzialania_menu_list li,
+#miejsca_menu_list li {
     margin: 0 !important;
     padding: 0 !important;
 }
 
-#dzialania_menu_list li > div {
+#dzialania_menu_list li > div,
+#miejsca_menu_list li > div {
     padding: 0 !important;
     margin: 0 !important;
     background: transparent !important;
@@ -2984,12 +2995,15 @@ onUnmounted(() => {
     transition: background-color 0.15s !important;
 }
 
-#dzialania_menu_list li > div:hover {
+#dzialania_menu_list li > div:hover,
+#miejsca_menu_list li > div:hover {
     background-color: #3d444d !important;
 }
 
 #dzialania_menu_list li > div > a,
-#dzialania_menu_list li > div > div {
+#dzialania_menu_list li > div > div,
+#miejsca_menu_list li > div > a,
+#miejsca_menu_list li > div > div {
     display: flex !important;
     align-items: center !important;
     padding: 10px 16px !important;
@@ -3001,12 +3015,16 @@ onUnmounted(() => {
 
 #dzialania_menu_list li > div span[class*="icon"],
 #dzialania_menu_list li > div i,
-#dzialania_menu_list li > div .pi {
+#dzialania_menu_list li > div .pi,
+#miejsca_menu_list li > div span[class*="icon"],
+#miejsca_menu_list li > div i,
+#miejsca_menu_list li > div .pi {
     color: #adb5bd !important;
     font-size: 1rem !important;
 }
 
-#dzialania_menu_list li > div span:not([class*="icon"]):not(.pi) {
+#dzialania_menu_list li > div span:not([class*="icon"]):not(.pi),
+#miejsca_menu_list li > div span:not([class*="icon"]):not(.pi) {
     color: #dee2e6 !important;
     font-size: 14px !important;
 }

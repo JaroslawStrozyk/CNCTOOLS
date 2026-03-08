@@ -4,15 +4,20 @@
         <header class="app-header">
             <h2 class="header-title">ZAKUPY</h2>
             <div class="header-buttons">
-                <a :href="urls.ustawienia" class="btn btn-secondary">
-                    <i class="pi pi-cog"></i> Ustawienia
-                </a>
-                <a :href="urls.zamowienia" class="btn btn-success">
-                    <i class="pi pi-file"></i> Zamówienia
-                </a>
-                <a :href="urls.magazyn" class="btn btn-primary">
-                    <i class="pi pi-building"></i> Magazyn
-                </a>
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-success" @click="toggleDzialaniaMenu">
+                        <i class="pi pi-th-large"></i> Działania
+                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                    </button>
+                    <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
+                </div>
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-primary" @click="toggleMiejscaMenu">
+                        <i class="pi pi-building"></i> Miejsca
+                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                    </button>
+                    <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
+                </div>
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
                         <i class="pi pi-user"></i>
@@ -30,7 +35,7 @@
             <div class="tools-panel">
                 <div class="panel-header">
                     <div class="search-box">
-                        <input type="text" v-model="searchQuery" placeholder="Szukaj..." class="form-control search-input" />
+                        <input type="text" v-model="searchInput" placeholder="Szukaj..." class="form-control search-input" />
                     </div>
                     <h3 class="panel-title">Lista narzędzi</h3>
                     <div class="filter-box">
@@ -57,8 +62,11 @@
                 <div class="panel-body">
                     <DataTable
                         :value="filteredTools"
+                        :loading="isLoadingTools"
                         :scrollable="true"
                         scrollHeight="flex"
+                        tableLayout="fixed"
+                        :virtualScrollerOptions="{ itemSize: 36 }"
                         selectionMode="single"
                         v-model:selection="selectedTool"
                         @row-select="onToolSelect"
@@ -68,7 +76,7 @@
                     >
                         <Column header="" style="width: 15px;">
                             <template #body="{ data }">
-                                <div :class="getStatusClass(data)" class="status-indicator"></div>
+                                <div :class="data.reczna_kontrola ? 'status-blue' : getStatusClass(data)" class="status-indicator"></div>
                             </template>
                         </Column>
                         <Column header="Kategoria / Podkategoria">
@@ -83,17 +91,31 @@
                         <Column field="numer_katalogowy" header="Nr katalogowy" />
                         <Column header="Ilość całkowita" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
-                                <strong>{{ data.calkowita_ilosc }}</strong>
+                                <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
                             </template>
                         </Column>
                         <Column header="Limit minimalny" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
-                                {{ data.stan_minimalny !== undefined ? data.stan_minimalny : 0 }}
+                                <span :class="{ 'zero-value': (data.stan_minimalny || 0) === 0 }">{{ data.stan_minimalny !== undefined ? data.stan_minimalny : 0 }}</span>
                             </template>
                         </Column>
                         <Column header="Limit maksymalny" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
-                                {{ data.stan_maksymalny !== undefined ? data.stan_maksymalny : 10 }}
+                                <span :class="{ 'zero-value': (data.stan_maksymalny || 0) === 0 }">{{ data.stan_maksymalny !== undefined ? data.stan_maksymalny : 10 }}</span>
+                            </template>
+                        </Column>
+                        <Column header="Kontrola" style="width: 90px; text-align: center;">
+                            <template #body="{ data }">
+                                <Tag v-if="data.reczna_kontrola" value="Ręczna" severity="secondary" class="control-reczna" />
+                                <span v-else class="control-auto">Auto</span>
+                            </template>
+                        </Column>
+                        <Column header="Ręczne dodanie" style="width: 120px; text-align: center;">
+                            <template #body="{ data }">
+                                <span v-if="data.reczna_kontrola" :class="{ 'zero-value': (data.reczne_dodanie || 0) === 0 }">
+                                    <strong>{{ data.reczne_dodanie || 0 }}</strong>
+                                </span>
+                                <span v-else class="text-muted">-</span>
                             </template>
                         </Column>
                         <Column header="" style="width: 100px; text-align: center;">
@@ -191,7 +213,17 @@
                 </div>
                 <div class="field">
                     <label>Limit maksymalny</label>
-                    <InputNumber v-model="currentTool.stan_maksymalny" :min="0" />
+                    <InputNumber v-model="currentTool.stan_maksymalny" :min="0" :disabled="currentTool.reczna_kontrola" />
+                </div>
+                <div class="field">
+                    <div class="checkbox-row">
+                        <Checkbox v-model="currentTool.reczna_kontrola" :binary="true" inputId="reczna_kontrola" />
+                        <label for="reczna_kontrola" class="checkbox-label">Ręczna kontrola zamówień</label>
+                    </div>
+                </div>
+                <div v-if="currentTool.reczna_kontrola" class="field">
+                    <label>Ręczne dodanie (ilość do zamówienia)</label>
+                    <InputNumber v-model="currentTool.reczne_dodanie" :min="0" />
                 </div>
                 <div class="field">
                     <label>Obraz narzędzia</label>
@@ -246,15 +278,17 @@
                 </table>
             </div>
             <template #footer>
-                <small class="text-muted">© {{ infoProgram.FIRMA }} 2025</small>
-                <Button label="Zamknij" @click="aboutModalVisible = false" />
+                <div class="about-footer">
+                    <small class="copyright">© {{ infoProgram.FIRMA }} 2025</small>
+                    <Button label="Zamknij" class="btn-modal-secondary" @click="aboutModalVisible = false" />
+                </div>
             </template>
         </Dialog>
     </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
 
@@ -270,6 +304,7 @@ import TabPanel from 'primevue/tabpanel';
 import Dialog from 'primevue/dialog';
 import Badge from 'primevue/badge';
 import Tag from 'primevue/tag';
+import Checkbox from 'primevue/checkbox';
 import Menu from 'primevue/menu';
 import ProgressSpinner from 'primevue/progressspinner';
 
@@ -288,7 +323,9 @@ const props = defineProps({
         default: () => ({
             ustawienia: '/ustawienia/',
             zamowienia: '/zamowienia/',
-            magazyn: '/magazyn-inertia/',
+            magazyn: '/magazyn/',
+            zapotrzebowania: '/zapotrzebowania/',
+            realizacja: '/realizacja/',
             logout: '/logout/'
         })
     },
@@ -306,7 +343,14 @@ const orders = ref([]);
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
 const selectedTool = ref(null);
+const searchInput = ref('');
 const searchQuery = ref('');
+let searchDebounceTimer = null;
+watch(searchInput, (val) => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => { searchQuery.value = val; }, 250);
+});
+const isLoadingTools = ref(true);
 const isLoadingOrders = ref(false);
 
 // Modals
@@ -316,6 +360,24 @@ const isEditMode = ref(false);
 const currentTool = ref({});
 const toolImagePreview = ref(null);
 const toolImageFile = ref(null);
+
+// Menu Działania
+const dzialaniaMenu = ref(null);
+const dzialaniaMenuItems = ref([
+    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania; } },
+    { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
+    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
+]);
+const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
+
+// Menu Miejsca
+const miejscaMenu = ref(null);
+const miejscaMenuItems = ref([
+    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia; } },
+    { separator: true },
+    { label: 'Magazyn', icon: 'pi pi-building', command: () => { window.location.href = props.urls.magazyn; } }
+]);
+const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 
 // User menu
 const userMenu = ref(null);
@@ -507,6 +569,8 @@ const openToolModal = (tool = null) => {
             numer_katalogowy: '',
             stan_minimalny: 0,
             stan_maksymalny: 10,
+            reczna_kontrola: false,
+            reczne_dodanie: 0,
             obraz: null
         };
     }
@@ -530,6 +594,8 @@ const saveTool = async () => {
     formData.append('opis', currentTool.value.opis);
     formData.append('stan_minimalny', currentTool.value.stan_minimalny !== undefined ? currentTool.value.stan_minimalny : 0);
     formData.append('stan_maksymalny', currentTool.value.stan_maksymalny !== undefined ? currentTool.value.stan_maksymalny : 10);
+    formData.append('reczna_kontrola', currentTool.value.reczna_kontrola ? 'true' : 'false');
+    formData.append('reczne_dodanie', currentTool.value.reczne_dodanie || 0);
 
     if (currentTool.value.podkategoria_id) {
         formData.append('podkategoria_id', currentTool.value.podkategoria_id);
@@ -564,6 +630,8 @@ const fetchInitialData = async () => {
         kategorie.value = categoriesRes.data;
     } catch (error) {
         console.error("Błąd ładowania danych:", error.response?.data || error.message);
+    } finally {
+        isLoadingTools.value = false;
     }
 };
 
@@ -619,6 +687,14 @@ onMounted(() => {
 .status-green { background-color: #198754; }
 .status-orange { background-color: #d97706; }
 .status-red { background-color: #dc3545; }
+.status-blue { background-color: #0d6efd; }
+
+.zero-value { color: #6c757d !important; }
+.control-auto { color: #6c757d; font-size: 0.85rem; border: 1px solid #495057; border-radius: 4px; padding: 2px 8px; }
+.control-reczna :deep(.p-tag-value) { color: #5bc0de !important; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; }
+.checkbox-label { margin: 0; cursor: pointer; }
 
 :deep(.p-tabview) { height: 100%; display: flex; flex-direction: column; }
 :deep(.p-tabview-panels) { flex: 1; min-height: 0; }
@@ -632,4 +708,68 @@ onMounted(() => {
 .about-table { width: 100%; text-align: left; }
 .about-table td { padding: 8px 0; color: var(--dark-text-primary); }
 .about-table .label { text-align: right; color: var(--dark-text-muted); padding-right: 16px; width: 40%; }
+
+.about-footer { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.about-footer .copyright { color: #6c757d !important; font-size: 0.85rem; }
+</style>
+
+<style>
+/* Menu Działania / Miejsca — globalny styl (nie scoped) */
+#dzialania_menu,
+#miejsca_menu {
+    min-width: 180px !important;
+    background: #2d3238 !important;
+    border: 1px solid #495057 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+    padding: 6px 0 !important;
+}
+#dzialania_menu_list,
+#miejsca_menu_list {
+    padding: 0 !important;
+    margin: 0 !important;
+    list-style: none !important;
+}
+#dzialania_menu_list li,
+#miejsca_menu_list li {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+#dzialania_menu_list li > div,
+#miejsca_menu_list li > div {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    transition: background-color 0.15s !important;
+}
+#dzialania_menu_list li > div:hover,
+#miejsca_menu_list li > div:hover {
+    background-color: #3d444d !important;
+}
+#dzialania_menu_list li > div > a,
+#dzialania_menu_list li > div > div,
+#miejsca_menu_list li > div > a,
+#miejsca_menu_list li > div > div {
+    display: flex !important;
+    align-items: center !important;
+    padding: 10px 16px !important;
+    gap: 10px !important;
+    text-decoration: none !important;
+    cursor: pointer !important;
+}
+#dzialania_menu_list li > div span[class*="icon"],
+#dzialania_menu_list li > div i,
+#dzialania_menu_list li > div .pi,
+#miejsca_menu_list li > div span[class*="icon"],
+#miejsca_menu_list li > div i,
+#miejsca_menu_list li > div .pi {
+    color: #adb5bd !important;
+    font-size: 1rem !important;
+}
+#dzialania_menu_list li > div span:not([class*="icon"]):not(.pi),
+#miejsca_menu_list li > div span:not([class*="icon"]):not(.pi) {
+    color: #dee2e6 !important;
+    font-size: 14px !important;
+}
 </style>

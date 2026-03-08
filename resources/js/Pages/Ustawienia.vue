@@ -462,10 +462,12 @@ const backUrl = computed(() => {
     const fromParam = urlParams.get('from');
     if (fromParam === 'zakupy') return props.urls.zakupy;
     if (fromParam === 'magazyn') return props.urls.magazyn;
+    if (fromParam === 'kierownik') return props.urls.kierownik;
 
     // Sprawdź referrer
     const referrer = document.referrer;
     if (referrer.includes('zakupy')) return props.urls.zakupy;
+    if (referrer.includes('kierownik')) return props.urls.kierownik;
 
     // Domyślnie wróć do magazynu
     return props.urls.magazyn;

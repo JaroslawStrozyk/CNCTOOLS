@@ -18,6 +18,7 @@ from .views_inertia import (
     zapotrzebowania_view as zapotrzebowania_inertia_view,
     produkcja_view as produkcja_inertia_view,
     technologia_view as technologia_inertia_view,
+    kierownik_view as kierownik_inertia_view,
     logi_view as logi_inertia_view,
 )
 
@@ -66,6 +67,7 @@ urlpatterns = [
     path('zapotrzebowania/', zapotrzebowania_inertia_view, name='zapotrzebowania'),
     path('produkcja/', produkcja_inertia_view, name='produkcja'),
     path('technologia/', technologia_inertia_view, name='technologia'),
+    path('kierownik/', kierownik_inertia_view, name='kierownik'),
     path('logi/', logi_inertia_view, name='logi'),
 
     # ===== STARY SYSTEM (backup - do usunięcia po pełnej migracji) =====
