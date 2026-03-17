@@ -200,7 +200,7 @@
                                         </Column>
                                         <Column header="Opakowanie">
                                             <template #body="{ data }">
-                                                <template v-if="data.jednostka === 'kompl'">Komplet ({{ data.ilosc_w_komplecie }} szt.)</template>
+                                                <template v-if="data.jednostka === 'kompl'">Komplet <span class="hint-text">({{ data.ilosc_w_komplecie }} szt.)</span></template>
                                                 <template v-else-if="data.narzedzie_typ && data.narzedzie_typ.opakowanie === 'kompl'">{{ data.ilosc_w_komplecie }} z kompletu</template>
                                                 <template v-else>Sztuka</template>
                                             </template>
@@ -307,7 +307,7 @@
                                 </Column>
                                 <Column header="Opakowanie">
                                     <template #body="{ data }">
-                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet ({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</template>
+                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet <span class="hint-text">({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</span></template>
                                         <template v-else-if="data.egzemplarz?.narzedzie_typ?.opakowanie === 'kompl'">{{ data.egzemplarz.ilosc_w_komplecie }} z kompletu</template>
                                         <template v-else>Sztuka</template>
                                     </template>
@@ -384,7 +384,7 @@
                                 </Column>
                                 <Column header="Opakowanie">
                                     <template #body="{ data }">
-                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet ({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</template>
+                                        <template v-if="data.egzemplarz?.jednostka === 'kompl'">Komplet <span class="hint-text">({{ data.egzemplarz.ilosc_w_komplecie }} szt.)</span></template>
                                         <template v-else-if="data.egzemplarz?.narzedzie_typ?.opakowanie === 'kompl'">{{ data.egzemplarz.ilosc_w_komplecie }} z kompletu</template>
                                         <template v-else>Sztuka</template>
                                     </template>
@@ -417,7 +417,7 @@
                 <div class="field" v-if="issueData.instance">
                     <small class="text-muted">
                         <template v-if="issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.opakowanie === 'kompl'">
-                            Komplet ({{ issueData.instance.ilosc_w_komplecie }} szt.)
+                            Komplet <span class="hint-text">({{ issueData.instance.ilosc_w_komplecie }} szt.)</span>
                         </template>
                         <template v-else>
                             {{ issueData.instance.ilosc_w_komplecie }} szt.
@@ -490,7 +490,7 @@
                     <InputText :value="returnData.usage.egzemplarz.narzedzie_typ?.opis || ''" disabled />
                     <small class="text-muted">
                         {{ returnData.usage.egzemplarz.ilosc_w_komplecie }} szt.
-                        <template v-if="returnData.usage.egzemplarz.jednostka === 'kompl'"> (komplet)</template>
+                        <template v-if="returnData.usage.egzemplarz.jednostka === 'kompl'"> <span class="hint-text">(komplet)</span></template>
                     </small>
                 </div>
                 <div class="field">
@@ -531,11 +531,11 @@
                     <div class="return-status-options">
                         <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanNowe" value="nowe" />
-                            <label for="stanNowe">Nowym (nie używane)</label>
+                            <label for="stanNowe">Nowym <span class="hint-text">(nie używane)</span></label>
                         </div>
                         <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanUzywane" value="uzywane" />
-                            <label for="stanUzywane">Dobrym (jako używane)</label>
+                            <label for="stanUzywane">Dobrym <span class="hint-text">(jako używane)</span></label>
                         </div>
                         <div class="field-radiobutton">
                             <RadioButton v-model="returnStatus" inputId="stanUszkodzone" value="uszkodzone" />
@@ -1355,7 +1355,15 @@ const getToolInstances = async (tool) => {
     try {
         const response = await axios.get(`${API_URL}/egzemplarze/?narzedzie_typ_id=${tool.id}`);
         const instances = response.data.results || response.data;
-        toolInstances.value = instances.sort((a, b) => b.id - a.id);
+        const hasInUse = instances.some(inst => inUseInstanceIds.value.has(inst.id));
+        toolInstances.value = instances.sort((a, b) => {
+            if (hasInUse) {
+                const aInUse = inUseInstanceIds.value.has(a.id) ? 1 : 0;
+                const bInUse = inUseInstanceIds.value.has(b.id) ? 1 : 0;
+                if (aInUse !== bInUse) return aInUse - bInUse;
+            }
+            return b.id - a.id;
+        });
     } catch (error) {
         console.error("Błąd ładowania egzemplarzy:", error.response?.data || error.message);
         toolInstances.value = [];
@@ -1532,12 +1540,11 @@ const otworzKarteUszkodzenia = async () => {
 };
 
 // Zmiana typu zgłaszającego - aktualizuje nazwisko
-const onTypZglaszajacegoChange = () => {
-    if (kartaUszkodzenia.value.typ_zglaszajacego === 'pobierajacy') {
-        kartaUszkodzenia.value.nazwisko_zglaszajacego = kartaUszkodzenia.value._nazwisko_pobierajacy;
-    } else {
-        kartaUszkodzenia.value.nazwisko_zglaszajacego = kartaUszkodzenia.value._nazwisko_zwracajacy;
-    }
+const onTypZglaszajacegoChange = (event) => {
+    const val = event?.value ?? kartaUszkodzenia.value.typ_zglaszajacego;
+    kartaUszkodzenia.value.nazwisko_zglaszajacego = val === 'pobierajacy'
+        ? kartaUszkodzenia.value._nazwisko_pobierajacy
+        : kartaUszkodzenia.value._nazwisko_zwracajacy;
 };
 
 // Anuluj kartę i wróć do modalu zwrotu
@@ -2842,6 +2849,10 @@ onUnmounted(() => {
 .required-mark {
     color: #5a6570;
     font-size: 0.85em;
+}
+
+.hint-text {
+    color: #888;
 }
 
 .text-danger {

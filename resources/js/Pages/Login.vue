@@ -64,11 +64,9 @@
             </form>
 
             <!-- Card login hint -->
-            <div class="card-hint" :class="{ 'connected': wsConnected }">
+            <div class="card-hint">
                 <i class="pi pi-id-card"></i>
-                <span v-if="wsConnected">przyłóż kartę do czytnika</span>
-                <span v-else>lub przyłóż kartę do czytnika</span>
-                <span v-if="wsConnected" class="ws-status" title="Połączono z czytnikiem">●</span>
+                <span>lub przyłóż kartę do czytnika</span>
             </div>
         </div>
     </div>
@@ -110,61 +108,47 @@ const isCardProcessing = ref(false);
 const lastKeyTime = ref(0);
 const fastInputCount = ref(0);
 
-// WebSocket state
-const wsConnected = ref(false);
-const wsReaderConnected = ref(false);
-let ws = null;
-let wsReconnectTimer = null;
-const WS_URL = 'ws://localhost:2222';
-
-// Card reader detection - HID readers act as keyboards
-// Key insight: Card readers type VERY fast (<50ms between chars), humans can't type that fast
+// HID card reader detection
+// Czytnik HID działa jak klawiatura — wysyła cyfry bardzo szybko (<50ms między znakami)
+// i kończy Enterem. Człowiek nie jest w stanie tak szybko wpisywać.
 const handleCardInput = (event) => {
     const now = Date.now();
     const timeSinceLastKey = now - lastKeyTime.value;
 
-    // Enter key = end of card read
+    // Enter = koniec odczytu karty
     if (event.key === 'Enter') {
         if (cardBuffer.value.length === 10 && /^\d{10}$/.test(cardBuffer.value)) {
             event.preventDefault();
             event.stopPropagation();
-
-            // Clear any text that got into input fields
             clearInputFields();
-
             loginByCard(cardBuffer.value);
         }
         resetCardState();
         return;
     }
 
-    // Only process digits for card
+    // Tylko cyfry
     if (/^\d$/.test(event.key)) {
-        // Detect fast input (card reader is < 50ms between chars)
         const isFastInput = timeSinceLastKey < 80;
 
         if (isFastInput || cardBuffer.value.length > 0) {
             fastInputCount.value++;
         }
 
-        // If we detect fast input pattern, it's a card reader
+        // Wykryto szybkie wpisywanie — to czytnik kart
         if (fastInputCount.value >= 2 || cardBuffer.value.length >= 2) {
             event.preventDefault();
             event.stopPropagation();
 
-            // First time detecting card - clear any digits that got into inputs
             if (!isCardReading.value) {
                 clearInputFields();
-                // Also blur the active input to prevent further typing
                 document.activeElement?.blur();
             }
             isCardReading.value = true;
         }
 
-        // Clear previous timeout
         clearTimeout(cardTimeout.value);
 
-        // First digit
         if (cardBuffer.value.length === 0) {
             lastKeyTime.value = now;
         }
@@ -172,7 +156,7 @@ const handleCardInput = (event) => {
         cardBuffer.value += event.key;
         lastKeyTime.value = now;
 
-        // Reset if typing is too slow (human typing)
+        // Reset jeśli przerwa > 200ms (człowiek pisze ręcznie)
         cardTimeout.value = setTimeout(() => {
             resetCardState();
         }, 200);
@@ -186,7 +170,6 @@ const resetCardState = () => {
 };
 
 const clearInputFields = () => {
-    // Clear username and password fields if card number got typed into them
     if (form.username && /^\d+$/.test(form.username)) {
         form.username = '';
     }
@@ -210,7 +193,6 @@ const loginByCard = async (cardNumber) => {
             cardMessageType.value = 'success';
             cardMessage.value = `Witaj, ${response.data.user.first_name}!`;
 
-            // Redirect after short delay
             setTimeout(() => {
                 window.location.href = response.data.redirect;
             }, 500);
@@ -220,82 +202,19 @@ const loginByCard = async (cardNumber) => {
         cardMessage.value = error.response?.data?.error || 'Błąd logowania kartą';
         isCardProcessing.value = false;
 
-        // Clear message after 5 seconds
         setTimeout(() => {
             cardMessage.value = '';
         }, 5000);
     }
 };
 
-// WebSocket connection
-const connectWebSocket = () => {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
-
-    try {
-        ws = new WebSocket(WS_URL);
-
-        ws.onopen = () => {
-            console.log('WebSocket connected to card reader daemon');
-            wsConnected.value = true;
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-
-                if (data.type === 'status') {
-                    wsReaderConnected.value = data.reader_connected;
-                }
-                else if (data.type === 'card') {
-                    // Card received via WebSocket - login
-                    console.log('Card received via WebSocket:', data.card_number);
-                    loginByCard(data.card_number);
-                }
-            } catch (e) {
-                console.error('WebSocket message parse error:', e);
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            wsConnected.value = false;
-            wsReaderConnected.value = false;
-
-            // Reconnect after 3 seconds
-            wsReconnectTimer = setTimeout(connectWebSocket, 3000);
-        };
-
-        ws.onerror = () => {
-            // Silent error - daemon might not be running
-            wsConnected.value = false;
-        };
-
-    } catch (e) {
-        // WebSocket not supported or connection failed
-        wsConnected.value = false;
-    }
-};
-
-const disconnectWebSocket = () => {
-    clearTimeout(wsReconnectTimer);
-    if (ws) {
-        ws.close();
-        ws = null;
-    }
-};
-
 onMounted(() => {
-    // Keyboard fallback (when WebSocket daemon not running)
     window.addEventListener('keydown', handleCardInput, true);
-
-    // Try WebSocket connection
-    connectWebSocket();
 });
 
 onUnmounted(() => {
     window.removeEventListener('keydown', handleCardInput, true);
     clearTimeout(cardTimeout.value);
-    disconnectWebSocket();
 });
 
 const submit = () => {
@@ -536,25 +455,5 @@ const submit = () => {
 .card-hint i {
     font-size: 18px;
     color: #9ca3af;
-}
-
-/* WebSocket connected state */
-.card-hint.connected {
-    color: #86efac;
-}
-
-.card-hint.connected i {
-    color: #86efac;
-}
-
-.ws-status {
-    color: #22c55e;
-    font-size: 10px;
-    animation: blink 2s infinite;
-}
-
-@keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
 }
 </style>
