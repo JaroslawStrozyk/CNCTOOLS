@@ -275,23 +275,20 @@
                                 {{ data.numer_katalogowy || '-' }}
                             </template>
                         </Column>
-                        <Column header="Przyczyna uszkodzenia">
+                        <Column style="text-align: center;">
+                            <template #header>
+                                <div style="text-align: center; line-height: 1.3;">Stracony czas<br><span class="stracony-czas-unit">[godz.]</span></div>
+                            </template>
                             <template #body="{ data }">
-                                {{ data.przyczyna_uszkodzenia || '-' }}
+                                <span v-if="data.stracony_czas" class="stracony-czas-value">{{ formatMinutesToHours(data.stracony_czas) }}</span>
+                                <span v-else class="stracony-czas-empty">?</span>
                             </template>
                         </Column>
-                        <Column header="Stracony czas">
+                        <Column header="" style="width: 100px; text-align: center;">
                             <template #body="{ data }">
-                                {{ data.stracony_czas || '-' }}
-                            </template>
-                        </Column>
-                        <Column header="Uwagi">
-                            <template #body="{ data }">
-                                {{ data.opis_uszkodzenia || '-' }}
-                            </template>
-                        </Column>
-                        <Column header="" style="width: 50px; text-align: center;">
-                            <template #body="{ data }">
+                                <button class="btn-details-row" @click="openDmgDetailModal(data)" title="Szczegóły">
+                                    <i class="pi pi-info-circle"></i>
+                                </button>
                                 <button class="btn-pdf-row" @click="openDmgPdfSingle(data)" title="Eksport PDF">
                                     <i class="pi pi-file-pdf"></i>
                                 </button>
@@ -625,6 +622,62 @@
                 </div>
             </div>
         </Dialog>
+
+        <!-- Modal: Szczegóły uszkodzenia -->
+        <Dialog
+            v-model:visible="dmgDetailModalVisible"
+            header="Szczegóły uszkodzenia"
+            :modal="true"
+            :style="{ width: '1200px' }"
+        >
+            <div v-if="dmgDetailData" class="dmg-detail-grid">
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Nr karty:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.numer_karty || '-' }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Data uszkodzenia:</span>
+                    <span class="dmg-detail-value" v-html="formatCustomDate(dmgDetailData.data_uszkodzenia)"></span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Ostatnia maszyna:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.maszyna_uszkodzenia || '-' }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Zgłaszający:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.nazwisko_zglaszajacego || formatDmgPracownik(dmgDetailData.ostatni_pracownik) }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Narzędzie:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.kategoria_narzedzia }}: {{ dmgDetailData.opis_narzedzia }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Nr katalogowy:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.numer_katalogowy || '-' }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Przyczyna uszkodzenia:</span>
+                    <span class="dmg-detail-value">{{ dmgDetailData.przyczyna_uszkodzenia || '-' }}</span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Stracony czas:</span>
+                    <span class="dmg-detail-value dmg-detail-value-inline">
+                        <input type="number" v-model.number="dmgEditStracony" class="dmg-edit-input dmg-edit-input-short" min="0" />
+                        <span class="dmg-edit-hint">wartość w minutach</span>
+                    </span>
+                </div>
+                <div class="dmg-detail-row">
+                    <span class="dmg-detail-label">Uwagi:</span>
+                    <span class="dmg-detail-value">
+                        <textarea v-model="dmgEditUwagi" class="dmg-edit-input dmg-edit-textarea" rows="3" placeholder="Uwagi..."></textarea>
+                    </span>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Zapisz" icon="pi pi-check" severity="danger" @click="saveDmgDetail" :loading="dmgDetailSaving" :disabled="!dmgDetailChanged" />
+                <Button label="Zamknij" icon="pi pi-times" severity="success" @click="dmgDetailModalVisible = false" />
+            </template>
+        </Dialog>
     </div>
 </template>
 
@@ -809,6 +862,51 @@ const dmgSearchQuery = ref('');
 const regenSearchQuery = ref('');
 const dmgPdfPreviewVisible = ref(false);
 const dmgPdfPreviewUrl = ref('');
+const dmgDetailModalVisible = ref(false);
+const dmgDetailData = ref(null);
+const dmgEditStracony = ref('');
+const dmgEditUwagi = ref('');
+const dmgDetailSaving = ref(false);
+
+const dmgDetailChanged = computed(() => {
+    if (!dmgDetailData.value) return false;
+    const origStracony = dmgDetailData.value.stracony_czas || null;
+    const origUwagi = dmgDetailData.value.opis_uszkodzenia || '';
+    return (dmgEditStracony.value || null) !== origStracony || dmgEditUwagi.value !== origUwagi;
+});
+
+const openDmgDetailModal = (damage) => {
+    dmgDetailData.value = damage;
+    dmgEditStracony.value = damage.stracony_czas || null;
+    dmgEditUwagi.value = damage.opis_uszkodzenia || '';
+    dmgDetailModalVisible.value = true;
+};
+
+const saveDmgDetail = async () => {
+    if (!dmgDetailData.value) return;
+
+    // Cicha walidacja stracony_czas — jeśli niepoprawna wartość, cofnij do oryginału
+    let straconyValue = dmgEditStracony.value;
+    if (straconyValue !== null && straconyValue !== '' && (!Number.isInteger(straconyValue) || straconyValue < 0)) {
+        dmgEditStracony.value = dmgDetailData.value.stracony_czas || null;
+        return;
+    }
+
+    dmgDetailSaving.value = true;
+    try {
+        await axios.patch(`${API_URL}/uszkodzenia/${dmgDetailData.value.id}/`, {
+            stracony_czas: straconyValue || null,
+            opis_uszkodzenia: dmgEditUwagi.value || ''
+        });
+        dmgDetailData.value.stracony_czas = straconyValue || null;
+        dmgDetailData.value.opis_uszkodzenia = dmgEditUwagi.value || '';
+        dmgDetailModalVisible.value = false;
+    } catch (err) {
+        console.error('Błąd zapisu uszkodzenia:', err);
+    } finally {
+        dmgDetailSaving.value = false;
+    }
+};
 
 const damagesUszkodzone = computed(() => {
     return damagesList.value.filter(d => d.stan_egzemplarza === 'Uszkodzone');
@@ -1128,6 +1226,11 @@ const openUsageModal = (tool) => {
         selectedToolForUsage.value = tool;
         showUsageModal.value = true;
     }
+};
+
+const formatMinutesToHours = (minutes) => {
+    if (!minutes || minutes <= 0) return '-';
+    return (minutes / 60).toFixed(2).replace('.', ',').replace(/0+$/, '').replace(/,$/, '');
 };
 
 const formatCustomDate = (dateString) => {
@@ -1610,6 +1713,7 @@ onMounted(() => {
 :deep(.p-datatable .p-datatable-thead > tr > th) {
     background: linear-gradient(to bottom, #4a5258, #3d444d) !important;
     color: #fff !important;
+    height: 50px;
     padding: 10px 12px;
     font-weight: 600;
     font-size: 0.85rem;
@@ -1784,6 +1888,106 @@ onMounted(() => {
 .btn-pdf-row:hover {
     background-color: #5a32a3;
     border-color: #5a32a3;
+}
+
+.stracony-czas-value {
+    font-weight: 700;
+    color: #e89a3c;
+}
+
+.stracony-czas-empty {
+    color: #e53935;
+}
+
+.stracony-czas-unit {
+    color: #e89a3c;
+    font-size: 0.8rem;
+    font-weight: 400;
+}
+
+.btn-details-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background-color: #0d6efd;
+    border: 1px solid #0d6efd;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.85rem;
+    margin-right: 4px;
+}
+
+.btn-details-row:hover {
+    background-color: #0b5ed7;
+    border-color: #0b5ed7;
+}
+
+/* === SZCZEGÓŁY USZKODZENIA === */
+.dmg-detail-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dmg-detail-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dmg-detail-label {
+    font-weight: 600;
+    min-width: 195px;
+    color: #adb5bd;
+}
+
+.dmg-detail-value {
+    flex: 1;
+    color: #e0e0e0;
+}
+
+.dmg-edit-input {
+    width: 100%;
+    background: #2b3035;
+    border: 1px solid #495057;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.15s ease;
+}
+
+.dmg-edit-input:focus {
+    outline: none;
+    border-color: #4dabf7;
+}
+
+.dmg-edit-input-short {
+    max-width: 200px;
+}
+
+.dmg-edit-textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.dmg-detail-value-inline {
+    display: flex;
+    align-items: center;
+}
+
+.dmg-edit-hint {
+    margin-left: 15px;
+    color: #888;
+    font-size: 0.85rem;
+    white-space: nowrap;
 }
 
 /* === PODGLĄD PDF === */

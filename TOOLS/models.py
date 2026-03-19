@@ -356,7 +356,7 @@ class Uszkodzenie(models.Model):
     # Pola karty uszkodzenia
     numer_karty = models.CharField(max_length=15, unique=True, blank=True, null=True)
     przyczyna_uszkodzenia = models.TextField(blank=True)
-    stracony_czas = models.CharField(max_length=100, blank=True)
+    stracony_czas = models.IntegerField(null=True, blank=True)  # wartość w minutach
     typ_zglaszajacego = models.CharField(max_length=20, blank=True)  # 'pobierajacy' lub 'zwracajacy'
     nazwisko_zglaszajacego = models.CharField(max_length=200, blank=True)
 
@@ -587,6 +587,16 @@ class PozycjaGeneratora(models.Model):
         default=0,
         help_text="Obliczona lub ręcznie edytowana ilość"
     )
+    zrodlo = models.CharField(
+        max_length=50,
+        default='auto',
+        help_text="Źródło pozycji: auto, reczne, zapotrzebowanie"
+    )
+    zrodlo_zapotrzebowanie_ids = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="ID zapotrzebowań (ZAM-XXXX) — jeśli źródło=zapotrzebowanie"
+    )
     data_utworzenia = models.DateTimeField(auto_now_add=True)
     data_modyfikacji = models.DateTimeField(auto_now=True)
 
@@ -607,6 +617,7 @@ class ZapotrzebowanieTechnologa(models.Model):
         ('draft', 'Robocze'),
         ('submitted', 'Wysłane'),
         ('completed', 'Zrealizowane'),
+        ('ordered', 'W zamówieniu'),
         ('cancelled', 'Anulowane'),
     ]
 
@@ -699,6 +710,7 @@ class PozycjaZapotrzebowania(models.Model):
     uwagi = models.TextField(blank=True)
 
     data_dodania = models.DateTimeField(auto_now_add=True)
+    w_zamowieniu = models.BooleanField(default=False, help_text="Czy pozycja trafiła do generatora zamówień")
 
     class Meta:
         verbose_name = "Pozycja zapotrzebowania"

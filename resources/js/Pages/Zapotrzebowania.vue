@@ -50,7 +50,8 @@
             </Column>
             <Column header="Status" style="width: 140px; text-align: center;">
               <template #body="{ data }">
-                <Tag v-if="data.status === 'completed'" value="Zatwierdzone" severity="success" icon="pi pi-check" />
+                <Tag v-if="data.status === 'ordered'" value="W zamówieniu" severity="info" icon="pi pi-shopping-cart" />
+                <Tag v-else-if="data.status === 'completed'" value="Zatwierdzone" severity="success" icon="pi pi-check" />
                 <Tag v-else value="Nowe" severity="warning" icon="pi pi-clock" />
               </template>
             </Column>
@@ -116,6 +117,11 @@
                   </Column>
                   <Column field="uwagi" header="Uwagi">
                     <template #body="{ data }">{{ data.uwagi || '-' }}</template>
+                  </Column>
+                  <Column header="" style="width: 50px; text-align: center;">
+                    <template #body="{ data }">
+                      <i v-if="data.w_zamowieniu" class="pi pi-shopping-cart" style="color: #4dabf7;" title="W zamówieniu"></i>
+                    </template>
                   </Column>
                   <Column v-if="slotProps.data.status === 'submitted'" header="Akcje" style="width: 100px; text-align: center;">
                     <template #body="{ data: pozycja }">

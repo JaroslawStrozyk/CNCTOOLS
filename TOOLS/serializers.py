@@ -391,10 +391,35 @@ class ZamowienieSerializer(serializers.ModelSerializer):
         write_only=True
     )
     pozycje = PozycjaZamowieniaSerializer(many=True, read_only=True)
+    powiazane_zapotrzebowania = serializers.SerializerMethodField()
 
     class Meta:
         model = Zamowienie
         fields = '__all__'
+
+    def get_powiazane_zapotrzebowania(self, obj):
+        """Zwraca listę zapotrzebowań powiązanych z pozycjami zamówienia."""
+        from .models import PozycjaZapotrzebowania
+        narzedzia_ids = obj.pozycje.values_list('narzedzie_typ_id', flat=True)
+        pozycje_zap = PozycjaZapotrzebowania.objects.filter(
+            narzedzie_typ_id__in=narzedzia_ids,
+            w_zamowieniu=True
+        ).select_related('zapotrzebowanie', 'zapotrzebowanie__technolog')
+        seen = set()
+        result = []
+        for pz in pozycje_zap:
+            zap = pz.zapotrzebowanie
+            if zap.id not in seen:
+                seen.add(zap.id)
+                technolog = zap.technolog
+                result.append({
+                    'id': zap.id,
+                    'numer': f"ZAM-{zap.id:04d}",
+                    'technolog': f"{technolog.first_name} {technolog.last_name}" if technolog else "Nieznany",
+                    'status': zap.get_status_display(),
+                    'data_wyslania': zap.data_wyslania.strftime('%Y-%m-%d') if zap.data_wyslania else None,
+                })
+        return result
 
 
 class PozycjaRealizacjiSerializer(serializers.ModelSerializer):

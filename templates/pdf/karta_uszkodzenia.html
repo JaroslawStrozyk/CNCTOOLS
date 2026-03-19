@@ -65,19 +65,19 @@
     <div class="info-section" style="margin-bottom: 20px;">
         <div class="info-item">
             <div class="info-label">Nr karty</div>
-            <div class="info-value highlight">{{ numer_karty|default:"-" }}</div>
+            <div class="info-value highlight" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ numer_karty|default:"-" }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Data uszkodzenia</div>
-            <div class="info-value">{{ data_uszkodzenia }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ data_uszkodzenia }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Maszyna</div>
-            <div class="info-value">{{ maszyna|default:"-" }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ maszyna|default:"-" }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Zgłaszający</div>
-            <div class="info-value">{{ zglaszajacy|default:"-" }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ zglaszajacy|default:"-" }}</div>
         </div>
     </div>
 
@@ -85,36 +85,36 @@
     <div class="info-grid mb-20">
         <div class="info-row">
             <div class="info-cell label">Kategoria</div>
-            <div class="info-cell value">{{ kategoria|default:"-" }}</div>
+            <div class="info-cell value" {% if is_print %}style="color: #ffffff;"{% endif %}>{{ kategoria|default:"-" }}</div>
         </div>
         <div class="info-row">
             <div class="info-cell label">Nazwa narzędzia</div>
-            <div class="info-cell value"><strong>{{ narzedzie|default:"-" }}</strong></div>
+            <div class="info-cell value" {% if is_print %}style="color: #ffffff;"{% endif %}><strong>{{ narzedzie|default:"-" }}</strong></div>
         </div>
         <div class="info-row">
             <div class="info-cell label">Numer katalogowy</div>
-            <div class="info-cell value">{{ numer_katalogowy|default:"-" }}</div>
+            <div class="info-cell value" {% if is_print %}style="color: #ffffff;"{% endif %}>{{ numer_katalogowy|default:"-" }}</div>
         </div>
     </div>
 
     <!-- Przyczyna uszkodzenia -->
     <div class="mb-20">
         <div class="section-title">Przyczyna uszkodzenia</div>
-        <div class="description-box">{{ przyczyna|default:"-" }}</div>
+        <div class="description-box" {% if is_print %}style="color: #ffffff;"{% endif %}>{{ przyczyna|default:"-" }}</div>
     </div>
 
     <!-- Stracony czas -->
     <div class="info-grid mb-20">
         <div class="info-row">
             <div class="info-cell label-wide">Stracony czas na maszynach</div>
-            <div class="info-cell value">{{ stracony_czas|default:"-" }}</div>
+            <div class="info-cell value" {% if is_print %}style="color: #ffffff;"{% endif %}>{{ stracony_czas|default:"-" }}</div>
         </div>
     </div>
 
     <!-- Uwagi -->
     <div class="mb-20">
         <div class="section-title">Uwagi</div>
-        <div class="description-box">{{ uwagi|default:"-" }}</div>
+        <div class="description-box" {% if is_print %}style="color: #ffffff;"{% endif %}>{{ uwagi|default:"-" }}</div>
     </div>
 {% endblock %}
 

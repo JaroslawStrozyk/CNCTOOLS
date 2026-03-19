@@ -10,23 +10,23 @@
     <div class="info-section">
         <div class="info-item">
             <div class="info-label">Numer</div>
-            <div class="info-value">{{ numer }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ numer }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Data utworzenia</div>
-            <div class="info-value">{{ data_utworzenia }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ data_utworzenia }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Dział</div>
-            <div class="info-value">{{ dzial|upper }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ dzial|upper }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Technolog</div>
-            <div class="info-value">{{ technolog }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ technolog }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Status</div>
-            <div class="info-value">{{ status }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ status }}</div>
         </div>
     </div>
 
@@ -46,23 +46,39 @@
             </tr>
         </thead>
         <tbody>
-            {% for pozycja in pozycje %}
-            <tr>
-                <td class="col-center">{{ forloop.counter }}</td>
-                <td class="col-center">{{ pozycja.nr_klienta|default:"-" }}</td>
-                <td class="col-center">{{ pozycja.nr_zlecenia|default:"-" }}</td>
-                <td>{{ pozycja.kategoria_nazwa|default:"-" }}</td>
-                <td>{{ pozycja.podkategoria_nazwa|default:"-" }}</td>
-                <td>{{ pozycja.specyfikacja|default:"-" }}</td>
-                <td class="col-nowrap">{{ pozycja.numer_katalogowy|default:"-" }}</td>
-                <td class="col-center">{{ pozycja.ilosc }}</td>
-                <td class="text-small">{{ pozycja.uwagi|default:"-"|truncatewords:10 }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="9" class="col-center text-muted">Brak pozycji</td>
-            </tr>
-            {% endfor %}
+            {% if is_print %}
+                {% for pozycja in pozycje %}
+                <tr>
+                    <td class="col-center">{{ pozycja.lp }}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                {% for pozycja in pozycje %}
+                <tr>
+                    <td class="col-center">{{ forloop.counter }}</td>
+                    <td class="col-center">{{ pozycja.nr_klienta|default:"-" }}</td>
+                    <td class="col-center">{{ pozycja.nr_zlecenia|default:"-" }}</td>
+                    <td>{{ pozycja.kategoria_nazwa|default:"-" }}</td>
+                    <td>{{ pozycja.podkategoria_nazwa|default:"-" }}</td>
+                    <td>{{ pozycja.specyfikacja|default:"-" }}</td>
+                    <td class="col-nowrap">{{ pozycja.numer_katalogowy|default:"-" }}</td>
+                    <td class="col-center">{{ pozycja.ilosc }}</td>
+                    <td class="text-small">{{ pozycja.uwagi|default:"-"|truncatewords:10 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="col-center text-muted">Brak pozycji</td>
+                </tr>
+                {% endfor %}
+            {% endif %}
         </tbody>
     </table>
 

@@ -1,0 +1,72 @@
+{
+  "../node_modules/chart.js/auto/auto.js": {
+    "file": "auto-DYx305q1.js",
+    "name": "auto",
+    "src": "../node_modules/chart.js/auto/auto.js",
+    "isDynamicEntry": true
+  },
+  "fonts/Inter-italic.var.woff2": {
+    "file": "Inter-italic.var-DhD-tpjY.woff2",
+    "src": "fonts/Inter-italic.var.woff2"
+  },
+  "fonts/Inter-roman.var.woff2": {
+    "file": "Inter-roman.var-C-r5W2Hj.woff2",
+    "src": "fonts/Inter-roman.var.woff2"
+  },
+  "fonts/primeicons.eot": {
+    "file": "primeicons-DMOk5skT.eot",
+    "src": "fonts/primeicons.eot"
+  },
+  "fonts/primeicons.svg": {
+    "file": "primeicons-Dr5RGzOO.svg",
+    "src": "fonts/primeicons.svg"
+  },
+  "fonts/primeicons.ttf": {
+    "file": "primeicons-MpK4pl85.ttf",
+    "src": "fonts/primeicons.ttf"
+  },
+  "fonts/primeicons.woff": {
+    "file": "primeicons-WjwUDZjB.woff",
+    "src": "fonts/primeicons.woff"
+  },
+  "fonts/primeicons.woff2": {
+    "file": "primeicons-C6QP2o4f.woff2",
+    "src": "fonts/primeicons.woff2"
+  },
+  "images/cnc-logo.png": {
+    "file": "cnc-logo-D-CPlYZH.png",
+    "src": "images/cnc-logo.png"
+  },
+  "images/cnc.png": {
+    "file": "cnc-D2vPbAMB.png",
+    "src": "images/cnc.png"
+  },
+  "images/tlo.png": {
+    "file": "tlo-CuCEIsGp.png",
+    "src": "images/tlo.png"
+  },
+  "js/app.js": {
+    "file": "main-DyFzOW4W.js",
+    "name": "main",
+    "src": "js/app.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "../node_modules/chart.js/auto/auto.js"
+    ],
+    "css": [
+      "main-YnDhEXjo.css"
+    ],
+    "assets": [
+      "cnc-logo-D-CPlYZH.png",
+      "cnc-D2vPbAMB.png",
+      "tlo-CuCEIsGp.png",
+      "primeicons-C6QP2o4f.woff2",
+      "primeicons-WjwUDZjB.woff",
+      "primeicons-MpK4pl85.ttf",
+      "Inter-roman.var-C-r5W2Hj.woff2",
+      "primeicons-DMOk5skT.eot",
+      "primeicons-Dr5RGzOO.svg",
+      "Inter-italic.var-DhD-tpjY.woff2"
+    ]
+  }
+}

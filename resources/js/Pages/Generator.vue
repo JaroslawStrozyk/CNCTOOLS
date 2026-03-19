@@ -43,15 +43,45 @@
                         <Column header="Cena jednostkowa" style="width: 130px;">
                             <template #body="{ data }">{{ data.cena_jednostkowa ? data.cena_jednostkowa.toFixed(2) + ' zł' : '-' }}</template>
                         </Column>
+                        <Column header="Źródło" style="width: 160px;">
+                            <template #body="{ data }">
+                                <span :class="'zrodlo-' + data.zrodlo">{{ data.zrodlo_label || '-' }}</span>
+                            </template>
+                        </Column>
                         <Column header="" style="width: 120px; text-align: center;">
                             <template #header>
                                 <Button icon="pi pi-plus" class="p-button-success p-button-sm" @click="openAddModal" title="Dodaj ręcznie" />
                             </template>
                             <template #body="{ data }">
-                                <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm mr-1" @click="openEditModal(data)" title="Edytuj" />
-                                <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteModal(data)" title="Usuń" />
+                                <div style="display: flex; gap: 4px; justify-content: center;">
+                                    <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openEditModal(data)" title="Edytuj" />
+                                    <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteModal(data)" title="Usuń" />
+                                </div>
                             </template>
                         </Column>
+                    </DataTable>
+                </div>
+            </div>
+
+            <!-- Nieprzypisane pozycje zapotrzebowań -->
+            <div v-if="nieprzypisanePozycje.length > 0" class="nieprzypisane-panel">
+                <div class="panel-header" style="background: linear-gradient(to bottom, #8B4513, #5C2D0E);">
+                    <h3 style="margin: 0; color: #ffc107;">
+                        Pozycje zapotrzebowań bez powiązanego narzędzia
+                        <span style="font-size: 0.8rem; font-weight: 400; color: #adb5bd; margin-left: 10px;">(wymagają ręcznego przetworzenia)</span>
+                    </h3>
+                </div>
+                <div class="panel-body" style="max-height: 300px; overflow: auto;">
+                    <DataTable :value="nieprzypisanePozycje" class="p-datatable-sm">
+                        <Column field="zapotrzebowanie_numer" header="Zapotrzebowanie" style="width: 140px;" />
+                        <Column field="technolog" header="Technolog" style="width: 160px;" />
+                        <Column field="kategoria_nazwa" header="Kategoria" />
+                        <Column field="specyfikacja" header="Specyfikacja" />
+                        <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 130px;" />
+                        <Column field="ilosc" header="Ilość" style="width: 70px; text-align: center;">
+                            <template #body="{ data }"><strong>{{ data.ilosc }}</strong></template>
+                        </Column>
+                        <Column field="uwagi" header="Uwagi" />
                     </DataTable>
                 </div>
             </div>
@@ -135,6 +165,7 @@ const props = defineProps({
 });
 
 const toolsToOrder = ref([]);
+const nieprzypisanePozycje = ref([]);
 const dostawcy = ref([]);
 const kategorie = ref([]);
 const narzedzia = ref([]);
@@ -211,7 +242,11 @@ const confirmZamowienieGotowe = async () => {
 
 const fetchToolsToOrder = async () => {
     isLoading.value = true;
-    try { const res = await axios.get(`${API_URL}/generator-zamowien/`); toolsToOrder.value = res.data; }
+    try {
+        const res = await axios.get(`${API_URL}/generator-zamowien/`);
+        toolsToOrder.value = res.data.pozycje || [];
+        nieprzypisanePozycje.value = res.data.nieprzypisane || [];
+    }
     catch (error) { alert('Błąd ładowania danych.'); }
     finally { isLoading.value = false; }
 };
@@ -257,4 +292,34 @@ onMounted(async () => {
 .empty-state.success { color: #75b798; }
 .empty-state.success i { color: #198754 !important; }
 .small { font-size: 0.85rem; }
+
+:deep(.p-datatable .p-datatable-tbody > tr > td) {
+    padding: 4px 12px;
+}
+
+:deep(.p-datatable .p-datatable-thead > tr > th) {
+    padding: 6px 12px;
+    height: 50px;
+}
+
+.nieprzypisane-panel {
+    margin-top: 16px;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.zrodlo-auto { color: #4dabf7; font-size: 0.85rem; }
+.zrodlo-reczne { color: #ffc107; font-size: 0.85rem; }
+.zrodlo-zapotrzebowanie { color: #69db7c; font-size: 0.85rem; font-weight: 600; }
+
+:deep(.p-button.p-button-sm) {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
 </style>

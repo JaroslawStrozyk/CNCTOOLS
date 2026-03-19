@@ -230,8 +230,9 @@ def generator_zamowien_api(request):
     Zwraca:
     1. Wszystkie pozycje z PozycjaGeneratora (ręcznie dodane lub istniejące)
     2. Automatycznie generuje nowe pozycje dla narzędzi gdzie stan < limit maksymalny
+    3. Pozycje z zatwierdzonych zapotrzebowań technologów
     """
-    from .models import NarzedzieMagazynowe, EgzemplarzNarzedzia, PozycjaGeneratora, PozycjaZamowienia
+    from .models import NarzedzieMagazynowe, EgzemplarzNarzedzia, PozycjaGeneratora, PozycjaZamowienia, PozycjaZapotrzebowania
 
     # Najpierw pobierz wszystkie istniejące pozycje z generatora
     istniejace_pozycje = PozycjaGeneratora.objects.select_related(
@@ -289,7 +290,8 @@ def generator_zamowien_api(request):
                     narzedzie_typ=narzedzie,
                     dostawca=narzedzie.ostatni_dostawca,
                     ilosc_do_zamowienia=ilosc_do_zamowienia,
-                    cena_jednostkowa=cena_jednostkowa
+                    cena_jednostkowa=cena_jednostkowa,
+                    zrodlo='reczne'
                 )
                 reczne_do_wyzerowania.append(narzedzie.id)
             # Jeśli reczne_dodanie == 0, pomijamy (nic do zamówienia)
@@ -333,12 +335,89 @@ def generator_zamowien_api(request):
                 narzedzie_typ=narzedzie,
                 dostawca=narzedzie.ostatni_dostawca,
                 ilosc_do_zamowienia=ilosc_do_zamowienia,
-                cena_jednostkowa=cena_jednostkowa
+                cena_jednostkowa=cena_jednostkowa,
+                zrodlo='auto'
             )
 
     # Wyzeruj pole reczne_dodanie dla odczytanych narzędzi z ręczną kontrolą
     if reczne_do_wyzerowania:
         NarzedzieMagazynowe.objects.filter(id__in=reczne_do_wyzerowania).update(reczne_dodanie=0)
+
+    # --- Zapotrzebowania technologów (zatwierdzone, nieprzetworzone) ---
+    pozycje_zapotrzebowan = PozycjaZapotrzebowania.objects.filter(
+        zapotrzebowanie__status='completed',
+        narzedzie_typ__isnull=False,
+        w_zamowieniu=False
+    ).select_related(
+        'narzedzie_typ',
+        'narzedzie_typ__ostatni_dostawca',
+        'zapotrzebowanie'
+    )
+
+    zapotrzebowania_ids = []
+    # Śledź zapotrzebowania, których WSZYSTKIE pozycje trafiły do generatora
+    zapotrzebowania_do_ordered = set()
+
+    for pz in pozycje_zapotrzebowan:
+        narzedzie = pz.narzedzie_typ
+        zap_numer = f"ZAM-{pz.zapotrzebowanie.id:04d}"
+
+        # Sprawdź czy narzędzie jest w aktywnym zamówieniu
+        ma_aktywne = PozycjaZamowienia.objects.filter(
+            narzedzie_typ=narzedzie,
+            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
+        ).exists()
+        if ma_aktywne:
+            zapotrzebowania_ids.append(pz.id)
+            continue
+
+        # Sprawdź czy już jest w generatorze — jeśli tak, zwiększ ilość i dopisz źródło
+        try:
+            istniejaca = PozycjaGeneratora.objects.get(narzedzie_typ=narzedzie)
+            istniejaca.ilosc_do_zamowienia += pz.ilosc
+            # Dopisz źródło zapotrzebowania
+            if istniejaca.zrodlo != 'zapotrzebowanie':
+                istniejaca.zrodlo = 'zapotrzebowanie'
+            existing_ids = istniejaca.zrodlo_zapotrzebowanie_ids
+            if zap_numer not in existing_ids:
+                istniejaca.zrodlo_zapotrzebowanie_ids = (existing_ids + ',' + zap_numer).strip(',')
+            istniejaca.save(update_fields=['ilosc_do_zamowienia', 'zrodlo', 'zrodlo_zapotrzebowanie_ids'])
+        except PozycjaGeneratora.DoesNotExist:
+            # Pobierz cenę z ostatniej pozycji zamówienia
+            cena_jednostkowa = 0
+            if narzedzie.ostatni_dostawca:
+                ostatnia_pozycja = PozycjaZamowienia.objects.filter(
+                    narzedzie_typ=narzedzie,
+                    zamowienie__dostawca=narzedzie.ostatni_dostawca,
+                    cena_jednostkowa__isnull=False
+                ).order_by('-zamowienie__data_utworzenia').first()
+                if ostatnia_pozycja and ostatnia_pozycja.cena_jednostkowa:
+                    cena_jednostkowa = ostatnia_pozycja.cena_jednostkowa
+
+            PozycjaGeneratora.objects.create(
+                narzedzie_typ=narzedzie,
+                dostawca=narzedzie.ostatni_dostawca,
+                ilosc_do_zamowienia=pz.ilosc,
+                cena_jednostkowa=cena_jednostkowa,
+                zrodlo='zapotrzebowanie',
+                zrodlo_zapotrzebowanie_ids=zap_numer
+            )
+
+        zapotrzebowania_ids.append(pz.id)
+        zapotrzebowania_do_ordered.add(pz.zapotrzebowanie.id)
+
+    # Oznacz przetworzone pozycje zapotrzebowań
+    if zapotrzebowania_ids:
+        PozycjaZapotrzebowania.objects.filter(id__in=zapotrzebowania_ids).update(w_zamowieniu=True)
+
+    # Zmień status zapotrzebowań na 'ordered' jeśli WSZYSTKIE pozycje z narzedzie_typ są w_zamowieniu
+    from .models import ZapotrzebowanieTechnologa
+    for zap_id in zapotrzebowania_do_ordered:
+        zap = ZapotrzebowanieTechnologa.objects.get(id=zap_id)
+        pozycje_z_narzedziem = zap.pozycje.filter(narzedzie_typ__isnull=False)
+        if pozycje_z_narzedziem.exists() and not pozycje_z_narzedziem.filter(w_zamowieniu=False).exists():
+            zap.status = 'ordered'
+            zap.save(update_fields=['status'])
 
     # Teraz pobierz WSZYSTKIE pozycje z generatora (włącznie z nowo utworzonymi)
     wszystkie_pozycje = PozycjaGeneratora.objects.select_related(
@@ -382,6 +461,11 @@ def generator_zamowien_api(request):
             dostawca_nazwa = pozycja.dostawca.nazwa_firmy
             dostawca_id = pozycja.dostawca.id
 
+        # Etykieta źródła
+        zrodlo_label = {'auto': 'Auto (stany)', 'reczne': 'Ręczne', 'zapotrzebowanie': 'Zapotrzebowanie'}.get(pozycja.zrodlo, pozycja.zrodlo)
+        if pozycja.zrodlo == 'zapotrzebowanie' and pozycja.zrodlo_zapotrzebowanie_ids:
+            zrodlo_label = pozycja.zrodlo_zapotrzebowanie_ids
+
         wynik.append({
             'id': narzedzie.id,
             'dostawca_nazwa': dostawca_nazwa,
@@ -391,6 +475,8 @@ def generator_zamowien_api(request):
             'ilosc_do_zamowienia': pozycja.ilosc_do_zamowienia,
             'rodzaj': rodzaj,
             'cena_jednostkowa': float(pozycja.cena_jednostkowa) if pozycja.cena_jednostkowa else 0,
+            'zrodlo': pozycja.zrodlo,
+            'zrodlo_label': zrodlo_label,
             # Dane do sortowania
             'kategoria': narzedzie.podkategoria.kategoria.nazwa if narzedzie.podkategoria else '',
             'podkategoria': narzedzie.podkategoria.nazwa if narzedzie.podkategoria else '',
@@ -400,7 +486,32 @@ def generator_zamowien_api(request):
     # Sortowanie
     wynik.sort(key=lambda x: (x['kategoria'].lower(), x['podkategoria'].lower(), x['opis'].lower()))
 
-    return Response(wynik)
+    # Pozycje zapotrzebowań BEZ powiązanego narzędzia (do ręcznego przetworzenia)
+    nieprzypisane = PozycjaZapotrzebowania.objects.filter(
+        zapotrzebowanie__status='completed',
+        narzedzie_typ__isnull=True,
+        w_zamowieniu=False
+    ).select_related('zapotrzebowanie', 'zapotrzebowanie__technolog')
+
+    nieprzypisane_lista = []
+    for np_poz in nieprzypisane:
+        technolog = np_poz.zapotrzebowanie.technolog
+        technolog_nazwa = f"{technolog.first_name} {technolog.last_name}" if technolog else "Nieznany"
+        nieprzypisane_lista.append({
+            'id': np_poz.id,
+            'zapotrzebowanie_numer': f"ZAM-{np_poz.zapotrzebowanie.id:04d}",
+            'technolog': technolog_nazwa,
+            'specyfikacja': np_poz.specyfikacja or '-',
+            'kategoria_nazwa': np_poz.kategoria_nazwa or '-',
+            'numer_katalogowy': np_poz.numer_katalogowy or '-',
+            'ilosc': np_poz.ilosc,
+            'uwagi': np_poz.uwagi or '',
+        })
+
+    return Response({
+        'pozycje': wynik,
+        'nieprzypisane': nieprzypisane_lista
+    })
 
 
 @api_view(['PATCH'])
@@ -536,7 +647,8 @@ def generator_zamowien_add_api(request):
         narzedzie_typ=narzedzie,
         dostawca=dostawca,
         ilosc_do_zamowienia=ilosc,
-        cena_jednostkowa=cena
+        cena_jednostkowa=cena,
+        zrodlo='reczne'
     )
 
     # Logowanie
@@ -690,8 +802,16 @@ def wyslij_email_zamowienie_api(request, zamowienie_id):
     if not zamowienie.email_docelowy:
         return Response({'error': 'Dostawca nie ma przypisanego adresu email'}, status=400)
 
+    # Tryb testowy — podmiana adresu
+    is_test = getattr(settings, 'ZAMOWIENIA_TESTOWE', False)
+    override_email = None
+    if is_test:
+        override_email = getattr(settings, 'EMAIL_TEST_ADDRESS', '')
+        if not override_email:
+            return Response({'error': 'Brak adresu testowego w konfiguracji poczty'}, status=400)
+
     # Wyślij email
-    result = send_zamowienie_email(zamowienie)
+    result = send_zamowienie_email(zamowienie, override_email=override_email)
 
     if result['success']:
         # Zaktualizuj status i datę wysłania
@@ -702,7 +822,9 @@ def wyslij_email_zamowienie_api(request, zamowienie_id):
         # Logowanie
         user_name = get_user_display_name(request.user)
         dostawca = zamowienie.dostawca.nazwa_firmy if zamowienie.dostawca else 'nieznany'
-        app_logger.success(user_name, f"Wysłano email z zamówieniem {zamowienie.numer} do: {dostawca} ({zamowienie.email_docelowy})")
+        target_email = override_email or zamowienie.email_docelowy
+        test_info = " [TESTOWO]" if is_test else ""
+        app_logger.success(user_name, f"Wysłano email z zamówieniem {zamowienie.numer} do: {dostawca} ({target_email}){test_info}")
 
         return Response({
             'success': True,
@@ -755,9 +877,42 @@ def email_config_view(request):
         'email_test_address': getattr(settings, 'EMAIL_TEST_ADDRESS', ''),
         'email_dw': getattr(settings, 'EMAIL_DW', ''),
         'email_configured': bool(getattr(settings, 'EMAIL_HOST_USER', '')),
+        'zamowienia_testowe': getattr(settings, 'ZAMOWIENIA_TESTOWE', False),
     }
 
     return JsonResponse(config)
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_zamowienia_testowe(request):
+    """Przełączanie trybu zamówień testowych."""
+    from django.conf import settings
+    import json
+
+    data = json.loads(request.body)
+    value = bool(data.get('zamowienia_testowe', False))
+    settings.ZAMOWIENIA_TESTOWE = value
+
+    # Persystencja do pliku
+    settings_file = settings.BASE_DIR / 'app_settings.json'
+    try:
+        with open(settings_file, 'r') as f:
+            app_settings = json.loads(f.read())
+    except (FileNotFoundError, ValueError):
+        app_settings = {}
+    app_settings['zamowienia_testowe'] = value
+    with open(settings_file, 'w') as f:
+        f.write(json.dumps(app_settings, indent=2))
+
+    user_name = get_user_display_name(request.user)
+    msg = f"{'Włączono' if value else 'Wyłączono'} tryb zamówień testowych"
+    if value:
+        app_logger.warning(user_name, msg)
+    else:
+        app_logger.info(user_name, msg)
+
+    return JsonResponse({'success': True, 'zamowienia_testowe': value})
 
 
 # ========== API VIEWSETS ==========
@@ -1656,7 +1811,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
             magazyn_groups = {'magazynier', 'logistyka', 'kierownik'}
             user_groups = set(self.request.user.groups.values_list('name', flat=True))
             if user_groups & magazyn_groups:
-                queryset = queryset.filter(status__in=['submitted', 'completed'])
+                queryset = queryset.filter(status__in=['submitted', 'completed', 'ordered'])
             else:
                 queryset = queryset.filter(technolog=self.request.user)
         return queryset.order_by('-data_utworzenia')
@@ -1761,7 +1916,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         Sortowanie od najnowszych.
         """
         zapotrzebowania = ZapotrzebowanieTechnologa.objects.filter(
-            status__in=['submitted', 'completed']
+            status__in=['submitted', 'completed', 'ordered']
         ).select_related('technolog', 'zrealizowany_przez').prefetch_related('pozycje').order_by('-data_wyslania')
 
         serializer = self.get_serializer(zapotrzebowania, many=True)
@@ -1807,11 +1962,15 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         """
         zapotrzebowanie = self.get_object()
 
-        if zapotrzebowanie.status != 'completed':
+        if zapotrzebowanie.status not in ('completed', 'ordered'):
             return Response(
-                {'error': 'Tylko zatwierdzone zapotrzebowanie może być cofnięte'},
+                {'error': 'Tylko zatwierdzone lub zamówione zapotrzebowanie może być cofnięte'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Resetuj flagę w_zamowieniu na pozycjach
+        if zapotrzebowanie.status == 'ordered':
+            zapotrzebowanie.pozycje.filter(w_zamowieniu=True).update(w_zamowieniu=False)
 
         zapotrzebowanie.status = 'submitted'
         zapotrzebowanie.data_realizacji = None
@@ -2144,7 +2303,18 @@ def dokument_wzor_view(request, typ):
 
     logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
 
+    is_print = request.GET.get('print') == '1'
+
     if typ == 'zapotrzebowanie':
+        if is_print:
+            pozycje = [{'nr_klienta': '', 'nr_zlecenia': '', 'kategoria_nazwa': '', 'podkategoria_nazwa': '',
+                        'specyfikacja': '', 'numer_katalogowy': '', 'ilosc': '', 'uwagi': '', 'lp': i}
+                       for i in range(1, 21)]
+        else:
+            pozycje = [
+                {'nr_klienta': '', 'nr_zlecenia': '', 'kategoria_nazwa': '', 'podkategoria_nazwa': '',
+                 'specyfikacja': '', 'numer_katalogowy': '', 'ilosc': '', 'uwagi': ''},
+            ]
         context = {
             'numer': 'ZAM-XXXX',
             'data_utworzenia': 'RRRR-MM-DD',
@@ -2154,11 +2324,9 @@ def dokument_wzor_view(request, typ):
             'dzial': '..................',
             'status': 'WZÓR',
             'uwagi': '',
-            'pozycje': [
-                {'nr_klienta': '', 'nr_zlecenia': '', 'kategoria_nazwa': '', 'podkategoria_nazwa': '',
-                 'specyfikacja': '', 'numer_katalogowy': '', 'ilosc': '', 'uwagi': ''},
-            ],
+            'pozycje': pozycje,
             'logo_path': f'file://{logo_path}',
+            'is_print': is_print,
         }
         template = 'pdf/zapotrzebowanie.html'
         filename = 'Wzor_Karta_zapotrzebowania.pdf'
@@ -2178,6 +2346,7 @@ def dokument_wzor_view(request, typ):
             'logo_path': f'file://{logo_path}',
             'data_wydruku': getattr(settings, 'PDF_USZKODZENIE_DATA', ''),
             'wersja_dokumentu': getattr(settings, 'PDF_USZKODZENIE_WERSJA', 1),
+            'is_print': is_print,
         }
         template = 'pdf/karta_uszkodzenia.html'
         filename = 'Wzor_Karta_uszkodzenia.pdf'
@@ -2201,16 +2370,23 @@ def dokument_wzor_view(request, typ):
         filename = 'Wzor_Raport_logow.pdf'
 
     elif typ == 'lista_uszkodzen':
+        if is_print:
+            uszkodzenia = [{'numer_karty': '', 'data_uszkodzenia': '', 'maszyna': '',
+                            'zglaszajacy': '', 'kategoria': '', 'narzedzie': '',
+                            'przyczyna': '', 'stracony_czas': ''} for _ in range(20)]
+        else:
+            uszkodzenia = [
+                {'numer_karty': 'RRRR/XXX', 'data_uszkodzenia': 'RRRR-MM-DD', 'maszyna': '........',
+                 'zglaszajacy': '............', 'kategoria': '........', 'narzedzie': '............',
+                 'przyczyna': '...............', 'stracony_czas': '...'},
+            ]
         context = {
             'data_wydruku': getattr(settings, 'PDF_LISTA_USZKODZEN_DATA', ''),
             'wersja_dokumentu': getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1),
             'liczba': 'X',
-            'uszkodzenia': [
-                {'numer_karty': 'RRRR/XXX', 'data_uszkodzenia': 'RRRR-MM-DD', 'maszyna': '........',
-                 'zglaszajacy': '............', 'kategoria': '........', 'narzedzie': '............',
-                 'przyczyna': '...............', 'stracony_czas': '...'},
-            ],
+            'uszkodzenia': uszkodzenia,
             'logo_path': f'file://{logo_path}',
+            'is_print': is_print,
         }
         template = 'pdf/lista_uszkodzen.html'
         filename = 'Wzor_Lista_uszkodzen.pdf'

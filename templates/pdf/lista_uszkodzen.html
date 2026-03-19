@@ -23,11 +23,11 @@
         </div>
         <div class="info-item">
             <div class="info-label">Data wydruku</div>
-            <div class="info-value">{{ data_wydruku }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ data_wydruku }}</div>
         </div>
         <div class="info-item">
             <div class="info-label">Liczba wpisów</div>
-            <div class="info-value">{{ liczba }}</div>
+            <div class="info-value" {% if is_print %}style="color: #f8f9fa;"{% endif %}>{{ liczba }}</div>
         </div>
     </div>
 
@@ -45,21 +45,35 @@
             </tr>
         </thead>
         <tbody>
-            {% for u in uszkodzenia %}
-            <tr>
-                <td class="col-center karta-numer">{{ u.numer_karty }}</td>
-                <td class="col-center">{{ u.data_uszkodzenia }}</td>
-                <td>{{ u.maszyna }}</td>
-                <td>{{ u.zglaszajacy }}</td>
-                <td class="text-small">{{ u.kategoria }}: {{ u.narzedzie }}</td>
-                <td class="text-small">{{ u.przyczyna|truncatewords:12 }}</td>
-                <td class="col-center">{{ u.stracony_czas }}</td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="7" class="col-center text-muted">Brak uszkodzeń</td>
-            </tr>
-            {% endfor %}
+            {% if is_print %}
+                {% for u in uszkodzenia %}
+                <tr>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                {% for u in uszkodzenia %}
+                <tr>
+                    <td class="col-center karta-numer">{{ u.numer_karty }}</td>
+                    <td class="col-center">{{ u.data_uszkodzenia }}</td>
+                    <td>{{ u.maszyna }}</td>
+                    <td>{{ u.zglaszajacy }}</td>
+                    <td class="text-small">{{ u.kategoria }}: {{ u.narzedzie }}</td>
+                    <td class="text-small">{{ u.przyczyna|truncatewords:12 }}</td>
+                    <td class="col-center">{{ u.stracony_czas }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="col-center text-muted">Brak uszkodzeń</td>
+                </tr>
+                {% endfor %}
+            {% endif %}
         </tbody>
     </table>
 {% endblock %}

@@ -973,7 +973,7 @@ const issueData = ref({
     machine_id: null,
     instance: null,
     pracownik_id: null,
-    typWydania: 'komplet',  // 'komplet' lub 'sztuki' - dla narzędzi typu komplet
+    typWydania: 'sztuki',  // 'komplet' lub 'sztuki' - dla narzędzi typu komplet
     iloscSztuk: 1,          // ilość sztuk do wydania, gdy typWydania === 'sztuki'
     nr_zlecenia: ''
 });
@@ -1390,7 +1390,7 @@ const showIssueModal = (instance) => {
     issueData.value.instance = instance;
     issueData.value.machine_id = machines.value.length > 0 ? machines.value[0].id : null;
     issueData.value.pracownik_id = null;
-    issueData.value.typWydania = 'komplet';
+    issueData.value.typWydania = 'sztuki';
     issueData.value.iloscSztuk = 1;
     issueError.value = '';
     issueModalVisible.value = true;

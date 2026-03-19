@@ -207,14 +207,25 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # są importowane z pass_file.py
 
 
+# Zamówienia testowe — True: emaile idą na adres testowy zamiast do dostawcy
+# Wartość persystowana w pliku app_settings.json
+_APP_SETTINGS_FILE = BASE_DIR / 'app_settings.json'
+try:
+    import json as _json
+    with open(_APP_SETTINGS_FILE, 'r') as _f:
+        _app_settings = _json.load(_f)
+    ZAMOWIENIA_TESTOWE = _app_settings.get('zamowienia_testowe', False)
+except (FileNotFoundError, ValueError):
+    ZAMOWIENIA_TESTOWE = False
+
 # Auto-wylogowanie po bezczynności (minuty) — dotyczy grup produkcja / produkcja-magazyn
 AUTO_LOGOUT_IDLE_MINUTES = 2
 TECHNOLOG_PAGE_SIZE = 50
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.02.0g',
-        'MODYFIKACJA': '16.03.2026r.',
+        'WERSJA'     : '1.03.0g',
+        'MODYFIKACJA': '19.03.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

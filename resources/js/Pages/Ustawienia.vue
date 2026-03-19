@@ -180,6 +180,15 @@
                             </div>
                             <div v-else>
                                 <div class="email-config-table">
+                                    <div class="config-row">
+                                        <span class="config-label" style="color: #4dabf7;">Zamówienia testowe</span>
+                                        <span class="config-value-inline">
+                                            <button class="btn-toggle-testowe" :class="zamowieniaTestowe ? 'active' : ''" @click="openTestoweModal()">
+                                                {{ zamowieniaTestowe ? 'TRUE' : 'FALSE' }}
+                                            </button>
+                                            <span class="text-muted" style="margin-left: 20px; font-size: 0.85rem;">Emaile z zamówieniami będą wysyłane na adres testowy zamiast do dostawcy</span>
+                                        </span>
+                                    </div>
                                     <div class="config-row"><span class="config-label">Serwer SMTP</span><span>{{ emailConfig.email_host }}</span></div>
                                     <div class="config-row"><span class="config-label">Port</span><span>{{ emailConfig.email_port }}</span></div>
                                     <div class="config-row"><span class="config-label">Użyj SSL</span><Tag :severity="emailConfig.email_use_ssl ? 'success' : 'secondary'" :value="emailConfig.email_use_ssl ? 'TAK' : 'NIE'" /></div>
@@ -215,6 +224,7 @@
                                 <Message v-if="!emailConfig.email_configured" severity="warn" :closable="false" class="mt-3">
                                     Skonfiguruj konto email w pliku <code>settings.py</code> aby móc wysyłać wiadomości.
                                 </Message>
+
                             </div>
                         </div>
                     </div>
@@ -342,6 +352,24 @@
             </TabView>
         </main>
 
+        <!-- Modal: Zamówienia testowe -->
+        <Dialog v-model:visible="testoweModalVisible" header="Zamówienia testowe" :modal="true" :style="{ width: '450px' }">
+            <div class="field" style="margin-bottom: 15px;">
+                <label class="zamowienia-testowe-modal-label">
+                    <input type="checkbox" v-model="testoweModalValue" style="width: 18px; height: 18px; cursor: pointer; accent-color: #ffc107;" />
+                    <span style="margin-left: 10px;">Włącz tryb zamówień testowych</span>
+                </label>
+                <p class="text-muted" style="margin-top: 10px; font-size: 0.85rem;">
+                    Gdy włączone, emaile z zamówieniami będą wysyłane na adres testowy
+                    (<strong>{{ emailConfig.email_test_address }}</strong>) zamiast do dostawcy.
+                </p>
+            </div>
+            <template #footer>
+                <Button label="Zapisz" icon="pi pi-check" severity="danger" @click="saveTestoweModal" />
+                <Button label="Anuluj" icon="pi pi-times" severity="secondary" @click="testoweModalVisible = false" />
+            </template>
+        </Dialog>
+
         <!-- Ukryty iframe do drukowania -->
         <iframe id="print-frame" style="display: none;"></iframe>
 
@@ -430,6 +458,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
+axios.defaults.xsrfCookieName = 'csrftoken';
+axios.defaults.xsrfHeaderName = 'X-CSRFToken';
 
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
@@ -490,6 +520,9 @@ const emailConfig = ref({});
 const emailLoading = ref(false);
 const emailTestSending = ref(false);
 const emailTestResult = ref(null);
+const zamowieniaTestowe = ref(false);
+const testoweModalVisible = ref(false);
+const testoweModalValue = ref(false);
 
 // Inwentura
 const inwenturaLoading = ref({ pdf: false, xls: false });
@@ -659,10 +692,28 @@ const fetchEmailConfig = async () => {
     try {
         const response = await axios.get('/api/email/config/');
         emailConfig.value = response.data;
+        zamowieniaTestowe.value = response.data.zamowienia_testowe || false;
     } catch (error) {
         console.error('Błąd ładowania konfiguracji email:', error);
     } finally {
         emailLoading.value = false;
+    }
+};
+
+const openTestoweModal = () => {
+    testoweModalValue.value = zamowieniaTestowe.value;
+    testoweModalVisible.value = true;
+};
+
+const saveTestoweModal = async () => {
+    try {
+        await axios.post('/api/email/zamowienia-testowe/', {
+            zamowienia_testowe: testoweModalValue.value
+        });
+        zamowieniaTestowe.value = testoweModalValue.value;
+        testoweModalVisible.value = false;
+    } catch (error) {
+        console.error('Błąd zmiany trybu testowego:', error);
     }
 };
 
@@ -730,7 +781,7 @@ const downloadDocumentTemplate = async (type) => {
 
 const printDocumentTemplate = async (type) => {
     try {
-        const response = await axios.get(`${API_URL}/dokumenty/wzor/${type}/`, {
+        const response = await axios.get(`${API_URL}/dokumenty/wzor/${type}/?print=1`, {
             responseType: 'blob'
         });
 
@@ -971,6 +1022,44 @@ code {
 
 .email-test-info {
     font-size: 14px;
+}
+
+.config-value-inline {
+    display: flex;
+    align-items: center;
+}
+
+.zamowienia-testowe-modal-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    cursor: pointer;
+    color: #e0e0e0;
+    font-size: 1rem;
+}
+
+.zamowienia-testowe-modal-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #ffc107;
+}
+
+.btn-toggle-testowe {
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: none;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+    background-color: #198754;
+    color: #fff;
+    transition: all 0.15s ease;
+}
+
+.btn-toggle-testowe.active {
+    background-color: #dc3545;
 }
 
 /* Dokumenty */

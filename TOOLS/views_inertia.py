@@ -142,10 +142,14 @@ def zakupy_view(request):
 @login_required
 def zamowienia_view(request):
     """Panel zamówień - Inertia"""
+    is_logistyka = request.user.groups.filter(name='logistyka').exists()
+    can_generate = is_logistyka or request.user.is_superuser
+
     return render(request, 'Zamowienia', {
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
+        'canGenerateOrders': can_generate,
     })
 
 

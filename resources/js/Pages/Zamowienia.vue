@@ -29,8 +29,10 @@
             <div class="orders-panel">
                 <div class="panel-header">
                     <h3 class="panel-title">Lista zamówień</h3>
-                    <div v-if="canGenerateOrders">
-                        <Button label="Generuj nowe" icon="pi pi-sparkles" class="p-button-success" @click="generujAutomatyczne" />
+                    <div v-if="canGenerateOrders" class="filter-box">
+                        <button class="btn-generate-header" @click="generujAutomatyczne" title="Generuj zamówienia z generatora">
+                            <i class="pi pi-sparkles"></i> Generuj nowe
+                        </button>
                     </div>
                 </div>
                 <div class="panel-body">
@@ -74,10 +76,12 @@
                         </Column>
                         <Column header="Akcje" style="width: 200px; text-align: center;">
                             <template #body="{ data }">
-                                <Button icon="pi pi-envelope" class="p-button-success p-button-sm mr-1" @click="openEmailConfirmModal(data)" title="Wyślij e-mail" />
-                                <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm mr-1" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
-                                <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm mr-1" @click="openZamowienieModal('edit', data)" title="Edytuj" />
-                                <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
+                                <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap;">
+                                    <Button icon="pi pi-envelope" class="p-button-success p-button-sm" @click="openEmailConfirmModal(data)" title="Wyślij e-mail" />
+                                    <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
+                                    <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openZamowienieModal('edit', data)" title="Edytuj" />
+                                    <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
+                                </div>
                             </template>
                         </Column>
                         <template #empty>
@@ -89,7 +93,7 @@
         </main>
 
         <!-- Modal: Szczegóły zamówienia -->
-        <Dialog v-model:visible="detailsModalVisible" header="Szczegóły zamówienia" :modal="true" :style="{ width: '900px' }">
+        <Dialog v-model:visible="detailsModalVisible" header="Szczegóły zamówienia" :modal="true" :style="{ width: '1800px' }">
             <div v-if="selectedZamowienie" class="order-details">
                 <div class="details-grid">
                     <div class="details-left">
@@ -131,6 +135,20 @@
                 <Message v-if="selectedZamowienie.uwagi" severity="info" :closable="false" class="mt-3">
                     <strong>Uwagi:</strong> {{ selectedZamowienie.uwagi }}
                 </Message>
+
+                <div v-if="selectedZamowienie.powiazane_zapotrzebowania && selectedZamowienie.powiazane_zapotrzebowania.length > 0" class="mt-4">
+                    <h6 class="mb-3">Powiązane zapotrzebowania:</h6>
+                    <DataTable :value="selectedZamowienie.powiazane_zapotrzebowania" class="p-datatable-sm">
+                        <Column field="numer" header="Numer" style="width: 120px;">
+                            <template #body="{ data }"><strong style="color: #69db7c;">{{ data.numer }}</strong></template>
+                        </Column>
+                        <Column field="technolog" header="Technolog" />
+                        <Column field="data_wyslania" header="Data wysłania" style="width: 130px;">
+                            <template #body="{ data }">{{ data.data_wyslania || '-' }}</template>
+                        </Column>
+                        <Column field="status" header="Status" style="width: 130px;" />
+                    </DataTable>
+                </div>
             </div>
             <template #footer>
                 <Button label="Zamknij" @click="detailsModalVisible = false" />
@@ -178,11 +196,14 @@
 
         <!-- Modal: Potwierdzenie wysyłki email -->
         <Dialog v-model:visible="emailConfirmModalVisible" header="Potwierdzenie wysyłki e-mail" :modal="true" :style="{ width: '450px' }">
-            <p>Czy na pewno chcesz wysłać to zamówienie e-mailem do dostawcy?</p>
+            <Message v-if="zamowieniaTestowe" severity="warn" :closable="false" style="margin-bottom: 15px;">
+                <strong>TRYB TESTOWY</strong> — email zostanie wysłany na adres testowy zamiast do dostawcy!
+            </Message>
+            <p style="margin-bottom: 15px;">Czy na pewno chcesz wysłać to zamówienie e-mailem {{ zamowieniaTestowe ? '(testowo)' : 'do dostawcy' }}?</p>
             <Message severity="info" :closable="false">
                 <strong>Numer zamówienia:</strong> {{ selectedEmailZamowienie?.numer }}<br>
                 <strong>Dostawca:</strong> {{ selectedEmailZamowienie?.dostawca?.nazwa_firmy }}<br>
-                <strong>Email:</strong> {{ selectedEmailZamowienie?.email_docelowy || 'brak' }}
+                <strong>Email:</strong> {{ zamowieniaTestowe ? emailTestAddress + ' (testowy)' : (selectedEmailZamowienie?.email_docelowy || 'brak') }}
             </Message>
             <template #footer>
                 <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="emailConfirmModalVisible = false" />
@@ -301,6 +322,8 @@ const isDeleting = ref(false);
 
 const emailResult = ref({ success: false, message: '' });
 const realizacjaResult = ref({ success: false, message: '' });
+const zamowieniaTestowe = ref(false);
+const emailTestAddress = ref('');
 
 // Modals
 const detailsModalVisible = ref(false);
@@ -489,12 +512,15 @@ const fetchZamowienia = async () => {
 
 const fetchInitialData = async () => {
     try {
-        const [zamRes, dosRes] = await Promise.all([
+        const [zamRes, dosRes, emailRes] = await Promise.all([
             axios.get(`${API_URL}/zamowienia/`),
-            axios.get(`${API_URL}/dostawcy/`)
+            axios.get(`${API_URL}/dostawcy/`),
+            axios.get('/api/email/config/')
         ]);
         zamowienia.value = zamRes.data.results || zamRes.data;
         dostawcy.value = dosRes.data;
+        zamowieniaTestowe.value = emailRes.data.zamowienia_testowe || false;
+        emailTestAddress.value = emailRes.data.email_test_address || '';
     } catch (error) {
         console.error("Błąd ładowania danych:", error);
     }
@@ -535,6 +561,26 @@ onMounted(() => fetchInitialData());
     background: linear-gradient(to bottom, #343a40, #212529);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.btn-generate-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background-color: #198754;
+    border: 1px solid #198754;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-generate-header:hover {
+    background-color: #157347;
+    border-color: #146c43;
 }
 
 .panel-body {

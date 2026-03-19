@@ -2245,6 +2245,12 @@ onMounted(() => {
     border: 1px solid rgba(25, 135, 84, 0.4);
 }
 
+.historia-table .status-ordered {
+    background-color: rgba(13, 110, 253, 0.2);
+    color: #4dabf7;
+    border: 1px solid rgba(13, 110, 253, 0.4);
+}
+
 .historia-table .status-cancelled {
     background-color: rgba(220, 53, 69, 0.2);
     color: #dc3545;

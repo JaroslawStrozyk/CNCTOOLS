@@ -104,6 +104,9 @@ urlpatterns = [
     path('api/logi/pliki/<str:filename>/', views.logi_plik_content_view, name='logi-plik-content'),
     path('api/logi/pliki/<str:filename>/pdf/', views.logi_pdf_archiwum_view, name='logi-archiwum-pdf'),
 
+    # Zamówienia testowe
+    path('api/email/zamowienia-testowe/', views.toggle_zamowienia_testowe, name='toggle-zamowienia-testowe'),
+
     # Wzory dokumentów (dla ISO)
     path('api/dokumenty/wzor/<str:typ>/', views.dokument_wzor_view, name='dokument-wzor'),
 
