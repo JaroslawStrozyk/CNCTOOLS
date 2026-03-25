@@ -79,6 +79,7 @@
                                 <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap;">
                                     <Button icon="pi pi-envelope" class="p-button-success p-button-sm" @click="openEmailConfirmModal(data)" title="Wyślij e-mail" />
                                     <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
+                                    <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="rozpocznijRealizacje(data)" title="Kontynuuj realizację" />
                                     <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openZamowienieModal('edit', data)" title="Edytuj" />
                                     <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
                                 </div>
@@ -233,22 +234,104 @@
             </template>
         </Dialog>
 
-        <!-- Modal: Potwierdzenie rozpoczęcia realizacji -->
-        <Dialog v-model:visible="realizacjaConfirmModalVisible" header="Potwierdzenie rozpoczęcia realizacji" :modal="true" :style="{ width: '450px' }">
-            <p>Czy na pewno chcesz rozpocząć realizację tego zamówienia?</p>
-            <Message severity="info" :closable="false">
-                <strong>Numer zamówienia:</strong> {{ selectedRealizacjaZamowienie?.numer }}<br>
-                <strong>Dostawca:</strong> {{ selectedRealizacjaZamowienie?.dostawca?.nazwa_firmy }}
-            </Message>
+        <!-- Modal: Realizacja zamówienia (częściowa/pełna) -->
+        <Dialog v-model:visible="realizacjaConfirmModalVisible" :header="realizacjaModalTitle" :modal="true" :style="{ width: '1100px' }">
+            <div v-if="selectedRealizacjaZamowienie" class="realizacja-modal-content">
+                <div class="realizacja-info-bar">
+                    <span><strong>Zamówienie:</strong> {{ selectedRealizacjaZamowienie.numer }}</span>
+                    <span><strong>Dostawca:</strong> {{ selectedRealizacjaZamowienie.dostawca?.nazwa_firmy }}</span>
+                    <span><Tag :severity="getStatusSeverity(selectedRealizacjaZamowienie.status)" :value="getStatusLabel(selectedRealizacjaZamowienie.status)" /></span>
+                </div>
+
+                <div v-if="isLoadingRealizacja" class="loading-state">
+                    <i class="pi pi-spin pi-spinner" style="font-size: 2rem;"></i>
+                    <p>Ładowanie danych realizacji...</p>
+                </div>
+
+                <div v-else>
+                    <div class="realizacja-toolbar">
+                        <label class="select-all-label">
+                            <Checkbox v-model="realizacjaSelectAll" :binary="true" @change="toggleSelectAll" />
+                            <span>Zaznacz wszystkie (pełna realizacja)</span>
+                        </label>
+                    </div>
+
+                    <DataTable :value="realizacjaPozycje" class="p-datatable-sm realizacja-table" :scrollable="true" scrollHeight="400px">
+                        <Column header="" style="width: 50px; text-align: center;">
+                            <template #body="{ data }">
+                                <Checkbox v-model="data.przyjmij" :binary="true" :disabled="data.ilosc_pozostala <= 0" />
+                            </template>
+                        </Column>
+                        <Column field="narzedzie_opis" header="Narzędzie" />
+                        <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 140px;" />
+                        <Column header="Zamówiono" style="width: 100px; text-align: center;">
+                            <template #body="{ data }">
+                                <strong>{{ data.ilosc_zamowiona }}</strong>
+                                <span class="unit-label">{{ data.jednostka === 'kompl' ? 'kompl.' : 'szt.' }}</span>
+                            </template>
+                        </Column>
+                        <Column header="Przyjęto" style="width: 90px; text-align: center;">
+                            <template #body="{ data }">
+                                <span :class="{ 'text-green': data.ilosc_przyjeta > 0 }">{{ data.ilosc_przyjeta }}</span>
+                            </template>
+                        </Column>
+                        <Column header="Pozostało" style="width: 90px; text-align: center;">
+                            <template #body="{ data }">
+                                <span :class="{ 'text-orange': data.ilosc_pozostala > 0, 'text-green': data.ilosc_pozostala === 0 }">
+                                    {{ data.ilosc_pozostala }}
+                                </span>
+                            </template>
+                        </Column>
+                        <Column header="Do przyjęcia" style="width: 120px; text-align: center;">
+                            <template #body="{ data }">
+                                <InputNumber
+                                    v-if="data.przyjmij && data.ilosc_pozostala > 0"
+                                    v-model="data.ilosc_do_przyjecia"
+                                    :min="1"
+                                    :max="data.ilosc_pozostala"
+                                    inputClass="qty-input"
+                                    :inputStyle="{ width: '70px', textAlign: 'center' }"
+                                />
+                                <Tag v-else-if="data.ilosc_pozostala === 0" value="OK" severity="success" />
+                                <span v-else>-</span>
+                            </template>
+                        </Column>
+                        <Column header="Lokalizacja" style="width: 140px;">
+                            <template #body="{ data }">
+                                <span v-if="data.lokalizacja">
+                                    {{ data.lokalizacja.szafa }}/{{ data.lokalizacja.polka }}/{{ data.lokalizacja.kolumna }}
+                                </span>
+                                <span v-else class="text-muted">Brak domyślnej</span>
+                            </template>
+                        </Column>
+                    </DataTable>
+
+                    <Message v-if="realizacjaError" severity="error" :closable="false" class="mt-3">{{ realizacjaError }}</Message>
+                </div>
+            </div>
             <template #footer>
                 <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="realizacjaConfirmModalVisible = false" />
-                <Button label="Rozpocznij realizację" icon="pi pi-box" class="p-button-info" @click="confirmRozpocznijRealizacje" />
+                <Button
+                    label="Zatwierdź przyjęcie"
+                    icon="pi pi-check"
+                    class="p-button-success"
+                    @click="confirmRealizuj"
+                    :loading="isRealizujLoading"
+                    :disabled="isLoadingRealizacja || !hasSelectedPozycje"
+                />
             </template>
         </Dialog>
 
         <!-- Modal: Wynik realizacji -->
-        <Dialog v-model:visible="realizacjaResultModalVisible" :header="realizacjaResult.success ? 'Sukces' : 'Błąd'" :modal="true" :style="{ width: '400px' }">
+        <Dialog v-model:visible="realizacjaResultModalVisible" :header="realizacjaResult.success ? 'Przyjęcie potwierdzone' : 'Błąd'" :modal="true" :style="{ width: '650px' }">
             <Message :severity="realizacjaResult.success ? 'success' : 'error'" :closable="false">{{ realizacjaResult.message }}</Message>
+            <DataTable v-if="realizacjaResult.success && realizacjaResult.egzemplarze.length > 0" :value="realizacjaResult.egzemplarze" class="p-datatable-sm mt-3">
+                <Column field="narzedzie" header="Narzędzie" />
+                <Column header="Ilość" style="width: 80px; text-align: center;">
+                    <template #body="{ data }"><strong>{{ data.ilosc }}</strong></template>
+                </Column>
+                <Column field="lokalizacja" header="Lokalizacja" style="width: 150px;" />
+            </DataTable>
             <template #footer>
                 <Button label="Zamknij" @click="realizacjaResultModalVisible = false" />
             </template>
@@ -288,8 +371,10 @@ import logoImage from '@images/cnc-logo.png';
 
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
+import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
+import Checkbox from 'primevue/checkbox';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
@@ -321,7 +406,12 @@ const isSendingEmail = ref(false);
 const isDeleting = ref(false);
 
 const emailResult = ref({ success: false, message: '' });
-const realizacjaResult = ref({ success: false, message: '' });
+const realizacjaResult = ref({ success: false, message: '', egzemplarze: [] });
+const realizacjaPozycje = ref([]);
+const realizacjaSelectAll = ref(false);
+const realizacjaError = ref('');
+const isLoadingRealizacja = ref(false);
+const isRealizujLoading = ref(false);
 const zamowieniaTestowe = ref(false);
 const emailTestAddress = ref('');
 
@@ -483,21 +573,96 @@ const generujAutomatyczne = () => {
     window.location.href = props.urls.generator || '/generator/';
 };
 
-const rozpocznijRealizacje = (zamowienie) => {
+const realizacjaModalTitle = computed(() => {
+    if (!selectedRealizacjaZamowienie.value) return 'Realizacja zamówienia';
+    return selectedRealizacjaZamowienie.value.status === 'partially_received'
+        ? 'Kontynuuj realizację zamówienia'
+        : 'Realizacja zamówienia — przyjęcie towaru';
+});
+
+const hasSelectedPozycje = computed(() => {
+    return realizacjaPozycje.value.some(p => p.przyjmij && p.ilosc_pozostala > 0);
+});
+
+const rozpocznijRealizacje = async (zamowienie) => {
     selectedRealizacjaZamowienie.value = zamowienie;
+    realizacjaError.value = '';
+    realizacjaSelectAll.value = false;
+    realizacjaPozycje.value = [];
+    isLoadingRealizacja.value = true;
     realizacjaConfirmModalVisible.value = true;
+
+    try {
+        const res = await axios.get(`${API_URL}/zamowienia/${zamowienie.id}/stan_realizacji/`);
+        realizacjaPozycje.value = res.data.pozycje.map(poz => ({
+            ...poz,
+            przyjmij: false,
+            ilosc_do_przyjecia: poz.ilosc_pozostala,
+        }));
+    } catch (error) {
+        realizacjaError.value = 'Błąd ładowania danych: ' + (error.response?.data?.error || error.message);
+    } finally {
+        isLoadingRealizacja.value = false;
+    }
 };
 
-const confirmRozpocznijRealizacje = async () => {
+const toggleSelectAll = () => {
+    const val = realizacjaSelectAll.value;
+    realizacjaPozycje.value.forEach(poz => {
+        if (poz.ilosc_pozostala > 0) {
+            poz.przyjmij = val;
+            if (val) poz.ilosc_do_przyjecia = poz.ilosc_pozostala;
+        }
+    });
+};
+
+const confirmRealizuj = async () => {
+    realizacjaError.value = '';
+
+    const zaznaczone = realizacjaPozycje.value.filter(p => p.przyjmij && p.ilosc_pozostala > 0);
+    if (zaznaczone.length === 0) {
+        realizacjaError.value = 'Zaznacz przynajmniej jedną pozycję do przyjęcia.';
+        return;
+    }
+
+    for (const poz of zaznaczone) {
+        if (!poz.ilosc_do_przyjecia || poz.ilosc_do_przyjecia <= 0) {
+            realizacjaError.value = 'Wszystkie zaznaczone pozycje muszą mieć ilość > 0.';
+            return;
+        }
+        if (poz.ilosc_do_przyjecia > poz.ilosc_pozostala) {
+            realizacjaError.value = `Ilość do przyjęcia nie może przekroczyć pozostałej (${poz.narzedzie_opis}).`;
+            return;
+        }
+    }
+
+    isRealizujLoading.value = true;
+
     try {
-        realizacjaConfirmModalVisible.value = false;
-        await axios.post(`${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/rozpocznij_realizacje/`);
-        realizacjaResult.value = { success: true, message: 'Realizacja rozpoczęta pomyślnie!' };
-        realizacjaResultModalVisible.value = true;
-        await fetchInitialData();
+        const pozycje_dane = zaznaczone.map(poz => ({
+            pozycja_zamowienia_id: poz.pozycja_zamowienia_id,
+            ilosc_przyjeta: poz.ilosc_do_przyjecia,
+        }));
+
+        const response = await axios.post(
+            `${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/realizuj/`,
+            { pozycje: pozycje_dane }
+        );
+
+        if (response.data.success) {
+            realizacjaConfirmModalVisible.value = false;
+            realizacjaResult.value = {
+                success: true,
+                message: response.data.message,
+                egzemplarze: response.data.utworzone_egzemplarze || [],
+            };
+            realizacjaResultModalVisible.value = true;
+            await fetchInitialData();
+        }
     } catch (error) {
-        realizacjaResult.value = { success: false, message: error.response?.data?.error || 'Błąd podczas rozpoczęcia realizacji' };
-        realizacjaResultModalVisible.value = true;
+        realizacjaError.value = error.response?.data?.error || 'Wystąpił błąd podczas realizacji.';
+    } finally {
+        isRealizujLoading.value = false;
     }
 };
 
@@ -612,5 +777,48 @@ onMounted(() => fetchInitialData());
 .about-table { width: 100%; text-align: left; }
 .about-table td { padding: 8px 0; color: var(--dark-text-primary); }
 .about-table .label { text-align: right; color: var(--dark-text-muted); padding-right: 16px; width: 40%; }
+.mt-3 { margin-top: 16px; }
 .mt-4 { margin-top: 24px; }
+
+.realizacja-modal-content { min-height: 200px; }
+
+.realizacja-info-bar {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.realizacja-toolbar {
+    margin-bottom: 12px;
+    padding: 8px 0;
+}
+
+.select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--dark-text-muted);
+}
+
+.text-green { color: #69db7c; font-weight: 600; }
+.text-orange { color: #ffa94d; font-weight: 600; }
+.text-muted { color: #868e96; }
+.unit-label { font-size: 0.8em; color: #868e96; margin-left: 4px; }
+
+:deep(.qty-input) { width: 70px !important; text-align: center; }
 </style>

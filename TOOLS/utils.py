@@ -5,9 +5,60 @@ Narzędzia pomocnicze dla aplikacji TOOLS
 
 from django.core.mail import EmailMessage
 from django.conf import settings
+import imaplib
+import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def save_to_imap_sent(email_message):
+    """
+    Zapisuje kopię wysłanego emaila w folderze Wysłane na serwerze IMAP.
+    Nie rzuca wyjątków — loguje błędy, ale nie blokuje wysyłki SMTP.
+
+    Args:
+        email_message (EmailMessage): Obiekt Django EmailMessage po wysłaniu
+    """
+    imap_host = getattr(settings, 'IMAP_HOST', '')
+    if not imap_host:
+        return
+
+    imap_port = getattr(settings, 'IMAP_PORT', 993)
+    imap_ssl = getattr(settings, 'IMAP_USE_SSL', True)
+    sent_folder = getattr(settings, 'IMAP_SENT_FOLDER', 'Sent')
+    username = getattr(settings, 'EMAIL_HOST_USER', '')
+    password = getattr(settings, 'EMAIL_HOST_PASSWORD', '')
+
+    if not username or not password:
+        logger.warning("IMAP: Brak danych logowania (EMAIL_HOST_USER/EMAIL_HOST_PASSWORD)")
+        return
+
+    try:
+        # Połączenie z serwerem IMAP
+        if imap_ssl:
+            imap = imaplib.IMAP4_SSL(imap_host, imap_port)
+        else:
+            imap = imaplib.IMAP4(imap_host, imap_port)
+
+        imap.login(username, password)
+
+        # Konwertuj EmailMessage do surowego formatu RFC 2822
+        raw_message = email_message.message().as_bytes()
+
+        # Zapisz w folderze Wysłane z flagą \Seen (przeczytane)
+        imap_time = imaplib.Time2Internaldate(time.time())
+        result, data = imap.append(sent_folder, '\\Seen', imap_time, raw_message)
+
+        if result == 'OK':
+            logger.info(f"IMAP: Kopia emaila zapisana w folderze '{sent_folder}'")
+        else:
+            logger.warning(f"IMAP: Nie udało się zapisać kopii — {result}: {data}")
+
+        imap.logout()
+
+    except Exception as e:
+        logger.error(f"IMAP: Błąd zapisu do folderu Wysłane — {str(e)}")
 
 
 def send_html_email(recipient_email, subject, html_content, attachments=None, cc_email=None):
@@ -90,6 +141,9 @@ def send_html_email(recipient_email, subject, html_content, attachments=None, cc
 
         # Wysyłka
         email.send(fail_silently=False)
+
+        # Kopia do folderu Wysłane (IMAP)
+        save_to_imap_sent(email)
 
         recipients_info = recipient_email
         if cc_email:

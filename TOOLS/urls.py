@@ -70,17 +70,6 @@ urlpatterns = [
     path('kierownik/', kierownik_inertia_view, name='kierownik'),
     path('logi/', logi_inertia_view, name='logi'),
 
-    # ===== STARY SYSTEM (backup - do usunięcia po pełnej migracji) =====
-    path('old/', views.login_view, name='login-old'),
-    path('old/magazyn/', views.magazyn_view, name='magazyn-old'),
-    path('old/zakupy/', views.zakupy_view, name='zakupy-old'),
-    path('old/zamowienia/', views.zamowienia_view, name='zamowienia-old'),
-    path('old/ustawienia/', views.ustawienia_view, name='ustawienia-old'),
-    path('old/generator/', views.generator_view, name='generator-old'),
-    path('old/realizacja/', views.realizacja_view, name='realizacja-old'),
-    path('old/faktury/', views.faktury_view, name='faktury-old'),
-    path('old/odpady/', views.odpady_view, name='odpady-old'),
-
     # ===== API =====
     path('api/', include(router.urls)),
     path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),

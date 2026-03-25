@@ -198,8 +198,25 @@
                                     <div class="config-row"><span class="config-label">Adres testowy</span><span>{{ emailConfig.email_test_address }}</span></div>
                                     <div class="config-row"><span class="config-label">Adres DW</span><span>{{ emailConfig.email_dw || '-' }}</span></div>
                                     <div class="config-row">
-                                        <span class="config-label">Status</span>
+                                        <span class="config-label">Status SMTP</span>
                                         <Tag :severity="emailConfig.email_configured ? 'success' : 'danger'" :value="emailConfig.email_configured ? 'Skonfigurowane' : 'Brak konfiguracji'" :icon="emailConfig.email_configured ? 'pi pi-check' : 'pi pi-exclamation-triangle'" />
+                                    </div>
+
+                                    <!-- IMAP — kopia w Wysłane -->
+                                    <div class="config-row" style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px;">
+                                        <span class="config-label" style="color: #4dabf7;">Kopia w Wysłane (IMAP)</span>
+                                        <span></span>
+                                    </div>
+                                    <div class="config-row"><span class="config-label">Serwer IMAP</span><span>{{ emailConfig.imap_host || '-' }}</span></div>
+                                    <div class="config-row"><span class="config-label">Port IMAP</span><span>{{ emailConfig.imap_port || '-' }}</span></div>
+                                    <div class="config-row">
+                                        <span class="config-label">Użyj SSL (IMAP)</span>
+                                        <Tag :severity="emailConfig.imap_use_ssl ? 'success' : 'secondary'" :value="emailConfig.imap_use_ssl ? 'TAK' : 'NIE'" />
+                                    </div>
+                                    <div class="config-row"><span class="config-label">Folder Wysłane</span><span>{{ emailConfig.imap_sent_folder || '-' }}</span></div>
+                                    <div class="config-row">
+                                        <span class="config-label">Status IMAP</span>
+                                        <Tag :severity="emailConfig.imap_configured ? 'success' : 'secondary'" :value="emailConfig.imap_configured ? 'Skonfigurowane' : 'Wyłączone'" :icon="emailConfig.imap_configured ? 'pi pi-check' : 'pi pi-minus'" />
                                     </div>
                                 </div>
 

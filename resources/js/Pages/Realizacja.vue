@@ -4,7 +4,7 @@
     <div class="header-bar">
       <h2 class="header-title"><span class="yellow-text">REALIZACJE ZAMÓWIEŃ</span></h2>
       <div class="header-buttons">
-        <a :href="urls?.magazyn || '/magazyn/'" class="btn btn-danger">
+        <a :href="backUrl" class="btn btn-danger">
           <i class="pi pi-arrow-left"></i> Wróć
         </a>
         <div class="dropdown-wrapper">
@@ -22,7 +22,7 @@
     <main class="main-content">
       <div class="card">
         <div class="card-header">
-          <h3>Lista realizacji do przyjęcia</h3>
+          <h3>Lista realizacji</h3>
         </div>
         <div class="card-body">
           <DataTable
@@ -31,7 +31,7 @@
             class="realizacje-table"
           >
             <template #empty>
-              <div class="empty-message">Brak realizacji do przyjęcia</div>
+              <div class="empty-message">Brak realizacji</div>
             </template>
             <Column field="zamowienie.numer" header="Numer zamówienia">
               <template #body="{ data }">
@@ -39,38 +39,33 @@
               </template>
             </Column>
             <Column field="zamowienie.dostawca.nazwa_firmy" header="Dostawca" />
-            <Column header="Data utworzenia">
+            <Column header="Data realizacji">
               <template #body="{ data }">
                 {{ formatDate(data.data_realizacji) }}
               </template>
             </Column>
-            <Column header="Pozycje">
+            <Column header="Pozycje" style="width: 80px; text-align: center;">
               <template #body="{ data }">
                 {{ data.pozycje?.length || 0 }}
               </template>
             </Column>
-            <Column header="Akcje" class="actions-column">
+            <Column header="Status" style="width: 160px; text-align: center;">
               <template #body="{ data }">
-                <div class="action-buttons">
-                  <template v-if="!isRealizacjaZakonczona(data)">
-                    <Button
-                      icon="pi pi-inbox"
-                      label="Przyjmij"
-                      severity="info"
-                      size="small"
-                      class="shadow-btn"
-                      @click="openPrzyjmijModal(data)"
-                    />
-                    <Button
-                      icon="pi pi-trash"
-                      severity="danger"
-                      size="small"
-                      class="shadow-btn"
-                      @click="openDeleteModal(data)"
-                    />
-                  </template>
-                  <Tag v-else value="Przyjęto" severity="success" />
-                </div>
+                <Tag v-if="isRealizacjaZakonczona(data)" value="Zrealizowane" severity="success" />
+                <Tag v-else-if="hasCzesciowaPrzyjecie(data)" value="Częściowo" severity="warning" />
+                <Tag v-else value="Oczekuje" severity="info" />
+              </template>
+            </Column>
+            <Column header="Szczegóły" style="width: 100px; text-align: center;">
+              <template #body="{ data }">
+                <Button
+                  icon="pi pi-eye"
+                  severity="secondary"
+                  size="small"
+                  class="shadow-btn"
+                  @click="openSzczegolyModal(data)"
+                  title="Pokaż szczegóły"
+                />
               </template>
             </Column>
           </DataTable>
@@ -78,142 +73,67 @@
       </div>
     </main>
 
-    <!-- Modal przyjęcia towaru -->
+    <!-- Modal szczegółów realizacji -->
     <Dialog
-      v-model:visible="przyjmijDialogVisible"
-      header="Przyjęcie towaru"
-      :style="{ width: '900px' }"
+      v-model:visible="szczegolyDialogVisible"
+      :style="{ width: '950px' }"
       modal
-      :closable="true"
     >
       <template #header>
         <div class="dialog-header-content">
-          <i class="pi pi-inbox dialog-icon"></i>
-          <span>Przyjęcie towaru - {{ selectedRealizacja?.zamowienie?.numer }}</span>
+          <i class="pi pi-list dialog-icon"></i>
+          <span>Szczegóły realizacji — {{ selectedRealizacja?.zamowienie?.numer }}</span>
         </div>
       </template>
 
-      <div v-if="selectedRealizacja" class="supplier-info">
-        <p><strong>Dostawca:</strong> {{ selectedRealizacja.zamowienie?.dostawca?.nazwa_firmy }}</p>
+      <div v-if="selectedRealizacja" class="szczegoly-info">
+        <div class="info-grid">
+          <p><strong>Dostawca:</strong> {{ selectedRealizacja.zamowienie?.dostawca?.nazwa_firmy }}</p>
+          <p><strong>Data realizacji:</strong> {{ formatDate(selectedRealizacja.data_realizacji) }}</p>
+          <p><strong>Status:</strong>
+            <Tag v-if="isRealizacjaZakonczona(selectedRealizacja)" value="Zrealizowane" severity="success" />
+            <Tag v-else-if="hasCzesciowaPrzyjecie(selectedRealizacja)" value="Częściowo zrealizowane" severity="warning" />
+            <Tag v-else value="Oczekuje na przyjęcie" severity="info" />
+          </p>
+        </div>
       </div>
 
-      <DataTable :value="selectedPozycje" class="przyjmij-table">
-        <Column header="Przyjmij" class="checkbox-column">
-          <template #body="{ data }">
-            <Checkbox v-model="data.przyjmij" :binary="true" />
-          </template>
-        </Column>
+      <DataTable :value="selectedRealizacja?.pozycje || []" class="p-datatable-sm">
         <Column field="pozycja_zamowienia.narzedzie_opis" header="Narzędzie" />
-        <Column field="pozycja_zamowienia.numer_katalogowy" header="Nr katalogowy" />
-        <Column header="Zamówiono" class="center-column">
+        <Column field="pozycja_zamowienia.numer_katalogowy" header="Nr katalogowy" style="width: 140px;" />
+        <Column header="Zamówiono" style="width: 100px; text-align: center;">
           <template #body="{ data }">
             <strong>{{ data.pozycja_zamowienia?.ilosc_zamowiona }}</strong>
           </template>
         </Column>
-        <Column header="Przyjęto" class="center-column">
+        <Column header="Przyjęto" style="width: 100px; text-align: center;">
           <template #body="{ data }">
-            <InputNumber
-              v-if="data.przyjmij"
-              v-model="data.ilosc_przyjeta_input"
-              :min="1"
-              :max="data.pozycja_zamowienia?.ilosc_zamowiona"
-              inputClass="quantity-input"
-            />
-            <span v-else>-</span>
+            <span :class="przyjeteClass(data)">{{ data.ilosc_przyjeta || 0 }}</span>
           </template>
         </Column>
-        <Column header="Lokalizacja">
+        <Column header="Lokalizacja" style="width: 140px;">
           <template #body="{ data }">
             <span v-if="data.lokalizacja">
               {{ data.lokalizacja.szafa }}/{{ data.lokalizacja.polka }}/{{ data.lokalizacja.kolumna }}
             </span>
-            <span v-else class="no-location">Brak domyślnej</span>
+            <span v-else class="text-muted">-</span>
           </template>
         </Column>
-      </DataTable>
-
-      <Message v-if="przyjmijError" severity="error" class="error-message">
-        {{ przyjmijError }}
-      </Message>
-
-      <template #footer>
-        <Button label="Anuluj" severity="secondary" @click="przyjmijDialogVisible = false" />
-        <Button
-          label="Zatwierdź przyjęcie"
-          icon="pi pi-check"
-          severity="success"
-          :loading="isPrzyjecieLoading"
-          @click="zatwierdzPrzyjecie"
-        />
-      </template>
-    </Dialog>
-
-    <!-- Modal wyniku przyjęcia -->
-    <Dialog
-      v-model:visible="wynikDialogVisible"
-      header="Przyjęcie potwierdzone"
-      :style="{ width: '600px' }"
-      modal
-    >
-      <template #header>
-        <div class="dialog-header-success">
-          <i class="pi pi-check-circle dialog-icon"></i>
-          <span>Przyjęcie potwierdzone</span>
-        </div>
-      </template>
-
-      <Message severity="success" :closable="false">
-        <strong>Utworzono egzemplarze w magazynie:</strong>
-      </Message>
-
-      <DataTable :value="utworzoneEgzemplarze" class="wynik-table">
-        <Column field="narzedzie" header="Narzędzie" />
-        <Column header="Ilość" class="center-column">
+        <Column header="Status" style="width: 120px; text-align: center;">
           <template #body="{ data }">
-            <strong>{{ data.ilosc }}</strong>
+            <Tag v-if="data.ilosc_przyjeta >= (data.pozycja_zamowienia?.ilosc_zamowiona || 0)" value="OK" severity="success" />
+            <Tag v-else-if="data.ilosc_przyjeta > 0" value="Częściowo" severity="warning" />
+            <Tag v-else value="Brak" severity="secondary" />
           </template>
         </Column>
-        <Column field="lokalizacja" header="Lokalizacja" />
       </DataTable>
 
-      <template #footer>
-        <Button label="Zamknij" severity="secondary" @click="wynikDialogVisible = false" />
-      </template>
-    </Dialog>
-
-    <!-- Modal usuwania -->
-    <Dialog
-      v-model:visible="deleteDialogVisible"
-      header="Potwierdzenie usunięcia"
-      :style="{ width: '450px' }"
-      modal
-    >
-      <template #header>
-        <div class="dialog-header-danger">
-          <i class="pi pi-trash dialog-icon"></i>
-          <span>Potwierdzenie usunięcia</span>
-        </div>
-      </template>
-
-      <p>Czy na pewno chcesz usunąć tę realizację?</p>
-
-      <Message severity="warn" :closable="false">
-        <div class="delete-info">
-          <p><strong>Numer zamówienia:</strong> {{ selectedDeleteRealizacja?.zamowienie?.numer }}</p>
-          <p><strong>Dostawca:</strong> {{ selectedDeleteRealizacja?.zamowienie?.dostawca?.nazwa_firmy }}</p>
-          <p><strong>Liczba pozycji:</strong> {{ selectedDeleteRealizacja?.pozycje?.length }}</p>
-        </div>
-      </Message>
+      <div v-if="selectedRealizacja?.uwagi" class="uwagi-section">
+        <strong>Uwagi:</strong> {{ selectedRealizacja.uwagi }}
+      </div>
 
       <template #footer>
-        <Button label="Anuluj" severity="secondary" @click="deleteDialogVisible = false" />
-        <Button
-          label="Usuń"
-          icon="pi pi-trash"
-          severity="danger"
-          :loading="isDeleting"
-          @click="confirmDelete"
-        />
+        <Button label="Zamknij" severity="secondary" @click="szczegolyDialogVisible = false" />
       </template>
     </Dialog>
 
@@ -284,9 +204,6 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import Menu from 'primevue/menu';
-import Checkbox from 'primevue/checkbox';
-import InputNumber from 'primevue/inputnumber';
-import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import logoImage from '@images/cnc-logo.png';
 
@@ -301,20 +218,21 @@ const props = defineProps({
   infoProgram: Object
 });
 
+// Powrót na podstawie grupy użytkownika
+const backUrl = computed(() => {
+  const grupa = props.auth?.user?.grupa || '';
+  if (grupa === 'logistyka') return props.urls?.zakupy || '/zakupy/';
+  if (grupa === 'kierownik') return props.urls?.kierownik || '/kierownik/';
+  // magazyn, produkcja-magazyn, administrator, brak grupy → magazyn
+  return props.urls?.magazyn || '/magazyn/';
+});
+
 // State
 const realizacje = ref([]);
 const selectedRealizacja = ref(null);
-const selectedPozycje = ref([]);
-const selectedDeleteRealizacja = ref(null);
-const isPrzyjecieLoading = ref(false);
-const isDeleting = ref(false);
-const przyjmijError = ref('');
-const utworzoneEgzemplarze = ref([]);
 
 // Dialog visibility
-const przyjmijDialogVisible = ref(false);
-const wynikDialogVisible = ref(false);
-const deleteDialogVisible = ref(false);
+const szczegolyDialogVisible = ref(false);
 const aboutDialogVisible = ref(false);
 
 // User menu
@@ -354,103 +272,39 @@ const fetchRealizacje = async () => {
   }
 };
 
-const openPrzyjmijModal = (realizacja) => {
+const openSzczegolyModal = (realizacja) => {
   selectedRealizacja.value = realizacja;
-  przyjmijError.value = '';
-
-  selectedPozycje.value = realizacja.pozycje.map(poz => ({
-    ...poz,
-    przyjmij: false,
-    ilosc_przyjeta_input: poz.pozycja_zamowienia?.ilosc_zamowiona || 0
-  }));
-
-  przyjmijDialogVisible.value = true;
-};
-
-const zatwierdzPrzyjecie = async () => {
-  przyjmijError.value = '';
-
-  const zaznaczone = selectedPozycje.value.filter(p => p.przyjmij);
-  if (zaznaczone.length === 0) {
-    przyjmijError.value = 'Zaznacz przynajmniej jedną pozycję do przyjęcia';
-    return;
-  }
-
-  for (const poz of zaznaczone) {
-    if (!poz.ilosc_przyjeta_input || poz.ilosc_przyjeta_input <= 0) {
-      przyjmijError.value = 'Wszystkie zaznaczone pozycje muszą mieć ilość > 0';
-      return;
-    }
-  }
-
-  isPrzyjecieLoading.value = true;
-
-  try {
-    const pozycje_dane = zaznaczone.map(poz => ({
-      id: poz.id,
-      ilosc_przyjeta: poz.ilosc_przyjeta_input
-    }));
-
-    const response = await axios.post(
-      `${API_URL}/realizacje/${selectedRealizacja.value.id}/zatwierdz/`,
-      { pozycje: pozycje_dane }
-    );
-
-    if (response.data.success) {
-      utworzoneEgzemplarze.value = response.data.utworzone_egzemplarze;
-      przyjmijDialogVisible.value = false;
-      wynikDialogVisible.value = true;
-      await fetchRealizacje();
-    }
-  } catch (error) {
-    console.error("Błąd zatwierdzania przyjęcia:", error);
-    przyjmijError.value = error.response?.data?.error || 'Wystąpił błąd podczas zatwierdzania';
-  } finally {
-    isPrzyjecieLoading.value = false;
-  }
+  szczegolyDialogVisible.value = true;
 };
 
 const isRealizacjaZakonczona = (realizacja) => {
-  if (!realizacja.pozycje || realizacja.pozycje.length === 0) {
-    return false;
-  }
-  return realizacja.pozycje.every(poz => poz.ilosc_przyjeta > 0);
+  if (!realizacja.pozycje || realizacja.pozycje.length === 0) return false;
+  return realizacja.pozycje.every(poz =>
+    poz.ilosc_przyjeta >= (poz.pozycja_zamowienia?.ilosc_zamowiona || 0)
+  );
 };
 
-const openDeleteModal = (realizacja) => {
-  selectedDeleteRealizacja.value = realizacja;
-  deleteDialogVisible.value = true;
+const hasCzesciowaPrzyjecie = (realizacja) => {
+  if (!realizacja.pozycje || realizacja.pozycje.length === 0) return false;
+  return realizacja.pozycje.some(poz => poz.ilosc_przyjeta > 0);
 };
 
-const confirmDelete = async () => {
-  isDeleting.value = true;
-
-  try {
-    await axios.delete(`${API_URL}/realizacje/${selectedDeleteRealizacja.value.id}/`);
-    deleteDialogVisible.value = false;
-    await fetchRealizacje();
-  } catch (error) {
-    console.error("Błąd usuwania realizacji:", error);
-    alert('Wystąpił błąd podczas usuwania realizacji');
-  } finally {
-    isDeleting.value = false;
-  }
-};
-
-const goBack = () => {
-  window.location.href = props.urls?.zamowienia || '/zamowienia-inertia/';
+const przyjeteClass = (poz) => {
+  const przyjeto = poz.ilosc_przyjeta || 0;
+  const zamowiono = poz.pozycja_zamowienia?.ilosc_zamowiona || 0;
+  if (przyjeto >= zamowiono) return 'text-green';
+  if (przyjeto > 0) return 'text-orange';
+  return '';
 };
 
 const formatDate = (dateString) => {
   if (!dateString) return '';
-
   const date = new Date(dateString);
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
-
   return `${year}-${month}-${day} ${hours}:${minutes}`;
 };
 
@@ -479,9 +333,23 @@ onMounted(() => {
 
 .header-title { margin: 0; font-weight: bold; color: white; }
 .yellow-text { color: #ffc107; }
-.header-actions { display: flex; gap: 0.5rem; align-items: center; }
 .shadow-btn { box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-.user-dropdown { position: relative; }
+
+.header-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.header-buttons a {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+}
 
 .main-content { flex: 1; padding: 1.5rem; overflow: auto; }
 
@@ -504,23 +372,31 @@ onMounted(() => {
 .card-body { flex: 1; overflow: auto; padding: 0; background: #212529; }
 .empty-message { text-align: center; padding: 2rem; color: var(--dark-text-muted); }
 .order-number { color: #ffc107; }
-.action-buttons { display: flex; gap: 0.5rem; justify-content: center; }
-.actions-column { text-align: center; }
 
-.dialog-header-content, .dialog-header-success, .dialog-header-danger { display: flex; align-items: center; gap: 0.5rem; }
+.dialog-header-content { display: flex; align-items: center; gap: 0.5rem; }
 .dialog-icon { font-size: 1.25rem; }
-.dialog-header-success { color: #198754; }
-.dialog-header-danger { color: #dc3545; }
 
-.supplier-info { margin-bottom: 1rem; padding: 0.5rem; background: var(--dark-bg-tertiary); border-radius: 4px; }
-.supplier-info p { margin: 0; }
+.szczegoly-info {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+}
 
-.checkbox-column { width: 80px; text-align: center; }
-.center-column { text-align: center; }
-:deep(.quantity-input) { width: 80px; text-align: center; }
-.no-location { color: var(--dark-text-muted); }
-.error-message { margin-top: 1rem; }
-.delete-info p { margin: 0.25rem 0; }
+.info-grid { display: flex; gap: 24px; flex-wrap: wrap; }
+.info-grid p { margin: 0; display: flex; align-items: center; gap: 8px; }
+
+.text-green { color: #69db7c; font-weight: 600; }
+.text-orange { color: #ffa94d; font-weight: 600; }
+.text-muted { color: #868e96; }
+
+.uwagi-section {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid #ffc107;
+}
 
 .about-content { text-align: center; }
 .about-logo { margin-bottom: 1.5rem; }

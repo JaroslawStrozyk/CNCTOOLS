@@ -878,6 +878,11 @@ def email_config_view(request):
         'email_dw': getattr(settings, 'EMAIL_DW', ''),
         'email_configured': bool(getattr(settings, 'EMAIL_HOST_USER', '')),
         'zamowienia_testowe': getattr(settings, 'ZAMOWIENIA_TESTOWE', False),
+        'imap_host': getattr(settings, 'IMAP_HOST', ''),
+        'imap_port': getattr(settings, 'IMAP_PORT', ''),
+        'imap_use_ssl': getattr(settings, 'IMAP_USE_SSL', False),
+        'imap_sent_folder': getattr(settings, 'IMAP_SENT_FOLDER', ''),
+        'imap_configured': bool(getattr(settings, 'IMAP_HOST', '')),
     }
 
     return JsonResponse(config)
@@ -1646,6 +1651,179 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                 {'error': str(e)},
                 status=500
             )
+
+    @action(detail=True, methods=['get'])
+    def stan_realizacji(self, request, pk=None):
+        """Zwraca stan realizacji zamówienia — ile zamówiono, ile przyjęto, ile pozostało."""
+        zamowienie = self.get_object()
+        realizacja = RealizacjaZamowienia.objects.filter(zamowienie=zamowienie).first()
+
+        pozycje = []
+        for poz_zam in zamowienie.pozycje.select_related('narzedzie_typ__domyslna_lokalizacja').all():
+            ilosc_przyjeta = 0
+            lokalizacja_data = None
+
+            if realizacja:
+                poz_real = PozycjaRealizacji.objects.filter(
+                    realizacja=realizacja, pozycja_zamowienia=poz_zam
+                ).select_related('lokalizacja').first()
+                if poz_real:
+                    ilosc_przyjeta = poz_real.ilosc_przyjeta or 0
+                    if poz_real.lokalizacja:
+                        lokalizacja_data = {
+                            'id': poz_real.lokalizacja.id,
+                            'szafa': poz_real.lokalizacja.szafa,
+                            'polka': poz_real.lokalizacja.polka,
+                            'kolumna': poz_real.lokalizacja.kolumna,
+                        }
+
+            if not lokalizacja_data and poz_zam.narzedzie_typ and poz_zam.narzedzie_typ.domyslna_lokalizacja:
+                lok = poz_zam.narzedzie_typ.domyslna_lokalizacja
+                lokalizacja_data = {
+                    'id': lok.id,
+                    'szafa': lok.szafa,
+                    'polka': lok.polka,
+                    'kolumna': lok.kolumna,
+                }
+
+            ilosc_pozostala = max(0, poz_zam.ilosc_zamowiona - ilosc_przyjeta)
+
+            pozycje.append({
+                'pozycja_zamowienia_id': poz_zam.id,
+                'narzedzie_opis': poz_zam.narzedzie_opis,
+                'numer_katalogowy': poz_zam.numer_katalogowy,
+                'kategoria_nazwa': poz_zam.kategoria_nazwa,
+                'jednostka': poz_zam.jednostka,
+                'ilosc_w_komplecie': poz_zam.ilosc_w_komplecie,
+                'ilosc_zamowiona': poz_zam.ilosc_zamowiona,
+                'ilosc_przyjeta': ilosc_przyjeta,
+                'ilosc_pozostala': ilosc_pozostala,
+                'lokalizacja': lokalizacja_data,
+            })
+
+        return Response({
+            'has_realizacja': realizacja is not None,
+            'realizacja_id': realizacja.id if realizacja else None,
+            'pozycje': pozycje,
+        })
+
+    @action(detail=True, methods=['post'])
+    def realizuj(self, request, pk=None):
+        """Realizacja zamówienia — częściowa lub pełna. Tworzy egzemplarze w magazynie."""
+        try:
+            zamowienie = self.get_object()
+            pozycje_dane = request.data.get('pozycje', [])
+
+            if not pozycje_dane:
+                return Response({'error': 'Brak danych pozycji do przyjęcia'}, status=400)
+
+            with transaction.atomic():
+                # Utwórz lub pobierz realizację
+                realizacja, created = RealizacjaZamowienia.objects.get_or_create(
+                    zamowienie=zamowienie
+                )
+
+                if created:
+                    for poz_zam in zamowienie.pozycje.select_related('narzedzie_typ__domyslna_lokalizacja').all():
+                        lok = poz_zam.narzedzie_typ.domyslna_lokalizacja if poz_zam.narzedzie_typ else None
+                        PozycjaRealizacji.objects.create(
+                            realizacja=realizacja,
+                            pozycja_zamowienia=poz_zam,
+                            lokalizacja=lok,
+                            ilosc_przyjeta=0,
+                            cena_jednostkowa=poz_zam.cena_jednostkowa
+                        )
+
+                utworzone_egzemplarze = []
+
+                for poz_data in pozycje_dane:
+                    pozycja_zam_id = poz_data.get('pozycja_zamowienia_id')
+                    ilosc = int(poz_data.get('ilosc_przyjeta', 0))
+
+                    if ilosc <= 0:
+                        continue
+
+                    poz_zam = PozycjaZamowienia.objects.select_related(
+                        'narzedzie_typ__domyslna_lokalizacja'
+                    ).get(id=pozycja_zam_id)
+
+                    poz_real = PozycjaRealizacji.objects.select_related('lokalizacja').get(
+                        realizacja=realizacja,
+                        pozycja_zamowienia=poz_zam
+                    )
+
+                    # Akumuluj ilość (nie nadpisuj)
+                    poz_real.ilosc_przyjeta = (poz_real.ilosc_przyjeta or 0) + ilosc
+                    poz_real.save(update_fields=['ilosc_przyjeta'])
+
+                    # Oznacz pozycję zamówienia jako zrealizowaną jeśli pełna ilość
+                    if poz_real.ilosc_przyjeta >= poz_zam.ilosc_zamowiona:
+                        poz_zam.zrealizowane = True
+                        poz_zam.ilosc_dostarczona = poz_real.ilosc_przyjeta
+                        poz_zam.save(update_fields=['zrealizowane', 'ilosc_dostarczona'])
+
+                    # Utwórz egzemplarze w magazynie
+                    narzedzie_typ = poz_zam.narzedzie_typ
+                    lokalizacja = poz_real.lokalizacja or (narzedzie_typ.domyslna_lokalizacja if narzedzie_typ else None)
+
+                    for i in range(ilosc):
+                        egz = EgzemplarzNarzedzia.objects.create(
+                            narzedzie_typ=narzedzie_typ,
+                            lokalizacja=lokalizacja,
+                            stan='nowe',
+                            jednostka=poz_zam.jednostka,
+                            ilosc_w_komplecie=poz_zam.ilosc_w_komplecie,
+                            zamowienie=zamowienie,
+                        )
+
+                        # Auto-generowanie oznaczenia
+                        if narzedzie_typ and narzedzie_typ.opakowanie == 'szt' and not egz.oznaczenie:
+                            oznaczenie = EgzemplarzService.generuj_oznaczenie(narzedzie_typ)
+                            if oznaczenie:
+                                egz.oznaczenie = oznaczenie
+                                egz.nowy_wpis = True
+                                egz.save(update_fields=['oznaczenie', 'nowy_wpis'])
+
+                        lok_str = (
+                            f"{lokalizacja.szafa}/{lokalizacja.polka}/{lokalizacja.kolumna}"
+                            if lokalizacja else 'Brak'
+                        )
+                        utworzone_egzemplarze.append({
+                            'narzedzie': narzedzie_typ.opis if narzedzie_typ else poz_zam.narzedzie_opis,
+                            'lokalizacja': lok_str,
+                            'ilosc': poz_zam.ilosc_w_komplecie or 1,
+                        })
+
+                # Sprawdź czy wszystkie pozycje w pełni zrealizowane
+                wszystkie = True
+                for poz_zam in zamowienie.pozycje.all():
+                    poz_real = realizacja.pozycje.filter(pozycja_zamowienia=poz_zam).first()
+                    if not poz_real or poz_real.ilosc_przyjeta < poz_zam.ilosc_zamowiona:
+                        wszystkie = False
+                        break
+
+                zamowienie.status = 'completed' if wszystkie else 'partially_received'
+                zamowienie.save(update_fields=['status'])
+
+                # Logowanie
+                user_name = get_user_display_name(request.user)
+                dostawca = zamowienie.dostawca.nazwa_firmy if zamowienie.dostawca else 'brak'
+                status_tekst = 'zrealizowane w całości' if wszystkie else 'częściowo zrealizowane'
+                app_logger.success(
+                    user_name,
+                    f"Przyjęto {len(utworzone_egzemplarze)} szt. z zamówienia "
+                    f"{zamowienie.numer} ({dostawca}) - {status_tekst}"
+                )
+
+            return Response({
+                'success': True,
+                'message': f'Przyjęto {len(utworzone_egzemplarze)} pozycji do magazynu',
+                'utworzone_egzemplarze': utworzone_egzemplarze,
+                'status_zamowienia': zamowienie.status,
+            })
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):

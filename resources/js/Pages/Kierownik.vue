@@ -1191,7 +1191,9 @@ const miejscaMenuItems = ref([
     { label: 'Narzędzia w użyciu', icon: 'pi pi-wrench', command: () => { currentView.value = 'w_uzyciu'; } },
     { separator: true },
     { label: 'Uszkodzone elementy', icon: 'pi pi-exclamation-triangle', command: () => { currentView.value = 'uszkodzone'; } },
-    { label: 'Zużyte', icon: 'pi pi-refresh', command: () => { currentView.value = 'zuzyte'; } }
+    { label: 'Zużyte', icon: 'pi pi-refresh', command: () => { currentView.value = 'zuzyte'; } },
+    { separator: true },
+    { label: 'Lista realizacji', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
 ]);
 const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 
