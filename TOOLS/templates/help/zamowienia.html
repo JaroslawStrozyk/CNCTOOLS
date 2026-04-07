@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomoc — Zamówienia i Generator</title>
+    <style>
+        :root {
+            --bg: #212529;
+            --bg-soft: #2d3238;
+            --bg-card: #343a40;
+            --text: #dee2e6;
+            --text-muted: #adb5bd;
+            --accent: #ffc107;
+            --primary: #0d6efd;
+            --success: #198754;
+            --warning: #ffc107;
+            --orange: #fb923c;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --secondary: #6c757d;
+            --border: #495057;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 28px 80px;
+        }
+        header.page-head {
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 16px;
+            margin-bottom: 28px;
+        }
+        h1 {
+            margin: 0 0 6px;
+            color: var(--accent);
+            font-size: 1.85rem;
+        }
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+        h2 {
+            color: var(--accent);
+            margin-top: 42px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            font-size: 1.4rem;
+        }
+        h3 {
+            color: #ffda6a;
+            margin-top: 26px;
+            font-size: 1.1rem;
+        }
+        h4 {
+            color: var(--text);
+            margin-top: 22px;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        p { margin: 8px 0; }
+        ul, ol { padding-left: 22px; }
+        li { margin-bottom: 6px; }
+        strong { color: #fff; }
+        code {
+            background: var(--bg-soft);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.88em;
+            color: #ffda6a;
+            border: 1px solid var(--border);
+        }
+        .toc {
+            background: var(--bg-soft);
+            border-left: 4px solid var(--accent);
+            padding: 14px 22px;
+            border-radius: 4px;
+            margin-bottom: 28px;
+        }
+        .toc strong { color: var(--accent); }
+        .toc ol { margin: 8px 0 0; }
+        .toc a {
+            color: var(--text);
+            text-decoration: none;
+        }
+        .toc a:hover { color: var(--accent); text-decoration: underline; }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin: 14px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .tip {
+            background: rgba(13, 202, 240, 0.08);
+            border-left: 4px solid var(--info);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .warn {
+            background: rgba(251, 146, 60, 0.1);
+            border-left: 4px solid var(--orange);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .danger-box {
+            background: rgba(220, 53, 69, 0.1);
+            border-left: 4px solid var(--danger);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Statusy — w postaci znaczków, ten sam styl co w aplikacji */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .tag.draft { background: var(--secondary); }
+        .tag.pending { background: var(--warning); color: #000; }
+        .tag.verified { background: var(--info); color: #000; }
+        .tag.sent { background: var(--primary); }
+        .tag.partial { background: var(--orange); color: #431407; }
+        .tag.completed { background: var(--success); }
+
+        .status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+        }
+        .status-table th, .status-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .status-table th {
+            background: var(--bg-soft);
+            color: var(--accent);
+        }
+
+        /* Diagram */
+        .diagram {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px;
+            margin: 20px 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .diagram svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .diagram-caption {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
+        kbd {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-bottom-width: 2px;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 0.85em;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .btn-demo {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 2px;
+            white-space: nowrap;
+        }
+        .btn-demo.success { background: var(--success); }
+        .btn-demo.primary { background: var(--primary); }
+        .btn-demo.warn { background: var(--orange); color: #431407; }
+        .btn-demo.info { background: var(--info); color: #000; }
+        .btn-demo.danger { background: var(--danger); }
+        .btn-demo.secondary { background: var(--secondary); }
+
+        footer {
+            margin-top: 60px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="page-head">
+        <h1>Pomoc — Zamówienia i Generator</h1>
+        <div class="subtitle">Praktyczny przewodnik po module zakupów: od wykrycia braku do przyjęcia towaru na magazyn.</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#wstep">Po co to jest?</a></li>
+            <li><a href="#przeplyw">Schemat przepływu — od braku do magazynu</a></li>
+            <li><a href="#generator">Generator zamówień (krok 1)</a></li>
+            <li><a href="#zamowienia">Lista zamówień (krok 2 i dalej)</a></li>
+            <li><a href="#statusy">Statusy zamówień — co oznaczają</a></li>
+            <li><a href="#szukanie">Wyszukiwanie i sortowanie listy</a></li>
+            <li><a href="#ceny">Jak działa cena jednostkowa?</a></li>
+            <li><a href="#faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="wstep">1. Po co to jest?</h2>
+    <p>
+        Moduł <strong>Zamówienia</strong> i <strong>Generator</strong> tworzą jedną całość, która pomaga kontrolować zaopatrzenie warsztatu.
+        Aplikacja sama obserwuje stany magazynowe i podpowiada, czego trzeba dokupić — Ty jedynie decydujesz, kliknięciem wysyłasz to do akceptacji,
+        a po przyjściu towaru oznaczasz przyjęcie. Zadbano o to, żeby cała ścieżka była jasna nawet dla osoby, która pierwszy raz siada do programu.
+    </p>
+    <div class="tip">
+        <strong>Najkrócej:</strong> Generator mówi „czego brakuje”, Lista zamówień pokazuje „co się z tym dzieje”, a status mówi „na jakim etapie jest dane zamówienie”.
+    </div>
+
+    <h2 id="przeplyw">2. Schemat przepływu</h2>
+    <p>Tak wygląda życie pojedynczego zamówienia — od momentu, gdy aplikacja wykryje brak narzędzia, do chwili, gdy przyjedzie towar i trafi na półkę.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Magazyn -->
+            <rect class="box-soft" x="20" y="20" width="180" height="70"/>
+            <text class="label" x="110" y="48" text-anchor="middle">Magazyn</text>
+            <text class="label-small" x="110" y="68" text-anchor="middle">stany &lt; minimum</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M110,90 L110,130" marker-end="url(#arrow)"/>
+
+            <!-- 2. Generator -->
+            <rect class="box" x="20" y="135" width="180" height="80"/>
+            <text class="label" x="110" y="163" text-anchor="middle">Generator</text>
+            <text class="label-small" x="110" y="183" text-anchor="middle">propozycja zamówień</text>
+            <text class="label-small" x="110" y="200" text-anchor="middle">edycja: ilość, cena, dostawca</text>
+
+            <!-- arrow right -->
+            <path class="arrow" d="M200,175 L290,175" marker-end="url(#arrow)"/>
+
+            <!-- 3. draft -->
+            <rect class="box-soft" x="290" y="135" width="180" height="80"/>
+            <text class="label" x="380" y="163" text-anchor="middle">Wersja robocza</text>
+            <text class="label-small" x="380" y="183" text-anchor="middle">grupowane po dostawcy</text>
+            <text class="label-small" x="380" y="200" text-anchor="middle">można edytować pozycje</text>
+
+            <!-- arrow right -->
+            <path class="arrow" d="M470,175 L560,175" marker-end="url(#arrow)"/>
+
+            <!-- 4. pending -->
+            <rect class="box-soft" x="560" y="135" width="180" height="80"/>
+            <text class="label" x="650" y="163" text-anchor="middle">Oczekuje na</text>
+            <text class="label" x="650" y="180" text-anchor="middle">zatwierdzenie</text>
+            <text class="label-small" x="650" y="200" text-anchor="middle">e-mail do szefa</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M650,215 L650,255" marker-end="url(#arrow)"/>
+
+            <!-- 5. verified -->
+            <rect class="box-soft" x="560" y="260" width="180" height="80"/>
+            <text class="label" x="650" y="288" text-anchor="middle">Zatwierdzone</text>
+            <text class="label-small" x="650" y="308" text-anchor="middle">gotowe do wysyłki</text>
+            <text class="label-small" x="650" y="324" text-anchor="middle">do dostawcy</text>
+
+            <!-- arrow left -->
+            <path class="arrow" d="M560,300 L470,300" marker-end="url(#arrow)"/>
+
+            <!-- 6. sent -->
+            <rect class="box-soft" x="290" y="260" width="180" height="80"/>
+            <text class="label" x="380" y="288" text-anchor="middle">Wysłane</text>
+            <text class="label-small" x="380" y="308" text-anchor="middle">e-mail wysłany,</text>
+            <text class="label-small" x="380" y="324" text-anchor="middle">czekamy na towar</text>
+
+            <!-- arrow left -->
+            <path class="arrow" d="M290,300 L200,300" marker-end="url(#arrow)"/>
+
+            <!-- 7. partial / completed -->
+            <rect class="box" x="20" y="260" width="180" height="80"/>
+            <text class="label" x="110" y="288" text-anchor="middle">Realizacja</text>
+            <text class="label-small" x="110" y="308" text-anchor="middle">częściowa lub pełna</text>
+            <text class="label-small" x="110" y="324" text-anchor="middle">→ przyjęcie na magazyn</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M110,340 L110,380" marker-end="url(#arrow)"/>
+
+            <!-- 8. magazyn end -->
+            <rect class="box-soft" x="20" y="385" width="180" height="55"/>
+            <text class="label" x="110" y="412" text-anchor="middle">Magazyn</text>
+            <text class="label-small" x="110" y="430" text-anchor="middle">stany uzupełnione</text>
+        </svg>
+        <div class="diagram-caption">Przepływ zamówienia od wykrycia braku do uzupełnienia magazynu.</div>
+    </div>
+
+    <h2 id="generator">3. Generator zamówień</h2>
+    <p>
+        Generator otwierasz z listy zamówień — przyciskiem <span class="btn-demo success">Generuj nowe</span> w menu <strong>Działania</strong>.
+        To miejsce, w którym aplikacja pokazuje Ci propozycję: co warto zamówić.
+    </p>
+
+    <h3>Skąd biorą się pozycje?</h3>
+    <ul>
+        <li><strong>Z magazynu</strong> — wszystko, czego stan spadł poniżej ustawionego minimum.</li>
+        <li><strong>Z zapotrzebowań</strong> — pozycje, które technolog zgłosił ręcznie (zapotrzebowanie).</li>
+        <li><strong>Ręcznie</strong> — możesz dodać dowolną pozycję klikając <span class="btn-demo success">+</span> w nagłówku tabeli.</li>
+    </ul>
+
+    <h3>Co możesz zrobić z każdą pozycją?</h3>
+    <ul>
+        <li><span class="btn-demo secondary">Edytuj</span> — zmień <strong>dostawcę</strong>, <strong>ilość</strong>, <strong>nr katalogowy</strong> lub <strong>cenę jednostkową</strong>.</li>
+        <li><span class="btn-demo danger">Usuń</span> — usuwa pozycję z listy do zamówienia. Aplikacja podniesie wtedy „limit minimalny” do aktualnego stanu, żeby nie podpowiadała tego ponownie.</li>
+    </ul>
+
+    <h3>Sekcja „Pozycje bez powiązanego narzędzia”</h3>
+    <p>
+        Jeśli technolog wpisał zapotrzebowanie na coś, czego nie ma w katalogu narzędzi, pojawi się to w dolnej, brązowej sekcji.
+        Te pozycje wymagają ręcznego przetworzenia — najpierw założenia narzędzia w magazynie, potem dodania go ręcznie tutaj.
+    </p>
+
+    <h3>Zakończenie pracy w generatorze</h3>
+    <p>
+        Gdy lista wygląda dobrze, klikasz <span class="btn-demo success">Zamówienie gotowe</span>. Aplikacja zapyta o potwierdzenie i utworzy <strong>jedno zamówienie na każdego dostawcę</strong>
+        (np. jeśli na liście są pozycje od 3 różnych dostawców — powstaną 3 zamówienia). Po wygenerowaniu Generator zostaje wyczyszczony, a Ty wracasz do listy zamówień.
+    </p>
+
+    <div class="warn">
+        <strong>Uwaga:</strong> Po kliknięciu „Zamówienie gotowe” cofnięcia nie ma — pozycje znikają z generatora. Ale spokojnie: powstałe zamówienia są w statusie <span class="tag draft">Wersja robocza</span> i tam można je nadal swobodnie edytować.
+    </div>
+
+    <h2 id="zamowienia">4. Lista zamówień</h2>
+    <p>To Twój główny ekran roboczy. Widzisz tu wszystkie zamówienia oraz ich aktualny etap.</p>
+
+    <h3>Górna belka — co tam jest</h3>
+    <ul>
+        <li><span class="btn-demo info">Pomoc</span> — to okno, które właśnie czytasz.</li>
+        <li><span class="btn-demo success">Działania</span> — rozwijane menu z dwiema opcjami:
+            <ul>
+                <li><strong>Generuj nowe</strong> — przejście do Generatora.</li>
+                <li><strong>Wyślij do zatwierdzenia</strong> — pokaże się tylko, gdy masz w zamówieniach <span class="tag draft">Wersję roboczą</span>.</li>
+            </ul>
+        </li>
+        <li><span class="btn-demo primary">Miejsca</span> — szybkie przejście do innych modułów (Magazyn, Zakupy).</li>
+        <li><span class="btn-demo danger">Imię i nazwisko</span> — Twoje konto. Tu znajdziesz: <strong>Ustawienia</strong>, <strong>O programie</strong>, <strong>Wyjście</strong>.</li>
+    </ul>
+
+    <h3>Tabela zamówień — co znaczą kolumny</h3>
+    <ul>
+        <li><strong>Numer</strong> — unikalny numer zamówienia. Klikalny — otwiera okno szczegółów.</li>
+        <li><strong>Dostawca</strong> — firma, do której idzie zamówienie.</li>
+        <li><strong>Data utworzenia</strong> / <strong>Data wysłania</strong> — kiedy powstało i kiedy poszedł e-mail.</li>
+        <li><strong>Status</strong> — etap, na którym jest zamówienie (zobacz tabelę statusów niżej).</li>
+        <li><strong>Pozycje</strong> — ile narzędzi jest w zamówieniu.</li>
+        <li><strong>Uwagi</strong> — ikonka pojawia się tylko, gdy są jakieś notatki — kliknij, żeby zobaczyć.</li>
+        <li><strong>Akcje</strong> — przyciski zmieniają się zależnie od statusu (patrz niżej).</li>
+    </ul>
+
+    <h3>Akcje przy każdym wierszu</h3>
+    <table class="status-table">
+        <tr><th>Przycisk</th><th>Kiedy widoczny</th><th>Co robi</th></tr>
+        <tr><td><span class="btn-demo success">✉ E-mail</span></td><td>status <span class="tag verified">Zatwierdzone</span></td><td>Wysyła zamówienie e-mailem do dostawcy.</td></tr>
+        <tr><td><span class="btn-demo success">✓</span></td><td>status <span class="tag pending">Oczekuje</span></td><td>Zatwierdza zamówienie (po ustnej zgodzie szefa).</td></tr>
+        <tr><td><span class="btn-demo secondary">↶</span></td><td>status <span class="tag pending">Oczekuje</span></td><td>Cofa zamówienie do <span class="tag draft">Wersji roboczej</span> (np. żeby coś dopisać).</td></tr>
+        <tr><td><span class="btn-demo info">📦</span></td><td>status <span class="tag sent">Wysłane</span> lub <span class="tag partial">Częściowo</span></td><td>Otwiera okno przyjęcia towaru (rozpoczyna realizację).</td></tr>
+        <tr><td><span class="btn-demo secondary">✎</span></td><td>statusy: robocza, oczekuje, zatwierdzone</td><td>Otwiera okno szczegółów do edycji pozycji.</td></tr>
+        <tr><td><span class="btn-demo danger">🗑</span></td><td>statusy: robocza, oczekuje, zatwierdzone</td><td>Usuwa całe zamówienie (z potwierdzeniem).</td></tr>
+    </table>
+
+    <h3>Okno „Szczegóły zamówienia”</h3>
+    <p>Otwierasz je klikając numer zamówienia <em>lub</em> przycisk ołówka. Co tu zrobisz:</p>
+    <ul>
+        <li>Podejrzysz dostawcę, daty, status, łączną wartość, e-mail docelowy.</li>
+        <li>Edytujesz <strong>ilość</strong> (tylko dla statusów <em>robocza / oczekuje / zatwierdzone</em>).</li>
+        <li>Edytujesz <strong>cenę jednostkową</strong> w <strong>każdym</strong> statusie — to ważne dla historii cen (patrz niżej).</li>
+        <li>Usuwasz pozycję z zamówienia (kosz) — tylko dla statusów <em>robocza / oczekuje</em>.</li>
+        <li>Klikasz <span class="btn-demo success">💾 Zapisz zmiany</span>, żeby zatwierdzić edycję — okno samo się zamknie.</li>
+    </ul>
+
+    <h3>Wysyłka do zatwierdzenia</h3>
+    <p>
+        Gdy chcesz przekazać kilka zamówień w wersji roboczej szefowi do akceptacji — klikasz <strong>Działania → Wyślij do zatwierdzenia</strong>.
+        Otworzy się okno z listą roboczych zamówień, wybierasz haczykami które chcesz przesłać (domyślnie zaznaczone wszystkie),
+        widzisz łączną wartość — i klikasz „Wyślij do zatwierdzenia”.
+    </p>
+    <p>Aplikacja wyśle <strong>jeden zbiorczy e-mail</strong> do szefa (adres ustawiany w „Ustawienia → Poczta”), a wybrane zamówienia zmienią status na <span class="tag pending">Oczekuje na zatwierdzenie</span>.</p>
+
+    <div class="tip">
+        <strong>Dobra praktyka:</strong> Po ustnej zgodzie szefa wracasz na listę i przy każdym wierszu klikasz zielony „✓”, który zmienia status na <span class="tag verified">Zatwierdzone</span>. Dopiero teraz pojawi się przy wierszu kopertka „Wyślij e-mail do dostawcy”.
+    </div>
+
+    <h3>Wysyłka do dostawcy</h3>
+    <p>
+        Przy <span class="tag verified">Zatwierdzonych</span> zamówieniach pojawia się kopertka. Kliknij ją, potwierdź — aplikacja wyśle e-mail do dostawcy
+        z listą pozycji w czytelnej tabeli. Status zmieni się na <span class="tag sent">Wysłane</span>.
+    </p>
+
+    <div class="warn">
+        <strong>Tryb testowy:</strong> Jeśli w ustawieniach poczty włączony jest „Tryb testowy zamówień”, e-mail do dostawcy zostanie zamiast tego wysłany na adres testowy. Zobaczysz to wyraźnie w oknie potwierdzenia — pomarańczowa ramka „TRYB TESTOWY”.
+    </div>
+
+    <h3>Przyjęcie towaru (realizacja)</h3>
+    <p>Towar przyszedł — klikasz przy zamówieniu ikonkę paczki (📦). Otworzy się okno realizacji:</p>
+    <ul>
+        <li>Możesz zaznaczyć „Zaznacz wszystkie” — pełne przyjęcie.</li>
+        <li>Możesz zaznaczyć tylko wybrane pozycje — przyjęcie częściowe (np. dostawca przysłał część towaru).</li>
+        <li>Przy każdej pozycji wpisujesz, ile sztuk faktycznie przyjmujesz (program podpowiada maksimum).</li>
+        <li>Lokalizacja — jeśli narzędzie ma domyślne miejsce w magazynie, pokaże się tu jego adres (szafa/półka/kolumna).</li>
+        <li>Cena jednostkowa w tym oknie jest <strong>tylko do podglądu</strong> — żeby cenę zmienić, użyj okna „Szczegóły zamówienia”.</li>
+    </ul>
+    <p>Po kliknięciu „Zatwierdź przyjęcie” aplikacja:</p>
+    <ol>
+        <li>Tworzy egzemplarze narzędzi w magazynie i dopisuje je do podanej lokalizacji.</li>
+        <li>Aktualizuje ilości w pozycjach zamówienia.</li>
+        <li>Przestawia status zamówienia: jeśli przyjąłeś wszystko → <span class="tag completed">Zrealizowane</span>; jeśli część → <span class="tag partial">Częściowo odebrane</span>.</li>
+    </ol>
+    <p>Gdy przyjdzie reszta, klikasz tę samą paczkę raz jeszcze i powtarzasz przyjęcie dla pozostałych pozycji.</p>
+
+    <h2 id="statusy">5. Statusy zamówień</h2>
+    <table class="status-table">
+        <tr><th>Status</th><th>Znaczenie</th><th>Co możesz zrobić</th></tr>
+        <tr>
+            <td><span class="tag draft">Wersja robocza</span></td>
+            <td>Zamówienie świeżo z generatora lub utworzone ręcznie. Nikt jeszcze go nie zaakceptował.</td>
+            <td>Edycja pozycji, usuwanie, wysyłka do zatwierdzenia szefowi.</td>
+        </tr>
+        <tr>
+            <td><span class="tag pending">Oczekuje na zatwierdzenie</span></td>
+            <td>Zbiorczy e-mail trafił do szefa (wysyłany tylko raz). Czekamy na jego ustną zgodę.</td>
+            <td>
+                Po zgodzie szefa: ✓ <strong>Zatwierdź</strong>.
+                Jeśli szef chce coś poprawić — otwórz Szczegóły, popraw ilość/cenę/usuń pozycję, zapisz, dopiero potem ✓ Zatwierdź.
+                Cofnięcie ↶ tylko gdy trzeba dodać nową pozycję (Generator).
+            </td>
+        </tr>
+        <tr>
+            <td><span class="tag verified">Zatwierdzone</span></td>
+            <td>Szef zaakceptował — można już wysyłać do dostawcy.</td>
+            <td>Wysłać e-mail do dostawcy, edytować pozycje, usunąć.</td>
+        </tr>
+        <tr>
+            <td><span class="tag sent">Wysłane</span></td>
+            <td>E-mail poszedł do dostawcy. Czekamy na towar.</td>
+            <td>Rozpocząć realizację (przyjąć towar). Edytować można już tylko cenę.</td>
+        </tr>
+        <tr>
+            <td><span class="tag partial">Częściowo odebrane</span></td>
+            <td>Część towaru przyjechała, część nadal w drodze.</td>
+            <td>Kontynuować realizację — przyjąć kolejną dostawę.</td>
+        </tr>
+        <tr>
+            <td><span class="tag completed">Zrealizowane</span></td>
+            <td>Wszystko przyjęte. Zamówienie zamknięte.</td>
+            <td>Tylko podgląd. Cenę można poprawić nawet teraz (historia cen).</td>
+        </tr>
+    </table>
+
+    <h2 id="szukanie">6. Wyszukiwanie i sortowanie listy</h2>
+    <p>
+        W górnym pasku panelu znajdziesz pole <strong>Szukaj…</strong>. Filtruje listę po:
+        <strong>numerze zamówienia</strong>, <strong>nazwie dostawcy</strong>, <strong>dacie utworzenia</strong> i <strong>dacie wysłania</strong>
+        (możesz wpisać np. <code>2026-04</code>, żeby zobaczyć wszystkie kwietniowe).
+    </p>
+    <p>Sortowanie jest automatyczne i ułożone tak, żeby pomagać w pracy:</p>
+    <ul>
+        <li>Na górze zawsze widać zamówienia <strong>niezakończone</strong> (robocze, oczekujące, zatwierdzone, wysłane, częściowo odebrane).</li>
+        <li>Na dole są <strong>Zrealizowane</strong> — żeby nie zaśmiecały widoku, ale były pod ręką.</li>
+        <li>W obrębie każdej grupy nowsze zamówienia są wyżej.</li>
+    </ul>
+
+    <h2 id="ceny">7. Jak działa cena jednostkowa?</h2>
+    <p>Cena pojawia się w trzech miejscach i warto rozumieć, co robi w każdym z nich:</p>
+    <ol>
+        <li><strong>Generator</strong> — propozycja ceny pobierana automatycznie z ostatniego zamówienia tego samego narzędzia. Można ją tu nadpisać.</li>
+        <li><strong>Lista zamówień (Szczegóły)</strong> — cenę można poprawić w <em>każdej chwili</em>, niezależnie od statusu. Jest to cena „przyklejona” do tego konkretnego numeru zamówienia, więc tworzy historię cen narzędzia w czasie.</li>
+        <li><strong>Realizacja</strong> — w tym oknie cena jest <em>tylko do odczytu</em>. Jeśli rzeczywista cena z faktury okazała się inna, wracasz do okna „Szczegóły zamówienia” i tam ją poprawiasz.</li>
+    </ol>
+    <div class="tip">
+        <strong>Dlaczego tak?</strong> Każde zamówienie zachowuje cenę „taką, jaka była wtedy”. Dzięki temu generator może później podpowiadać Ci najświeższy znany koszt narzędzia, a księgowość ma ślad historyczny.
+    </div>
+
+    <h2 id="faq">8. Najczęstsze pytania</h2>
+
+    <h4>Pomyliłem się przy generowaniu — co robić?</h4>
+    <p>Spokojnie. Po wyjściu z generatora świeżo utworzone zamówienia są w statusie <span class="tag draft">Wersja robocza</span>. Otwórz „Szczegóły”, popraw ilości / ceny lub usuń niepotrzebne pozycje. Możesz nawet usunąć całe zamówienie i wygenerować je raz jeszcze.</p>
+
+    <h4>Wysłałem zamówienie do zatwierdzenia, ale szef chce coś zmienić.</h4>
+    <p>
+        Mail do szefa wysyłamy <strong>tylko raz</strong> — nie ma potrzeby cofania zamówienia do wersji roboczej i przesyłania go ponownie. Postępuj tak:
+    </p>
+    <ol>
+        <li>Otwórz <strong>Szczegóły zamówienia</strong> (kliknij numer lub ołówek przy wierszu).</li>
+        <li>W stanie <span class="tag pending">Oczekuje na zatwierdzenie</span> możesz nadal edytować ilość, cenę oraz usuwać pozycje. Wprowadź zmiany i kliknij <span class="btn-demo success">💾 Zapisz zmiany</span>.</li>
+        <li>Wróć do listy i kliknij ✓ <span class="btn-demo success">Zatwierdź</span> przy wierszu — status przejdzie na <span class="tag verified">Zatwierdzone</span>.</li>
+        <li>Kliknij kopertkę → wysyłka e-maila do dostawcy → <span class="tag sent">Wysłane</span>.</li>
+    </ol>
+    <p>
+        Ikonka ↶ <strong>Cofnij do wersji roboczej</strong> jest pomocna tylko w jednej sytuacji: gdy szef chce <em>dopisać nową pozycję</em>, której w zamówieniu w ogóle nie było.
+        Dodawanie pozycji jest możliwe wyłącznie z poziomu Generatora, więc wtedy: cofasz zamówienie, w Generatorze dorzucasz nową pozycję, ponownie wysyłasz do zatwierdzenia.
+    </p>
+
+    <h4>Dostawca przysłał tylko część zamówienia.</h4>
+    <p>Otwórz realizację (📦), zaznacz tylko te pozycje, które rzeczywiście przyjechały, wpisz przyjętą ilość. Status przejdzie na <span class="tag partial">Częściowo odebrane</span>. Gdy przyjdzie reszta, otworzysz to okno ponownie.</p>
+
+    <h4>Cena na fakturze jest inna niż w zamówieniu — co teraz?</h4>
+    <p>Otwórz „Szczegóły zamówienia”, popraw cenę w kolumnie „Cena jedn.” i kliknij „Zapisz zmiany”. Wartość zamówienia przeliczy się automatycznie. Można to zrobić nawet po zrealizowaniu zamówienia — historia cen tego narzędzia będzie wtedy dokładna.</p>
+
+    <h4>Nie widzę przycisku „Generuj nowe” w menu Działania.</h4>
+    <p>Generator widzą tylko osoby z grupy <strong>logistyka</strong> oraz administratorzy. Jeśli masz to widzieć — daj znać administratorowi.</p>
+
+    <h4>E-mail do dostawcy wysłał się na inny adres niż się spodziewałem.</h4>
+    <p>Najprawdopodobniej w „Ustawienia → Poczta” jest włączony <strong>tryb testowy zamówień</strong>. Wszystkie wysyłki do dostawców idą wtedy na adres testowy, niezależnie od tego, kto jest w polu „Email” zamówienia. Tryb wyłącza się w ustawieniach.</p>
+
+    <h4>Czy mogę usunąć zamówienie po wysłaniu do dostawcy?</h4>
+    <p>Nie — po statusie <span class="tag sent">Wysłane</span> kosz znika. To zabezpieczenie, żeby nie skasować zamówienia, na które ktoś już czeka. Jeśli musisz je „odwołać”, ustal to telefonicznie z dostawcą i poczekaj z realizacją (zamówienie po prostu nigdy nie przejdzie do statusu „Zrealizowane”).</p>
+
+    <footer>
+        Pomoc dla modułu Zamówień i Generatora — CNC Tools.
+        <br>Zamknij to okno, gdy skończysz, i wróć do aplikacji.
+    </footer>
+
+</div>
+</body>
+</html>

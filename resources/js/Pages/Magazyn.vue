@@ -18,6 +18,9 @@
                     >
                         <i class="pi pi-list"></i> Logi
                     </a>
+                    <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
+                        <i class="pi pi-question-circle"></i> Pomoc
+                    </button>
                     <div class="dropdown-wrapper">
                         <button class="btn btn-success" @click="toggleDzialaniaMenu">
                             <i class="pi pi-th-large"></i> Działania
@@ -70,16 +73,17 @@
                     </div>
                     <h3 class="panel-title">Lista typów narzędzi</h3>
                     <div class="filter-box">
-                        <select
+                        <Dropdown
                             v-model="selectedKategoriaId"
+                            :options="kategorieDropdownOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Wszystkie kategorie"
+                            class="filter-select kategoria-dropdown"
+                            panelClass="kategoria-dropdown-panel"
+                            scrollHeight="80vh"
                             @change="onKategoriaChange"
-                            class="form-select filter-select"
-                        >
-                            <option :value="null">Wszystkie kategorie</option>
-                            <option v-for="kat in kategorie" :key="kat.id" :value="kat.id">
-                                {{ kat.nazwa }}
-                            </option>
-                        </select>
+                        />
                         <select
                             v-model="selectedPodkategoriaId"
                             :disabled="!selectedKategoriaId"
@@ -108,7 +112,7 @@
                         class="tools-table"
                         :rowClass="rowClass"
                     >
-                        <Column field="kategoria" header="Kategoria / Podkategoria">
+                        <Column field="kategoria" header="Kategoria / Podkategoria" style="width: 330px;">
                             <template #body="{ data }">
                                 <span v-if="data.podkategoria">
                                     <strong>{{ data.podkategoria.kategoria_nazwa }}</strong> / {{ data.podkategoria.nazwa }}
@@ -117,9 +121,10 @@
                             </template>
                         </Column>
                         <Column field="opis" header="Opis / Specyfikacja" />
-                        <Column field="numer_katalogowy" header="Nr katalogowy">
+                        <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 250px;">
                             <template #body="{ data }">
-                                {{ data.numer_katalogowy || 'Brak' }}
+                                <template v-if="data.numer_katalogowy">{{ data.numer_katalogowy }}</template>
+                                <span v-else class="text-muted">-</span>
                             </template>
                         </Column>
                         <Column field="ilosc_nowych" header="Nowe" style="width: 80px; text-align: center;">
@@ -192,7 +197,7 @@
                                                         v-if="data.nowy_wpis && data.oznaczenie"
                                                         icon="pi pi-tag"
                                                         class="p-button-sm p-button-text etykieta-btn"
-                                                        title="Pobierz etykietę PNG"
+                                                        title="Pobierz etykietę DXF"
                                                         @click="downloadEtykieta(data)"
                                                     />
                                                 </div>
@@ -344,10 +349,22 @@
                                     <select
                                         v-model="selectedMaszynaFilter"
                                         class="form-select filter-select"
+                                        style="width: 220px;"
                                     >
                                         <option :value="null">Wszystkie maszyny</option>
                                         <option v-for="m in machines" :key="m.id" :value="m.id">
                                             {{ m.nazwa }}
+                                        </option>
+                                    </select>
+                                    <label>Filtruj po narzędziu:</label>
+                                    <select
+                                        v-model="selectedNarzedzieFilter"
+                                        class="form-select filter-select"
+                                        style="width: 220px;"
+                                    >
+                                        <option :value="null">Wszystkie narzędzia</option>
+                                        <option v-for="n in narzedzieFilterOptions" :key="n.id" :value="n.id">
+                                            {{ n.label }}
                                         </option>
                                     </select>
                                 </div>
@@ -940,6 +957,7 @@ const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
 const selectedToolForDetails = ref(null);
 const selectedMaszynaFilter = ref(null);
+const selectedNarzedzieFilter = ref(null);
 const inUseSearchQuery = ref('');
 const searchInput = ref('');
 const searchQuery = ref('');
@@ -1053,6 +1071,12 @@ const toolImageFile = ref(null);
 const userMenu = ref(null);
 const userMenuItems = ref([
     {
+        label: 'Ustawienia',
+        icon: 'pi pi-cog',
+        command: () => { window.location.href = props.urls.ustawienia + '?from=magazyn'; }
+    },
+    { separator: true },
+    {
         label: 'O programie',
         icon: 'pi pi-info-circle',
         command: () => { aboutModalVisible.value = true; }
@@ -1064,6 +1088,13 @@ const userMenuItems = ref([
         command: () => { window.location.href = props.urls.logout; }
     }
 ]);
+
+// Pomoc — otwiera w nowym oknie typu popup (działa też w trybie PWA)
+const openHelp = () => {
+    const url = props.urls.pomoc_magazyn || '/pomoc/magazyn/';
+    const features = 'noopener,noreferrer,width=1100,height=860,resizable=yes,scrollbars=yes';
+    window.open(url, 'pomoc-magazyn', features);
+};
 
 // Menu Działania
 const dzialaniaMenu = ref(null);
@@ -1077,8 +1108,6 @@ const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 // Menu Miejsca
 const miejscaMenu = ref(null);
 const miejscaMenuItems = ref([
-    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia + '?from=magazyn'; } },
-    { separator: true },
     { label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } },
     { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
 ]);
@@ -1160,6 +1189,12 @@ const filteredPodkategorieOptions = computed(() => {
     ];
 });
 
+// Opcje kategorii dla PrimeVue Dropdown (panel-header Lista typów narzędzi)
+const kategorieDropdownOptions = computed(() => [
+    { label: 'Wszystkie kategorie', value: null },
+    ...kategorie.value.map(k => ({ label: k.nazwa, value: k.id }))
+]);
+
 // Filtrowane podkategorie dla native select (używane w panel-header)
 const filteredPodkategorie = computed(() => {
     if (!selectedKategoriaId.value) return [];
@@ -1226,11 +1261,32 @@ const podkategorieGroupedOptions = computed(() => {
     }));
 });
 
+// Lista unikalnych par "Kategoria / Podkategoria" obecnych w tabeli "Narzędzia aktualnie w użyciu".
+// Klucz unikalności: id podkategorii (każda podkategoria należy do jednej kategorii).
+const narzedzieFilterOptions = computed(() => {
+    const map = new Map();
+    for (const usage of usagesInUse.value) {
+        const podk = usage.egzemplarz?.narzedzie_typ?.podkategoria;
+        if (!podk || !podk.id) continue;
+        if (map.has(podk.id)) continue;
+        const kat = podk.kategoria?.nazwa || '';
+        const podkat = podk.nazwa || '';
+        const label = kat && podkat ? `${kat} / ${podkat}` : (kat || podkat);
+        if (!label) continue;
+        map.set(podk.id, { id: podk.id, label });
+    }
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, 'pl'));
+});
+
 const filteredUsagesInUse = computed(() => {
     let filtered = usagesInUse.value;
 
     if (selectedMaszynaFilter.value) {
         filtered = filtered.filter(usage => usage.maszyna && usage.maszyna.id === selectedMaszynaFilter.value);
+    }
+
+    if (selectedNarzedzieFilter.value) {
+        filtered = filtered.filter(usage => usage.egzemplarz?.narzedzie_typ?.podkategoria?.id === selectedNarzedzieFilter.value);
     }
 
     if (inUseSearchQuery.value.trim() !== '') {

@@ -946,6 +946,17 @@
     background-color: #ffc107 !important;
     color: #000 !important;
 }
+/* Override pomarańczowy — używany dla statusu 'partially_received' (zgodny z p-button-warning) */
+.p-tag.tag-status-orange {
+    background-color: #fb923c !important;
+    color: #431407 !important;
+}
+
+/* Wysoki panel Dropdown — rośnie do 80% wysokości okna, potem scroll wewnątrz.
+   Używany m.in. w Magazyn.vue → filtr Kategoria. */
+.p-dropdown-panel.kategoria-dropdown-panel .p-dropdown-items-wrapper {
+    max-height: 80vh !important;
+}
 .p-tag.p-tag-info {
     background-color: #0dcaf0 !important;
     color: #000 !important;

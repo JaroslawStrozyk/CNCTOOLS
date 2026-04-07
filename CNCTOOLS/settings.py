@@ -19,7 +19,7 @@ try:
         DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT,
         EMAIL_HOST, EMAIL_PORT, EMAIL_USE_SSL, EMAIL_USE_TLS,
         EMAIL_HOST_USER, EMAIL_HOST_PASSWORD, DEFAULT_FROM_EMAIL,
-        EMAIL_TEST_ADDRESS, EMAIL_DW,
+        EMAIL_TEST_ADDRESS, EMAIL_DW, EMAIL_SZEF,
         IMAP_HOST, IMAP_PORT, IMAP_USE_SSL, IMAP_SENT_FOLDER
     )
 except ImportError:
@@ -225,8 +225,8 @@ TECHNOLOG_PAGE_SIZE = 50
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.04.0g',
-        'MODYFIKACJA': '25.03.2026r.',
+        'WERSJA'     : '1.05.0g',
+        'MODYFIKACJA': '06.04.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

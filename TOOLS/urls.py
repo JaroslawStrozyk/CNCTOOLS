@@ -1,5 +1,7 @@
 # tools/urls.py
 from django.urls import path, include
+from django.contrib.auth.decorators import login_required
+from django.views.generic import TemplateView
 from rest_framework.routers import DefaultRouter
 from . import views
 from .views_inertia import (
@@ -70,7 +72,26 @@ urlpatterns = [
     path('kierownik/', kierownik_inertia_view, name='kierownik'),
     path('logi/', logi_inertia_view, name='logi'),
 
+    # ===== POMOC (statyczne strony przewodników) =====
+    path('pomoc/zamowienia/',
+         login_required(TemplateView.as_view(template_name='help/zamowienia.html')),
+         name='pomoc-zamowienia'),
+    path('pomoc/magazyn/',
+         login_required(TemplateView.as_view(template_name='help/magazyn.html')),
+         name='pomoc-magazyn'),
+    path('pomoc/zakupy/',
+         login_required(TemplateView.as_view(template_name='help/zakupy.html')),
+         name='pomoc-zakupy'),
+
     # ===== API =====
+    # Zamówienia — custom endpointy (muszą być PRZED router.urls)
+    path('api/zamowienia/wyslij-do-zatwierdzenia/', views.wyslij_do_zatwierdzenia_api,
+         name='zamowienia-wyslij-do-zatwierdzenia'),
+    path('api/zamowienia/zatwierdz/', views.zatwierdz_zamowienia_api,
+         name='zamowienia-zatwierdz'),
+    path('api/zamowienia/cofnij-do-roboczej/', views.cofnij_do_roboczej_api,
+         name='zamowienia-cofnij-do-roboczej'),
+
     path('api/', include(router.urls)),
     path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),
     path('api/generator-zamowien/add/', views.generator_zamowien_add_api, name='generator-zamowien-add'),

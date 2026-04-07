@@ -514,3 +514,211 @@ def send_zamowienie_email(zamowienie, override_email=None):
         html_content=html_content,
         cc_email=cc_email
     )
+
+
+def send_approval_email(zamowienia, override_email=None):
+    """
+    Wysyła zbiorczy email do szefa z listą zamówień do zatwierdzenia.
+    Szablon bliźniaczo podobny do send_zamowienie_email, z cenami i podsumowaniem kosztów.
+    """
+    from django.utils import timezone
+
+    email_szef = override_email or getattr(settings, 'EMAIL_SZEF', '')
+    if not email_szef:
+        return {'success': False, 'message': 'Brak adresu email szefa w konfiguracji'}
+
+    now = timezone.now()
+    data_str = now.strftime('%Y-%m-%d')
+
+    # Buduj tabelę zbiorczą — wszystkie pozycje ze wszystkich zamówień
+    pozycje_html = ''
+    suma_wartosc = 0
+    suma_ilosc = 0
+
+    for zam in zamowienia:
+        for poz in zam.pozycje.all():
+            jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
+            wartosc = float(poz.wartosc_pozycji or 0)
+            cena = float(poz.cena_jednostkowa or 0)
+            suma_wartosc += wartosc
+            suma_ilosc += poz.ilosc_zamowiona
+
+            pozycje_html += f"""
+            <tr>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{zam.dostawca.nazwa_firmy}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.kategoria_nazwa} {poz.podkategoria_nazwa}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{jednostka_display}</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;">{cena:.2f} zł</td>
+                <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;"><strong>{wartosc:.2f} zł</strong></td>
+            </tr>
+            """
+
+    # Podsumowanie per dostawca
+    podsumowanie_html = ''
+    for zam in zamowienia:
+        podsumowanie_html += f"""
+        <tr>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{zam.numer}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{zam.dostawca.nazwa_firmy}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{zam.pozycje.count()}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;"><strong>{zam.wartosc_zamowienia:.2f} zł</strong></td>
+        </tr>
+        """
+
+    numery = ', '.join([z.numer for z in zamowienia])
+    subject = f"Do zatwierdzenia: zamówienia narzędzi ({data_str}) - CNC Milling"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="pl">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #f4f4f4;
+                padding: 20px;
+                margin: 0;
+            }}
+            .email-container {{
+                background-color: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                max-width: 900px;
+                margin: 0 auto;
+            }}
+            .header {{
+                background: linear-gradient(to bottom, #FF0000, #8B0000);
+                color: white;
+                padding: 20px;
+                border-radius: 8px 8px 0 0;
+                margin: -30px -30px 20px -30px;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 24px;
+            }}
+            .info-box {{
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 20px 0;
+            }}
+            .info-box p {{
+                margin: 5px 0;
+                line-height: 1.6;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+            }}
+            th {{
+                background-color: #ADADAD;
+                color: white;
+                padding: 12px;
+                text-align: left;
+                font-weight: bold;
+            }}
+            .total-row {{
+                background-color: #DADADA;
+                font-weight: bold;
+            }}
+            .footer {{
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 2px solid #ff7b00;
+                color: #666;
+                font-size: 0.9em;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="email-container">
+            <div class="header">
+                <h1>📋 Zamówienia narzędzi do zatwierdzenia</h1>
+            </div>
+
+            <div class="info-box">
+                <p><strong>Data:</strong> {data_str}</p>
+                <p><strong>Liczba zamówień:</strong> {len(zamowienia)}</p>
+                <p><strong>Numery zamówień:</strong> {numery}</p>
+            </div>
+
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <strong style="color: #856404;">💰 Podsumowanie kosztów:</strong>
+                <p style="margin: 10px 0 0 0; color: #856404; font-size: 1.3em;"><strong>Łączna wartość zamówień: {suma_wartosc:.2f} zł</strong></p>
+            </div>
+
+            <h3 style="color: #ff7b00; margin-top: 30px;">Podsumowanie zamówień per dostawca:</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nr zamówienia</th>
+                        <th>Dostawca</th>
+                        <th style="text-align: center;">Pozycji</th>
+                        <th style="text-align: right;">Wartość</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {podsumowanie_html}
+                    <tr class="total-row">
+                        <td colspan="2" style="padding: 15px; text-align: right;">RAZEM:</td>
+                        <td style="padding: 15px; text-align: center;"><strong>{suma_ilosc}</strong></td>
+                        <td style="padding: 15px; text-align: right;"><strong style="font-size: 1.2em;">{suma_wartosc:.2f} zł</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3 style="color: #ff7b00; margin-top: 30px;">Szczegółowa lista pozycji:</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Dostawca</th>
+                        <th>Narzędzie</th>
+                        <th>Opis</th>
+                        <th>Nr katalogowy</th>
+                        <th style="text-align: center;">Ilość</th>
+                        <th style="text-align: center;">Jednostka</th>
+                        <th style="text-align: right;">Cena jedn.</th>
+                        <th style="text-align: right;">Wartość</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {pozycje_html}
+                    <tr class="total-row">
+                        <td colspan="4" style="padding: 15px; text-align: right;">RAZEM:</td>
+                        <td style="padding: 15px; text-align: center;"><strong style="font-size: 1.2em;">{suma_ilosc}</strong></td>
+                        <td></td>
+                        <td></td>
+                        <td style="padding: 15px; text-align: right;"><strong style="font-size: 1.2em;">{suma_wartosc:.2f} zł</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="footer">
+                <p style="color: #666; text-align: center; margin-bottom: 30px;">Ten email został wygenerowany automatycznie przez system CNC Tools (email: zakupy@cncmilling.pl).</p>
+                <p>Pozdrawiam,</p>
+                <p>
+                    <strong>Tomasz Olejniczak</strong><br>
+                    <span style="color: #999999;">Specjalista ds. zaopatrzenia, narzędzi i kooperacji</span><br><br>
+                    tel.: +48 605 077 306<br>
+                    e-mail: <a href="mailto:t.olejniczak@cncmilling.pl" style="color: #ff7b00; text-decoration: none;">t.olejniczak@cncmilling.pl</a>
+                </p>
+                <hr style="border: none; border-top: 1px solid #e0e0e0; margin-top: 20px;" />
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return send_html_email(
+        recipient_email=email_szef,
+        subject=subject,
+        html_content=html_content,
+    )

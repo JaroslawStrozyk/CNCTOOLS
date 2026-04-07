@@ -412,7 +412,8 @@ class Uszkodzenie(models.Model):
 class Zamowienie(models.Model):
     STATUS_CHOICES = [
         ('draft', 'Wersja robocza'),
-        ('verified', 'Zweryfikowane'),
+        ('pending_approval', 'Oczekuje na zatwierdzenie'),
+        ('verified', 'Zatwierdzone'),
         ('sent', 'Wysłane'),
         ('partially_received', 'Częściowo odebrane'),
         ('completed', 'Zrealizowane'),

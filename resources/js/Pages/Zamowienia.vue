@@ -4,22 +4,30 @@
         <header class="app-header">
             <h2 class="header-title">ZAMÓWIENIA</h2>
             <div class="header-buttons">
-                <a :href="urls.ustawienia + '?from=zakupy'" class="btn btn-secondary">
-                    <i class="pi pi-cog"></i> Ustawienia
-                </a>
-                <a :href="urls.magazyn" class="btn btn-primary">
-                    <i class="pi pi-building"></i> Magazyn
-                </a>
-                <a v-if="auth.isLogistyka" :href="urls.zakupy" class="btn btn-primary">
-                    <i class="pi pi-truck"></i> Zakupy
-                </a>
+                <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
+                    <i class="pi pi-question-circle"></i> Pomoc
+                </button>
+                <div v-if="dzialaniaMenuItems.length > 0" class="dropdown-wrapper">
+                    <button class="btn btn-success" @click="toggleDzialaniaMenu">
+                        <i class="pi pi-th-large"></i> Działania
+                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                    </button>
+                    <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
+                </div>
+                <div class="dropdown-wrapper">
+                    <button class="btn btn-primary" @click="toggleMiejscaMenu">
+                        <i class="pi pi-building"></i> Miejsca
+                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
+                    </button>
+                    <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
+                </div>
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
                         <i class="pi pi-user"></i>
                         {{ auth.user.first_name }} {{ auth.user.last_name }}
                         <i class="pi pi-chevron-down"></i>
                     </button>
-                    <Menu ref="userMenu" :model="userMenuItems" :popup="true" />
+                    <Menu ref="userMenu" id="user_menu" :model="userMenuItems" :popup="true" />
                 </div>
             </div>
         </header>
@@ -29,14 +37,17 @@
             <div class="orders-panel">
                 <div class="panel-header">
                     <h3 class="panel-title">Lista zamówień</h3>
-                    <div v-if="canGenerateOrders" class="filter-box">
-                        <button class="btn-generate-header" @click="generujAutomatyczne" title="Generuj zamówienia z generatora">
-                            <i class="pi pi-sparkles"></i> Generuj nowe
-                        </button>
+                    <div class="search-box">
+                        <input
+                            type="text"
+                            v-model="searchQuery"
+                            placeholder="Szukaj..."
+                            class="form-control search-input"
+                        />
                     </div>
                 </div>
                 <div class="panel-body">
-                    <DataTable :value="zamowienia" :scrollable="true" scrollHeight="flex" dataKey="id">
+                    <DataTable :value="sortedZamowienia" :scrollable="true" scrollHeight="flex" dataKey="id">
                         <Column header="Numer">
                             <template #body="{ data }">
                                 <a href="#" @click.prevent="selectZamowienie(data)" class="order-link">
@@ -61,7 +72,7 @@
                         </Column>
                         <Column header="Status">
                             <template #body="{ data }">
-                                <Tag :severity="getStatusSeverity(data.status)" :value="getStatusLabel(data.status)" />
+                                <Tag :severity="getStatusSeverity(data.status)" :value="getStatusLabel(data.status)" :class="getStatusTagClass(data.status)" />
                             </template>
                         </Column>
                         <Column header="Pozycje" style="width: 80px; text-align: center;">
@@ -74,14 +85,16 @@
                                 <Button v-if="data.uwagi" icon="pi pi-comment" class="p-button-text p-button-secondary p-button-sm" @click="showUwagi(data)" />
                             </template>
                         </Column>
-                        <Column header="Akcje" style="width: 200px; text-align: center;">
+                        <Column header="Akcje" style="width: 240px; text-align: center;">
                             <template #body="{ data }">
                                 <div style="display: flex; gap: 4px; justify-content: center; flex-wrap: nowrap;">
-                                    <Button icon="pi pi-envelope" class="p-button-success p-button-sm" @click="openEmailConfirmModal(data)" title="Wyślij e-mail" />
+                                    <Button v-if="data.status === 'verified'" icon="pi pi-envelope" class="p-button-success p-button-sm" @click="openEmailConfirmModal(data)" title="Wyślij e-mail do dostawcy" />
+                                    <Button v-if="data.status === 'pending_approval'" icon="pi pi-check" class="p-button-success p-button-sm" @click="zatwierdzZamowienie(data)" title="Zatwierdź zamówienie" />
+                                    <Button v-if="data.status === 'pending_approval'" icon="pi pi-undo" class="p-button-secondary p-button-sm" @click="cofnijDoRoboczej(data)" title="Cofnij do wersji roboczej" />
                                     <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
                                     <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="rozpocznijRealizacje(data)" title="Kontynuuj realizację" />
-                                    <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openZamowienieModal('edit', data)" title="Edytuj" />
-                                    <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
+                                    <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="selectZamowienie(data)" title="Edytuj pozycje" />
+                                    <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
                                 </div>
                             </template>
                         </Column>
@@ -103,8 +116,8 @@
                         <p><strong>Data wysłania:</strong> {{ selectedZamowienie.data_wyslania ? formatDate(selectedZamowienie.data_wyslania) : 'Nie wysłano' }}</p>
                     </div>
                     <div class="details-right">
-                        <p><strong>Status:</strong> <Tag :severity="getStatusSeverity(selectedZamowienie.status)" :value="getStatusLabel(selectedZamowienie.status)" /></p>
-                        <p><strong>Wartość:</strong> {{ selectedZamowienie.wartosc_zamowienia }} zł</p>
+                        <p><strong>Status:</strong> <Tag :severity="getStatusSeverity(selectedZamowienie.status)" :value="getStatusLabel(selectedZamowienie.status)" :class="getStatusTagClass(selectedZamowienie.status)" /></p>
+                        <p><strong>Wartość:</strong> {{ obliczonaWartoscZamowienia }} zł</p>
                         <p><strong>Email:</strong> {{ selectedZamowienie.email_docelowy || 'brak' }}</p>
                     </div>
                 </div>
@@ -115,20 +128,41 @@
                     <Column field="podkategoria_nazwa" header="Podkategoria" />
                     <Column field="narzedzie_opis" header="Narzędzie" />
                     <Column field="numer_katalogowy" header="Nr katalogowy" />
-                    <Column field="ilosc_zamowiona" header="Ilość" style="width: 80px;" />
+                    <Column header="Ilość" style="width: 100px;">
+                        <template #body="{ data }">
+                            <InputNumber
+                                v-if="canEditPozycje"
+                                v-model="data.ilosc_zamowiona"
+                                :min="1"
+                                :inputStyle="{ width: '60px', textAlign: 'center' }"
+                            />
+                            <span v-else>{{ data.ilosc_zamowiona }}</span>
+                        </template>
+                    </Column>
                     <Column header="Jednostka" style="width: 120px;">
                         <template #body="{ data }">
                             {{ data.jednostka === 'kompl' ? `kompl. (${data.ilosc_w_komplecie} szt.)` : 'szt.' }}
                         </template>
                     </Column>
-                    <Column header="Cena jedn." style="width: 100px;">
+                    <Column header="Cena jedn." style="width: 120px;">
                         <template #body="{ data }">
-                            {{ data.cena_jednostkowa }} zł
+                            <InputNumber
+                                v-model="data.cena_jednostkowa"
+                                :minFractionDigits="2"
+                                :maxFractionDigits="2"
+                                :min="0"
+                                :inputStyle="{ width: '80px', textAlign: 'right' }"
+                            />
                         </template>
                     </Column>
-                    <Column header="Wartość" style="width: 100px;">
+                    <Column header="Wartość" style="width: 110px;">
                         <template #body="{ data }">
-                            <strong>{{ data.wartosc_pozycji }} zł</strong>
+                            <strong>{{ (data.ilosc_zamowiona * (data.cena_jednostkowa || 0)).toFixed(2) }} zł</strong>
+                        </template>
+                    </Column>
+                    <Column v-if="canDeletePozycja" header="" style="width: 60px; text-align: center;">
+                        <template #body="{ data }">
+                            <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="deletePozycja(data)" title="Usuń pozycję" />
                         </template>
                     </Column>
                 </DataTable>
@@ -152,7 +186,8 @@
                 </div>
             </div>
             <template #footer>
-                <Button label="Zamknij" @click="detailsModalVisible = false" />
+                <Button label="Zapisz zmiany" icon="pi pi-save" class="p-button-success" @click="saveAllPozycje" :loading="isSavingPozycje" />
+                <Button label="Zamknij" @click="closeDetails" />
             </template>
         </Dialog>
 
@@ -240,7 +275,7 @@
                 <div class="realizacja-info-bar">
                     <span><strong>Zamówienie:</strong> {{ selectedRealizacjaZamowienie.numer }}</span>
                     <span><strong>Dostawca:</strong> {{ selectedRealizacjaZamowienie.dostawca?.nazwa_firmy }}</span>
-                    <span><Tag :severity="getStatusSeverity(selectedRealizacjaZamowienie.status)" :value="getStatusLabel(selectedRealizacjaZamowienie.status)" /></span>
+                    <span><Tag :severity="getStatusSeverity(selectedRealizacjaZamowienie.status)" :value="getStatusLabel(selectedRealizacjaZamowienie.status)" :class="getStatusTagClass(selectedRealizacjaZamowienie.status)" /></span>
                 </div>
 
                 <div v-if="isLoadingRealizacja" class="loading-state">
@@ -296,6 +331,11 @@
                                 <span v-else>-</span>
                             </template>
                         </Column>
+                        <Column header="Cena jedn." style="width: 120px; text-align: right;">
+                            <template #body="{ data }">
+                                <span>{{ Number(data.cena_jednostkowa || 0).toFixed(2) }} zł</span>
+                            </template>
+                        </Column>
                         <Column header="Lokalizacja" style="width: 140px;">
                             <template #body="{ data }">
                                 <span v-if="data.lokalizacja">
@@ -334,6 +374,47 @@
             </DataTable>
             <template #footer>
                 <Button label="Zamknij" @click="realizacjaResultModalVisible = false" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Wyślij do zatwierdzenia -->
+        <Dialog v-model:visible="approvalModalVisible" header="Wyślij zamówienia do zatwierdzenia" :modal="true" :style="{ width: '750px' }">
+            <Message severity="info" :closable="false" style="margin-bottom: 15px;">
+                Wybierz zamówienia, które chcesz wysłać do szefa do zatwierdzenia. Zostanie wysłany zbiorczy email z listą wszystkich pozycji i sumą.
+            </Message>
+            <Message v-if="!emailSzef" severity="warn" :closable="false" style="margin-bottom: 15px;">
+                <strong>Brak adresu email szefa!</strong> Skonfiguruj go w Ustawienia → Poczta (EMAIL_SZEF).
+            </Message>
+            <DataTable :value="draftZamowienia" v-model:selection="selectedApprovalZamowienia" dataKey="id" class="p-datatable-sm">
+                <Column selectionMode="multiple" style="width: 50px;" />
+                <Column field="numer" header="Numer" style="width: 140px;">
+                    <template #body="{ data }"><strong>{{ data.numer }}</strong></template>
+                </Column>
+                <Column header="Dostawca">
+                    <template #body="{ data }">{{ data.dostawca?.nazwa_firmy || '-' }}</template>
+                </Column>
+                <Column header="Pozycji" style="width: 80px; text-align: center;">
+                    <template #body="{ data }">{{ data.pozycje?.length || 0 }}</template>
+                </Column>
+                <Column header="Wartość" style="width: 120px; text-align: right;">
+                    <template #body="{ data }"><strong>{{ data.wartosc_zamowienia }} zł</strong></template>
+                </Column>
+            </DataTable>
+            <div v-if="selectedApprovalZamowienia.length > 0" class="approval-summary">
+                <strong>Wybrano: {{ selectedApprovalZamowienia.length }} zamówień</strong>
+                <span class="approval-total">Łączna wartość: <strong>{{ approvalTotal }} zł</strong></span>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="approvalModalVisible = false" />
+                <Button label="Wyślij do zatwierdzenia" icon="pi pi-send" class="p-button-warning" @click="confirmSendApproval" :loading="isSendingApproval" :disabled="selectedApprovalZamowienia.length === 0 || !emailSzef" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Wynik wysyłki do zatwierdzenia -->
+        <Dialog v-model:visible="approvalResultModalVisible" :header="approvalResult.success ? 'Sukces' : 'Błąd'" :modal="true" :style="{ width: '400px' }">
+            <Message :severity="approvalResult.success ? 'success' : 'error'" :closable="false">{{ approvalResult.message }}</Message>
+            <template #footer>
+                <Button label="Zamknij" @click="approvalResultModalVisible = false" />
             </template>
         </Dialog>
 
@@ -404,8 +485,11 @@ const selectedRealizacjaZamowienie = ref(null);
 const isSaving = ref(false);
 const isSendingEmail = ref(false);
 const isDeleting = ref(false);
+const isSendingApproval = ref(false);
+const isSavingPozycje = ref(false);
 
 const emailResult = ref({ success: false, message: '' });
+const emailSzef = ref('');
 const realizacjaResult = ref({ success: false, message: '', egzemplarze: [] });
 const realizacjaPozycje = ref([]);
 const realizacjaSelectAll = ref(false);
@@ -425,16 +509,59 @@ const deleteConfirmModalVisible = ref(false);
 const realizacjaConfirmModalVisible = ref(false);
 const realizacjaResultModalVisible = ref(false);
 const aboutModalVisible = ref(false);
+const approvalModalVisible = ref(false);
+const approvalResultModalVisible = ref(false);
+const approvalResult = ref({ success: false, message: '' });
+const selectedApprovalZamowienia = ref([]);
 
 const zamowienieModal = ref({ title: '', mode: 'add', currentItem: {}, errorMessage: '' });
 
 // User menu
 const userMenu = ref(null);
 const userMenuItems = ref([
+    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia + '?from=zakupy'; } },
+    { separator: true },
     { label: 'O programie', icon: 'pi pi-info-circle', command: () => { aboutModalVisible.value = true; } },
     { separator: true },
     { label: 'Wyjście', icon: 'pi pi-sign-out', command: () => { window.location.href = props.urls.logout; } }
 ]);
+
+// Pomoc — otwiera w nowym oknie typu popup (działa też w trybie PWA)
+const openHelp = () => {
+    const url = props.urls.pomoc_zamowienia || '/pomoc/zamowienia/';
+    const features = 'noopener,noreferrer,width=1100,height=860,resizable=yes,scrollbars=yes';
+    window.open(url, 'pomoc-zamowienia', features);
+};
+
+// Menu Działania
+const dzialaniaMenu = ref(null);
+const dzialaniaMenuItems = computed(() => {
+    const items = [];
+    if (props.canGenerateOrders) {
+        items.push({ label: 'Generuj nowe', icon: 'pi pi-sparkles', command: () => generujAutomatyczne() });
+    }
+    if (draftZamowienia.value.length > 0) {
+        items.push({ label: 'Wyślij do zatwierdzenia', icon: 'pi pi-send', command: () => openApprovalModal() });
+    }
+    return items;
+});
+const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
+
+// Wyszukiwanie
+const searchQuery = ref('');
+
+// Menu Miejsca
+const miejscaMenu = ref(null);
+const miejscaMenuItems = computed(() => {
+    const items = [
+        { label: 'Magazyn', icon: 'pi pi-building', command: () => { window.location.href = props.urls.magazyn; } }
+    ];
+    if (props.auth?.isLogistyka) {
+        items.push({ label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } });
+    }
+    return items;
+});
+const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 
 // Computed
 const dostawcyOptions = computed(() => [
@@ -444,7 +571,8 @@ const dostawcyOptions = computed(() => [
 
 const statusLabels = {
     'draft': 'Wersja robocza',
-    'verified': 'Zweryfikowane',
+    'pending_approval': 'Oczekuje na zatwierdzenie',
+    'verified': 'Zatwierdzone',
     'sent': 'Wysłane',
     'partially_received': 'Częściowo odebrane',
     'completed': 'Zrealizowane'
@@ -467,8 +595,14 @@ const formatDate = (dateString) => {
 const getStatusLabel = (status) => statusLabels[status] || status;
 
 const getStatusSeverity = (status) => {
-    const map = { 'draft': 'secondary', 'verified': 'info', 'sent': 'primary', 'partially_received': 'warning', 'completed': 'success' };
+    const map = { 'draft': 'secondary', 'pending_approval': 'warning', 'verified': 'info', 'sent': 'primary', 'partially_received': 'warning', 'completed': 'success' };
     return map[status] || 'secondary';
+};
+
+// Status 'partially_received' — Tag musi mieć identyczny kolor jak p-button-warning (pomarańczowy).
+// Klasa .tag-status-orange w dark-theme.css ma !important żeby pokonać override .p-tag-warning
+const getStatusTagClass = (status) => {
+    return status === 'partially_received' ? 'tag-status-orange' : '';
 };
 
 const selectZamowienie = (zamowienie) => {
@@ -566,6 +700,151 @@ const saveZamowienie = async () => {
         zamowienieModal.value.errorMessage = 'Błąd zapisu: ' + (error.response?.data?.detail || error.message);
     } finally {
         isSaving.value = false;
+    }
+};
+
+// Computed — filtrowanie po wyszukiwarce (Numer, Dostawca, Data utworzenia, Data wysłania)
+const filteredZamowienia = computed(() => {
+    const q = searchQuery.value.trim().toLowerCase();
+    if (!q) return zamowienia.value;
+    return zamowienia.value.filter(z => {
+        const numer = (z.numer || '').toLowerCase();
+        const dostawca = (z.dostawca?.nazwa_firmy || '').toLowerCase();
+        const dataUtw = z.data_utworzenia ? formatDate(z.data_utworzenia).toLowerCase() : '';
+        const dataWysl = z.data_wyslania ? formatDate(z.data_wyslania).toLowerCase() : '';
+        return numer.includes(q) || dostawca.includes(q) || dataUtw.includes(q) || dataWysl.includes(q);
+    });
+});
+
+// Computed — sortowanie listy: niezrealizowane/w trakcie zawsze na górze, w obrębie grupy numer malejąco
+const sortedZamowienia = computed(() => {
+    return [...filteredZamowienia.value].sort((a, b) => {
+        const aDone = a.status === 'completed' ? 1 : 0;
+        const bDone = b.status === 'completed' ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return (b.numer || '').localeCompare(a.numer || '');
+    });
+});
+
+// Computed — filtrowane zamówienia
+const draftZamowienia = computed(() => zamowienia.value.filter(z => z.status === 'draft'));
+const canEditPozycje = computed(() => {
+    if (!selectedZamowienie.value) return false;
+    return ['draft', 'pending_approval', 'verified'].includes(selectedZamowienie.value.status);
+});
+const canDeletePozycja = computed(() => {
+    if (!selectedZamowienie.value) return false;
+    return ['draft', 'pending_approval'].includes(selectedZamowienie.value.status);
+});
+const obliczonaWartoscZamowienia = computed(() => {
+    if (!selectedZamowienie.value?.pozycje) return '0.00';
+    return selectedZamowienie.value.pozycje
+        .reduce((sum, p) => sum + p.ilosc_zamowiona * (p.cena_jednostkowa || 0), 0)
+        .toFixed(2);
+});
+const approvalTotal = computed(() => {
+    return selectedApprovalZamowienia.value.reduce((sum, z) => sum + parseFloat(z.wartosc_zamowienia || 0), 0).toFixed(2);
+});
+
+// Zatwierdzanie
+const openApprovalModal = () => {
+    selectedApprovalZamowienia.value = [...draftZamowienia.value];
+    approvalModalVisible.value = true;
+};
+
+const confirmSendApproval = async () => {
+    isSendingApproval.value = true;
+    try {
+        const ids = selectedApprovalZamowienia.value.map(z => z.id);
+        const res = await axios.post(`${API_URL}/zamowienia/wyslij-do-zatwierdzenia/`, { zamowienie_ids: ids });
+        approvalModalVisible.value = false;
+        approvalResult.value = { success: true, message: res.data.message };
+        approvalResultModalVisible.value = true;
+        await fetchInitialData();
+    } catch (error) {
+        approvalModalVisible.value = false;
+        approvalResult.value = { success: false, message: error.response?.data?.error || 'Wystąpił błąd' };
+        approvalResultModalVisible.value = true;
+    } finally {
+        isSendingApproval.value = false;
+    }
+};
+
+const zatwierdzZamowienie = async (zamowienie) => {
+    try {
+        const res = await axios.post(`${API_URL}/zamowienia/zatwierdz/`, { zamowienie_ids: [zamowienie.id] });
+        approvalResult.value = { success: true, message: res.data.message };
+        approvalResultModalVisible.value = true;
+        await fetchInitialData();
+    } catch (error) {
+        approvalResult.value = { success: false, message: error.response?.data?.error || 'Wystąpił błąd' };
+        approvalResultModalVisible.value = true;
+    }
+};
+
+const cofnijDoRoboczej = async (zamowienie) => {
+    try {
+        await axios.post(`${API_URL}/zamowienia/cofnij-do-roboczej/`, { zamowienie_id: zamowienie.id });
+        await fetchInitialData();
+    } catch (error) {
+        alert('Błąd: ' + (error.response?.data?.error || error.message));
+    }
+};
+
+// Edycja pozycji zamówienia
+const updatePozycja = async (pozycja) => {
+    try {
+        await axios.patch(`${API_URL}/pozycje-zamowien/${pozycja.id}/`, {
+            ilosc_zamowiona: pozycja.ilosc_zamowiona
+        });
+        await refreshSelectedZamowienie();
+    } catch (error) {
+        alert('Błąd aktualizacji: ' + (error.response?.data?.detail || error.message));
+    }
+};
+
+const saveAllPozycje = async () => {
+    if (!selectedZamowienie.value) return;
+    isSavingPozycje.value = true;
+    const editIlosc = canEditPozycje.value;
+    try {
+        for (const poz of selectedZamowienie.value.pozycje) {
+            const payload = { cena_jednostkowa: poz.cena_jednostkowa || 0 };
+            if (editIlosc) payload.ilosc_zamowiona = poz.ilosc_zamowiona;
+            await axios.patch(`${API_URL}/pozycje-zamowien/${poz.id}/`, payload);
+        }
+        await fetchInitialData();
+        closeDetails();
+    } catch (error) {
+        alert('Błąd zapisu: ' + (error.response?.data?.detail || error.message));
+    } finally {
+        isSavingPozycje.value = false;
+    }
+};
+
+const closeDetails = () => {
+    detailsModalVisible.value = false;
+    selectedZamowienie.value = null;
+    setTimeout(() => fetchInitialData(), 500);
+};
+
+const deletePozycja = async (pozycja) => {
+    try {
+        await axios.delete(`${API_URL}/pozycje-zamowien/${pozycja.id}/`);
+        await refreshSelectedZamowienie();
+    } catch (error) {
+        alert('Błąd usuwania: ' + (error.response?.data?.detail || error.message));
+    }
+};
+
+const refreshSelectedZamowienie = async () => {
+    if (!selectedZamowienie.value) return;
+    await fetchInitialData();
+    const updated = zamowienia.value.find(z => z.id === selectedZamowienie.value.id);
+    if (updated) {
+        selectedZamowienie.value = updated;
+    } else {
+        detailsModalVisible.value = false;
     }
 };
 
@@ -686,6 +965,7 @@ const fetchInitialData = async () => {
         dostawcy.value = dosRes.data;
         zamowieniaTestowe.value = emailRes.data.zamowienia_testowe || false;
         emailTestAddress.value = emailRes.data.email_test_address || '';
+        emailSzef.value = emailRes.data.email_szef || '';
     } catch (error) {
         console.error("Błąd ładowania danych:", error);
     }
@@ -703,16 +983,6 @@ onMounted(() => fetchInitialData());
     color: var(--dark-text-primary);
 }
 
-.header-buttons a {
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-size: 14px;
-}
-
 .app-main {
     flex: 1;
     padding: 16px 24px;
@@ -728,24 +998,20 @@ onMounted(() => fetchInitialData());
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
-.btn-generate-header {
-    display: inline-flex;
+.approval-summary {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    background-color: #198754;
-    border: 1px solid #198754;
-    border-radius: 4px;
-    color: #fff;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    padding: 12px 16px;
+    margin-top: 12px;
+    background: rgba(253, 126, 20, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(253, 126, 20, 0.3);
 }
 
-.btn-generate-header:hover {
-    background-color: #157347;
-    border-color: #146c43;
+.approval-total {
+    font-size: 1.1em;
+    color: #fd7e14;
 }
 
 .panel-body {

@@ -4,6 +4,9 @@
         <header class="app-header">
             <h2 class="header-title">ZAKUPY</h2>
             <div class="header-buttons">
+                <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
+                    <i class="pi pi-question-circle"></i> Pomoc
+                </button>
                 <div class="dropdown-wrapper">
                     <button class="btn btn-success" @click="toggleDzialaniaMenu">
                         <i class="pi pi-th-large"></i> Działania
@@ -79,7 +82,7 @@
                                 <div :class="data.reczna_kontrola ? 'status-blue' : getStatusClass(data)" class="status-indicator"></div>
                             </template>
                         </Column>
-                        <Column header="Kategoria / Podkategoria">
+                        <Column header="Kategoria / Podkategoria" style="width: 330px;">
                             <template #body="{ data }">
                                 <span v-if="data.podkategoria">
                                     <strong>{{ data.podkategoria.kategoria.nazwa }}</strong> / {{ data.podkategoria.nazwa }}
@@ -88,7 +91,7 @@
                             </template>
                         </Column>
                         <Column field="opis" header="Opis" />
-                        <Column field="numer_katalogowy" header="Nr katalogowy" />
+                        <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 200px;" />
                         <Column header="Ilość całkowita" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
                                 <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
@@ -170,11 +173,11 @@
                                         <Tag :severity="getOrderStatusSeverity(data.status)" :value="getStatusLabel(data.status)" />
                                     </template>
                                 </Column>
-                                <Column header="Zrealizowane">
+                                <Column header="Cena jedn." style="width: 150px; text-align: right;">
                                     <template #body="{ data }">
-                                        <Tag v-if="data.status === 'completed'" severity="success" value="Tak" icon="pi pi-check-circle" />
-                                        <Tag v-else-if="data.status === 'partially_received'" severity="warning" value="Częściowo" icon="pi pi-clock" />
-                                        <Tag v-else severity="secondary" value="Nie" icon="pi pi-times-circle" />
+                                        <span :class="{ 'text-muted': isCenaZero(getPozycjaCena(data)) }">
+                                            {{ formatCenaPLN(getPozycjaCena(data)) }}
+                                        </span>
                                     </template>
                                 </Column>
                             </DataTable>
@@ -368,13 +371,18 @@ const dzialaniaMenuItems = ref([
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
     { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
 ]);
+
+// Pomoc — otwiera w nowym oknie typu popup (działa też w trybie PWA)
+const openHelp = () => {
+    const url = props.urls.pomoc_zakupy || '/pomoc/zakupy/';
+    const features = 'noopener,noreferrer,width=1100,height=860,resizable=yes,scrollbars=yes';
+    window.open(url, 'pomoc-zakupy', features);
+};
 const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 
 // Menu Miejsca
 const miejscaMenu = ref(null);
 const miejscaMenuItems = ref([
-    { label: 'Ustawienia', icon: 'pi pi-cog', command: () => { window.location.href = props.urls.ustawienia + '?from=zakupy'; } },
-    { separator: true },
     { label: 'Magazyn', icon: 'pi pi-building', command: () => { window.location.href = props.urls.magazyn; } }
 ]);
 const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
@@ -382,6 +390,12 @@ const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 // User menu
 const userMenu = ref(null);
 const userMenuItems = ref([
+    {
+        label: 'Ustawienia',
+        icon: 'pi pi-cog',
+        command: () => { window.location.href = props.urls.ustawienia + '?from=zakupy'; }
+    },
+    { separator: true },
     {
         label: 'O programie',
         icon: 'pi pi-info-circle',
@@ -516,6 +530,26 @@ const getOrderStatusSeverity = (status) => {
         'completed': 'success'
     };
     return map[status] || 'secondary';
+};
+
+// Zwraca cenę jednostkową pozycji zamówienia odpowiadającej zaznaczonemu narzędziu
+const getPozycjaCena = (zamowienie) => {
+    if (!selectedTool.value || !zamowienie?.pozycje) return null;
+    const pozycja = zamowienie.pozycje.find(p => p.narzedzie_typ?.id === selectedTool.value.id);
+    return pozycja?.cena_jednostkowa;
+};
+
+// Format waluty PL — np. "0,00 zł", "12,50 zł"
+const formatCenaPLN = (cena) => {
+    const num = Number(cena);
+    if (cena == null || cena === '' || isNaN(num)) return '0,00 zł';
+    return num.toFixed(2).replace('.', ',') + ' zł';
+};
+
+// True gdy cena jest zerowa lub brak — używane do szarego oznaczenia w tabeli
+const isCenaZero = (cena) => {
+    const num = Number(cena);
+    return cena == null || cena === '' || isNaN(num) || num === 0;
 };
 
 const onToolSelect = async (event) => {

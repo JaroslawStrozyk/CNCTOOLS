@@ -233,6 +233,8 @@ def generator_zamowien_api(request):
     3. Pozycje z zatwierdzonych zapotrzebowań technologów
     """
     from .models import NarzedzieMagazynowe, EgzemplarzNarzedzia, PozycjaGeneratora, PozycjaZamowienia, PozycjaZapotrzebowania
+    from django.db.models import Count, Q
+    import math
 
     # Najpierw pobierz wszystkie istniejące pozycje z generatora
     istniejace_pozycje = PozycjaGeneratora.objects.select_related(
@@ -244,100 +246,95 @@ def generator_zamowien_api(request):
 
     istniejace_narzedzia_ids = set(p.narzedzie_typ.id for p in istniejace_pozycje)
 
-    # Teraz sprawdź czy są narzędzia wymagające zamówienia (nie uwzględnione w PozycjaGeneratora)
+    # Zbiorczy zestaw narzędzi z aktywnymi zamówieniami (1 zapytanie zamiast N)
+    aktywne_statusy = ['draft', 'pending_approval', 'verified', 'sent', 'partially_received']
+    narzedzia_w_zamowieniach = set(
+        PozycjaZamowienia.objects.filter(
+            zamowienie__status__in=aktywne_statusy
+        ).values_list('narzedzie_typ_id', flat=True).distinct()
+    )
+
+    # Zbiorczy słownik ostatnich cen (1 zapytanie zamiast N)
+    from django.db.models import Max, Subquery, OuterRef
+    ostatnie_ceny_qs = PozycjaZamowienia.objects.filter(
+        cena_jednostkowa__isnull=False,
+        cena_jednostkowa__gt=0,
+    ).values('narzedzie_typ_id').annotate(
+        ostatnia_data=Max('zamowienie__data_utworzenia')
+    )
+    ostatnie_ceny = {}
+    for row in ostatnie_ceny_qs:
+        poz = PozycjaZamowienia.objects.filter(
+            narzedzie_typ_id=row['narzedzie_typ_id'],
+            zamowienie__data_utworzenia=row['ostatnia_data'],
+            cena_jednostkowa__isnull=False,
+            cena_jednostkowa__gt=0,
+        ).first()
+        if poz:
+            ostatnie_ceny[row['narzedzie_typ_id']] = poz.cena_jednostkowa
+
+    # Pobierz narzędzia z annotowanym stanem (egzemplarze bez uszkodzonych)
     narzedzia = NarzedzieMagazynowe.objects.select_related(
         'podkategoria',
         'podkategoria__kategoria',
         'ostatni_dostawca'
-    ).prefetch_related('egzemplarze').all()
+    ).annotate(
+        stan_aktualny=Count(
+            'egzemplarze',
+            filter=~Q(egzemplarze__stan='uszkodzone') & ~Q(egzemplarze__stan='uszkodzone_regeneracja')
+        )
+    ).all()
 
     # Lista narzędzi z ręczną kontrolą, których pole reczne_dodanie zostało odczytane — do wyzerowania
     reczne_do_wyzerowania = []
+    nowe_pozycje = []
 
     for narzedzie in narzedzia:
         # Pomiń jeśli już jest w PozycjaGeneratora
         if narzedzie.id in istniejace_narzedzia_ids:
             continue
 
-        # Sprawdź czy narzędzie jest w aktywnym (niezrealizowanym) zamówieniu
-        # Aktywne = status nie jest 'completed'
-        ma_aktywne_zamowienie = PozycjaZamowienia.objects.filter(
-            narzedzie_typ=narzedzie,
-            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
-        ).exists()
-
         # Pomiń jeśli jest w aktywnym zamówieniu
-        if ma_aktywne_zamowienie:
+        if narzedzie.id in narzedzia_w_zamowieniach:
             continue
+
+        cena_jednostkowa = ostatnie_ceny.get(narzedzie.id, 0)
 
         # --- Ręczna kontrola zamówień ---
         if narzedzie.reczna_kontrola:
             if narzedzie.reczne_dodanie > 0:
-                ilosc_do_zamowienia = narzedzie.reczne_dodanie
-
-                # Pobierz cenę z ostatniej pozycji zamówienia
-                cena_jednostkowa = 0
-                if narzedzie.ostatni_dostawca:
-                    ostatnia_pozycja = PozycjaZamowienia.objects.filter(
-                        narzedzie_typ=narzedzie,
-                        zamowienie__dostawca=narzedzie.ostatni_dostawca,
-                        cena_jednostkowa__isnull=False
-                    ).order_by('-zamowienie__data_utworzenia').first()
-                    if ostatnia_pozycja and ostatnia_pozycja.cena_jednostkowa:
-                        cena_jednostkowa = ostatnia_pozycja.cena_jednostkowa
-
-                PozycjaGeneratora.objects.create(
+                nowe_pozycje.append(PozycjaGeneratora(
                     narzedzie_typ=narzedzie,
                     dostawca=narzedzie.ostatni_dostawca,
-                    ilosc_do_zamowienia=ilosc_do_zamowienia,
+                    ilosc_do_zamowienia=narzedzie.reczne_dodanie,
                     cena_jednostkowa=cena_jednostkowa,
                     zrodlo='reczne'
-                )
+                ))
                 reczne_do_wyzerowania.append(narzedzie.id)
-            # Jeśli reczne_dodanie == 0, pomijamy (nic do zamówienia)
             continue
 
         # --- Automatyczna kontrola (min/max) ---
-        # Oblicz aktualny stan
-        calkowita_ilosc = narzedzie.egzemplarze.exclude(
-            stan='uszkodzone'
-        ).exclude(
-            stan='uszkodzone_regeneracja'
-        ).count()
-
         stan_maksymalny = narzedzie.stan_maksymalny if narzedzie.stan_maksymalny else 10
 
-        # Sprawdź czy wymaga zamówienia
-        if calkowita_ilosc < stan_maksymalny:
-            ilosc_brakujacych_sztuk = stan_maksymalny - calkowita_ilosc
+        if narzedzie.stan_aktualny < stan_maksymalny:
+            ilosc_brakujacych_sztuk = stan_maksymalny - narzedzie.stan_aktualny
 
-            # Przelicz na komplety jeśli potrzeba
             if narzedzie.opakowanie == 'kompl' and narzedzie.ilosc_w_opakowaniu > 0:
-                import math
                 ilosc_do_zamowienia = math.ceil(ilosc_brakujacych_sztuk / narzedzie.ilosc_w_opakowaniu)
             else:
                 ilosc_do_zamowienia = ilosc_brakujacych_sztuk
 
-            # Pobierz cenę z ostatniej pozycji zamówienia
-            cena_jednostkowa = 0
-            if narzedzie.ostatni_dostawca:
-                ostatnia_pozycja = PozycjaZamowienia.objects.filter(
-                    narzedzie_typ=narzedzie,
-                    zamowienie__dostawca=narzedzie.ostatni_dostawca,
-                    cena_jednostkowa__isnull=False
-                ).order_by('-zamowienie__data_utworzenia').first()
-
-                if ostatnia_pozycja and ostatnia_pozycja.cena_jednostkowa:
-                    cena_jednostkowa = ostatnia_pozycja.cena_jednostkowa
-
-            # Utwórz pozycję generatora
-            PozycjaGeneratora.objects.create(
+            nowe_pozycje.append(PozycjaGeneratora(
                 narzedzie_typ=narzedzie,
                 dostawca=narzedzie.ostatni_dostawca,
                 ilosc_do_zamowienia=ilosc_do_zamowienia,
                 cena_jednostkowa=cena_jednostkowa,
                 zrodlo='auto'
-            )
+            ))
+
+    # Bulk create nowych pozycji (1 zapytanie zamiast N)
+    if nowe_pozycje:
+        PozycjaGeneratora.objects.bulk_create(nowe_pozycje, ignore_conflicts=True)
 
     # Wyzeruj pole reczne_dodanie dla odczytanych narzędzi z ręczną kontrolą
     if reczne_do_wyzerowania:
@@ -362,12 +359,8 @@ def generator_zamowien_api(request):
         narzedzie = pz.narzedzie_typ
         zap_numer = f"ZAM-{pz.zapotrzebowanie.id:04d}"
 
-        # Sprawdź czy narzędzie jest w aktywnym zamówieniu
-        ma_aktywne = PozycjaZamowienia.objects.filter(
-            narzedzie_typ=narzedzie,
-            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
-        ).exists()
-        if ma_aktywne:
+        # Sprawdź czy narzędzie jest w aktywnym zamówieniu (z cache)
+        if narzedzie.id in narzedzia_w_zamowieniach:
             zapotrzebowania_ids.append(pz.id)
             continue
 
@@ -383,17 +376,7 @@ def generator_zamowien_api(request):
                 istniejaca.zrodlo_zapotrzebowanie_ids = (existing_ids + ',' + zap_numer).strip(',')
             istniejaca.save(update_fields=['ilosc_do_zamowienia', 'zrodlo', 'zrodlo_zapotrzebowanie_ids'])
         except PozycjaGeneratora.DoesNotExist:
-            # Pobierz cenę z ostatniej pozycji zamówienia
-            cena_jednostkowa = 0
-            if narzedzie.ostatni_dostawca:
-                ostatnia_pozycja = PozycjaZamowienia.objects.filter(
-                    narzedzie_typ=narzedzie,
-                    zamowienie__dostawca=narzedzie.ostatni_dostawca,
-                    cena_jednostkowa__isnull=False
-                ).order_by('-zamowienie__data_utworzenia').first()
-                if ostatnia_pozycja and ostatnia_pozycja.cena_jednostkowa:
-                    cena_jednostkowa = ostatnia_pozycja.cena_jednostkowa
-
+            cena_jednostkowa = ostatnie_ceny.get(narzedzie.id, 0)
             PozycjaGeneratora.objects.create(
                 narzedzie_typ=narzedzie,
                 dostawca=narzedzie.ostatni_dostawca,
@@ -432,15 +415,8 @@ def generator_zamowien_api(request):
     for pozycja in wszystkie_pozycje:
         narzedzie = pozycja.narzedzie_typ
 
-        # Sprawdź czy narzędzie jest w aktywnym (niezrealizowanym) zamówieniu
-        # Pomijamy tylko jeśli jest w zamówieniu - pozycje w generatorze pozostają do czasu zrealizowania
-        ma_aktywne_zamowienie = PozycjaZamowienia.objects.filter(
-            narzedzie_typ=narzedzie,
-            zamowienie__status__in=['draft', 'verified', 'sent', 'partially_received']
-        ).exists()
-
-        # Pomiń jeśli jest w aktywnym zamówieniu
-        if ma_aktywne_zamowienie:
+        # Pomiń jeśli jest w aktywnym zamówieniu (z cache)
+        if narzedzie.id in narzedzia_w_zamowieniach:
             continue
 
         # Przygotuj dane do wyświetlenia
@@ -785,6 +761,110 @@ def generator_zamowien_gotowe_api(request):
 
 
 @api_view(['POST'])
+@login_required
+def wyslij_do_zatwierdzenia_api(request):
+    """
+    Endpoint wysyłający zbiorczy email do szefa z listą zamówień do zatwierdzenia.
+    Przyjmuje: { "zamowienie_ids": [1, 2, 3] }
+    """
+    from .models import Zamowienie
+    from .utils import send_approval_email
+    from django.utils import timezone
+
+    zamowienie_ids = request.data.get('zamowienie_ids', [])
+    if not zamowienie_ids:
+        return Response({'error': 'Nie wybrano żadnych zamówień'}, status=400)
+
+    zamowienia = Zamowienie.objects.filter(
+        id__in=zamowienie_ids, status='draft'
+    ).select_related('dostawca').prefetch_related('pozycje')
+
+    if not zamowienia.exists():
+        return Response({'error': 'Brak zamówień w statusie "Wersja robocza"'}, status=400)
+
+    zamowienia_list = list(zamowienia)
+    result = send_approval_email(zamowienia_list)
+
+    if result['success']:
+        # Zmień status na pending_approval
+        zamowienia.update(status='pending_approval')
+
+        user_name = get_user_display_name(request.user)
+        numery = ', '.join([z.numer for z in zamowienia_list])
+        email_szef = getattr(settings, 'EMAIL_SZEF', '')
+        app_logger.success(user_name, f"Wysłano zamówienia do zatwierdzenia: {numery} → {email_szef}")
+
+        return Response({
+            'success': True,
+            'message': f'Wysłano {len(zamowienia_list)} zamówień do zatwierdzenia.'
+        })
+    else:
+        user_name = get_user_display_name(request.user)
+        app_logger.error(user_name, f"Błąd wysyłki zamówień do zatwierdzenia: {result['message']}")
+        return Response({'error': result['message']}, status=500)
+
+
+@api_view(['POST'])
+@login_required
+def zatwierdz_zamowienia_api(request):
+    """
+    Endpoint zatwierdzający zamówienia (zmiana statusu pending_approval → verified).
+    Przyjmuje: { "zamowienie_ids": [1, 2, 3] }
+    """
+    from .models import Zamowienie
+
+    zamowienie_ids = request.data.get('zamowienie_ids', [])
+    if not zamowienie_ids:
+        return Response({'error': 'Nie wybrano żadnych zamówień'}, status=400)
+
+    zamowienia = Zamowienie.objects.filter(
+        id__in=zamowienie_ids, status='pending_approval'
+    )
+
+    if not zamowienia.exists():
+        return Response({'error': 'Brak zamówień oczekujących na zatwierdzenie'}, status=400)
+
+    count = zamowienia.count()
+    numery = ', '.join(zamowienia.values_list('numer', flat=True))
+    zamowienia.update(status='verified')
+
+    user_name = get_user_display_name(request.user)
+    app_logger.success(user_name, f"Zatwierdzono zamówienia: {numery}")
+
+    return Response({
+        'success': True,
+        'message': f'Zatwierdzono {count} zamówień.'
+    })
+
+
+@api_view(['POST'])
+@login_required
+def cofnij_do_roboczej_api(request):
+    """
+    Cofnięcie zamówienia ze statusu pending_approval do draft.
+    Przyjmuje: { "zamowienie_id": 1 }
+    """
+    from .models import Zamowienie
+
+    zamowienie_id = request.data.get('zamowienie_id')
+    if not zamowienie_id:
+        return Response({'error': 'Brak ID zamówienia'}, status=400)
+
+    try:
+        zam = Zamowienie.objects.get(id=zamowienie_id, status='pending_approval')
+    except Zamowienie.DoesNotExist:
+        return Response({'error': 'Zamówienie nie istnieje lub nie oczekuje na zatwierdzenie'}, status=400)
+
+    zam.status = 'draft'
+    zam.save()
+
+    user_name = get_user_display_name(request.user)
+    app_logger.info(user_name, f"Cofnięto zamówienie {zam.numer} do wersji roboczej")
+
+    return Response({'success': True, 'message': f'Zamówienie {zam.numer} cofnięte do wersji roboczej.'})
+
+
+@api_view(['POST'])
 def wyslij_email_zamowienie_api(request, zamowienie_id):
     """
     Endpoint do wysyłki emaila z zamówieniem do dostawcy (+ kopia DW).
@@ -797,6 +877,10 @@ def wyslij_email_zamowienie_api(request, zamowienie_id):
         zamowienie = Zamowienie.objects.select_related('dostawca').prefetch_related('pozycje').get(id=zamowienie_id)
     except Zamowienie.DoesNotExist:
         return Response({'error': 'Zamówienie nie istnieje'}, status=404)
+
+    # Sprawdź czy zamówienie jest zatwierdzone
+    if zamowienie.status not in ('verified', 'draft'):
+        return Response({'error': 'Zamówienie musi być zatwierdzone przed wysyłką do dostawcy'}, status=400)
 
     # Sprawdź czy dostawca ma email
     if not zamowienie.email_docelowy:
@@ -883,6 +967,7 @@ def email_config_view(request):
         'imap_use_ssl': getattr(settings, 'IMAP_USE_SSL', False),
         'imap_sent_folder': getattr(settings, 'IMAP_SENT_FOLDER', ''),
         'imap_configured': bool(getattr(settings, 'IMAP_HOST', '')),
+        'email_szef': getattr(settings, 'EMAIL_SZEF', ''),
     }
 
     return JsonResponse(config)
@@ -1173,7 +1258,11 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def etykieta(self, request, pk=None):
-        """Generuje etykietę DXF z oznaczeniem egzemplarza."""
+        """Generuje etykietę DXF z oznaczeniem egzemplarza.
+
+        Format etykiety: 19 mm x 2.5 mm (ramka + tekst centrowany).
+        Jednostki rysunku: milimetry.
+        """
         import ezdxf
         import io
 
@@ -1185,17 +1274,30 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
                 status=400
             )
 
+        # Wymiary etykiety w milimetrach
+        LABEL_W = 19.0
+        LABEL_H = 2.5
+        TEXT_HEIGHT = 1.6  # mm — mieści się w 2.5 mm wysokości z marginesem
+
         doc = ezdxf.new('R2010')
+        doc.units = 4  # 4 = millimeters (INSUNITS)
         msp = doc.modelspace()
 
+        # Ramka etykiety 19 x 2.5 mm
+        msp.add_lwpolyline(
+            [(0, 0), (LABEL_W, 0), (LABEL_W, LABEL_H), (0, LABEL_H)],
+            close=True,
+        )
+
+        # Tekst centrowany w środku etykiety
         msp.add_text(
             egzemplarz.oznaczenie,
             dxfattribs={
-                'height': 10,
+                'height': TEXT_HEIGHT,
                 'halign': ezdxf.enums.TextHAlign.CENTER,
                 'valign': ezdxf.enums.TextVAlign.MIDDLE,
-                'insert': (0, 0),
-                'align_point': (0, 0),
+                'insert': (LABEL_W / 2, LABEL_H / 2),
+                'align_point': (LABEL_W / 2, LABEL_H / 2),
             }
         )
 
@@ -1698,6 +1800,7 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                 'ilosc_zamowiona': poz_zam.ilosc_zamowiona,
                 'ilosc_przyjeta': ilosc_przyjeta,
                 'ilosc_pozostala': ilosc_pozostala,
+                'cena_jednostkowa': float(poz_zam.cena_jednostkowa) if poz_zam.cena_jednostkowa else 0,
                 'lokalizacja': lokalizacja_data,
             })
 
@@ -1843,6 +1946,25 @@ class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
         if zamowienie_id:
             queryset = queryset.filter(zamowienie_id=zamowienie_id)
         return queryset
+
+    def _przelicz_wartosc_zamowienia(self, zamowienie):
+        from django.db.models import Sum, F
+        total = zamowienie.pozycje.aggregate(
+            suma=Sum(F('ilosc_zamowiona') * F('cena_jednostkowa'))
+        )['suma'] or 0
+        zamowienie.wartosc_zamowienia = total
+        zamowienie.save(update_fields=['wartosc_zamowienia'])
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        instance.wartosc_pozycji = instance.ilosc_zamowiona * (instance.cena_jednostkowa or 0)
+        instance.save(update_fields=['wartosc_pozycji'])
+        self._przelicz_wartosc_zamowienia(instance.zamowienie)
+
+    def perform_destroy(self, instance):
+        zamowienie = instance.zamowienie
+        super().perform_destroy(instance)
+        self._przelicz_wartosc_zamowienia(zamowienie)
 
 
 class RealizacjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):

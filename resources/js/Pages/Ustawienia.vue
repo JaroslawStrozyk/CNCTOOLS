@@ -197,6 +197,7 @@
                                     <div class="config-row"><span class="config-label">Email nadawcy</span><span>{{ emailConfig.default_from_email }}</span></div>
                                     <div class="config-row"><span class="config-label">Adres testowy</span><span>{{ emailConfig.email_test_address }}</span></div>
                                     <div class="config-row"><span class="config-label">Adres DW</span><span>{{ emailConfig.email_dw || '-' }}</span></div>
+                                    <div class="config-row"><span class="config-label">Adres Szefa</span><span>{{ emailConfig.email_szef || '-' }}</span></div>
                                     <div class="config-row">
                                         <span class="config-label">Status SMTP</span>
                                         <Tag :severity="emailConfig.email_configured ? 'success' : 'danger'" :value="emailConfig.email_configured ? 'Skonfigurowane' : 'Brak konfiguracji'" :icon="emailConfig.email_configured ? 'pi pi-check' : 'pi pi-exclamation-triangle'" />

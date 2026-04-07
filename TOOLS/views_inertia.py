@@ -49,6 +49,9 @@ def get_common_urls():
         'kierownik': '/kierownik/',
         'logi': '/logi/',
         'logout': '/logout/',
+        'pomoc_zamowienia': '/pomoc/zamowienia/',
+        'pomoc_magazyn': '/pomoc/magazyn/',
+        'pomoc_zakupy': '/pomoc/zakupy/',
     }
 
 

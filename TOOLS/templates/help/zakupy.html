@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomoc — Zakupy</title>
+    <style>
+        :root {
+            --bg: #212529;
+            --bg-soft: #2d3238;
+            --bg-card: #343a40;
+            --text: #dee2e6;
+            --text-muted: #adb5bd;
+            --accent: #ffc107;
+            --primary: #0d6efd;
+            --success: #198754;
+            --warning: #ffc107;
+            --orange: #fb923c;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --secondary: #6c757d;
+            --border: #495057;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 28px 80px;
+        }
+        header.page-head {
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 16px;
+            margin-bottom: 28px;
+        }
+        h1 {
+            margin: 0 0 6px;
+            color: var(--accent);
+            font-size: 1.85rem;
+        }
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+        h2 {
+            color: var(--accent);
+            margin-top: 42px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            font-size: 1.4rem;
+        }
+        h3 {
+            color: #ffda6a;
+            margin-top: 26px;
+            font-size: 1.1rem;
+        }
+        h4 {
+            color: var(--text);
+            margin-top: 22px;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        p { margin: 8px 0; }
+        ul, ol { padding-left: 22px; }
+        li { margin-bottom: 6px; }
+        strong { color: #fff; }
+        code {
+            background: var(--bg-soft);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.88em;
+            color: #ffda6a;
+            border: 1px solid var(--border);
+        }
+        .toc {
+            background: var(--bg-soft);
+            border-left: 4px solid var(--accent);
+            padding: 14px 22px;
+            border-radius: 4px;
+            margin-bottom: 28px;
+        }
+        .toc strong { color: var(--accent); }
+        .toc ol { margin: 8px 0 0; }
+        .toc a {
+            color: var(--text);
+            text-decoration: none;
+        }
+        .toc a:hover { color: var(--accent); text-decoration: underline; }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin: 14px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .tip {
+            background: rgba(13, 202, 240, 0.08);
+            border-left: 4px solid var(--info);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .warn {
+            background: rgba(251, 146, 60, 0.1);
+            border-left: 4px solid var(--orange);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .danger-box {
+            background: rgba(220, 53, 69, 0.1);
+            border-left: 4px solid var(--danger);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Statusy / tagi */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .tag.draft { background: var(--secondary); }
+        .tag.verified { background: var(--info); color: #000; }
+        .tag.sent { background: var(--primary); }
+        .tag.partial { background: var(--orange); color: #431407; }
+        .tag.completed { background: var(--success); }
+
+        /* Kropki statusu (jak w tabeli "Lista narzędzi") */
+        .dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 6px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.15);
+        }
+        .dot.green { background: #69db7c; }
+        .dot.orange { background: #ffa94d; }
+        .dot.red { background: #ff6b6b; }
+        .dot.blue { background: #4dabf7; }
+
+        .status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+        }
+        .status-table th, .status-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .status-table th {
+            background: var(--bg-soft);
+            color: var(--accent);
+        }
+
+        /* Diagram */
+        .diagram {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px;
+            margin: 20px 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .diagram svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .diagram-caption {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
+        kbd {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-bottom-width: 2px;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 0.85em;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .btn-demo {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 2px;
+            white-space: nowrap;
+        }
+        .btn-demo.success { background: var(--success); }
+        .btn-demo.primary { background: var(--primary); }
+        .btn-demo.warn { background: var(--orange); color: #431407; }
+        .btn-demo.info { background: var(--info); color: #000; }
+        .btn-demo.danger { background: var(--danger); }
+        .btn-demo.secondary { background: var(--secondary); }
+
+        footer {
+            margin-top: 60px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="page-head">
+        <h1>Pomoc — Zakupy</h1>
+        <div class="subtitle">Praktyczny przewodnik po module Zakupów: limity zaopatrzenia, kontrola stanów, historia cen.</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#wstep">Po co jest moduł Zakupy?</a></li>
+            <li><a href="#przeplyw">Jak działa kontrola zaopatrzenia</a></li>
+            <li><a href="#belka">Górna belka — co tam jest</a></li>
+            <li><a href="#lista">Tabela „Lista narzędzi"</a></li>
+            <li><a href="#kropki">Kolorowe kropki przy nazwie — co oznaczają</a></li>
+            <li><a href="#filtrowanie">Wyszukiwanie i filtry</a></li>
+            <li><a href="#edycja">Dodawanie i edycja narzędzia</a></li>
+            <li><a href="#kontrola">Kontrola Auto vs Ręczna</a></li>
+            <li><a href="#zamowienia">Tab „Zamówienia" — historia zakupów</a></li>
+            <li><a href="#cena">Cena jedn. — jak ją czytać</a></li>
+            <li><a href="#faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="wstep">1. Po co jest moduł Zakupy?</h2>
+    <p>
+        Moduł <strong>Zakupy</strong> jest stanowiskiem pracy <strong>logistyka</strong> — osoby, która dba o to, żeby na hali nigdy nie zabrakło narzędzi i materiałów eksploatacyjnych.
+        Magazynier (Magazyn) wydaje sztuki, technolog (Zapotrzebowania) zgłasza co mu potrzeba — a logistyk patrzy na to z lotu ptaka, ustala
+        <em>limity zaopatrzenia</em> i dba, żeby system sam podpowiadał: „kup to, kup tamto".
+    </p>
+    <p>Z tego ekranu robisz dwie rzeczy:</p>
+    <ul>
+        <li><strong>Ustawiasz reguły zaopatrzenia</strong> dla każdego typu narzędzia — limit minimalny, limit maksymalny i sposób kontroli (auto albo ręczny).</li>
+        <li><strong>Sprawdzasz historię zakupów</strong> wybranego narzędzia — które zamówienia, do którego dostawcy, w jakim statusie, po jakiej cenie.</li>
+    </ul>
+    <div class="tip">
+        <strong>Najkrócej:</strong> Zakupy to nie jest miejsce, w którym składasz zamówienie. Tutaj <em>strojysz</em> reguły, na podstawie których Generator zamówień będzie później sam podpowiadać, co kupić.
+    </div>
+
+    <h2 id="przeplyw">2. Jak działa kontrola zaopatrzenia</h2>
+    <p>Cała mechanika zaopatrzenia opiera się na dwóch liczbach, które ustawiasz dla każdego typu narzędzia: <strong>limit minimalny</strong> i <strong>limit maksymalny</strong>.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Limity -->
+            <rect class="box" x="20" y="20" width="200" height="80"/>
+            <text class="label" x="120" y="48" text-anchor="middle">1. Logistyk ustawia</text>
+            <text class="label" x="120" y="65" text-anchor="middle">limity</text>
+            <text class="label-small" x="120" y="85" text-anchor="middle">min, max, auto/ręczna</text>
+
+            <path class="arrow" d="M220,60 L290,60" marker-end="url(#arrow)"/>
+
+            <!-- 2. Magazyn -->
+            <rect class="box-soft" x="290" y="20" width="200" height="80"/>
+            <text class="label" x="390" y="48" text-anchor="middle">2. Magazyn</text>
+            <text class="label-small" x="390" y="68" text-anchor="middle">stany się zmieniają</text>
+            <text class="label-small" x="390" y="85" text-anchor="middle">(wydania, zwroty)</text>
+
+            <path class="arrow" d="M490,60 L560,60" marker-end="url(#arrow)"/>
+
+            <!-- 3. System wykrywa brak -->
+            <rect class="box-soft" x="560" y="20" width="200" height="80"/>
+            <text class="label" x="660" y="48" text-anchor="middle">3. Stan &lt; minimum</text>
+            <text class="label-small" x="660" y="68" text-anchor="middle">kropka czerwona</text>
+            <text class="label-small" x="660" y="85" text-anchor="middle">w tabeli Zakupów</text>
+
+            <path class="arrow" d="M660,100 L660,140" marker-end="url(#arrow)"/>
+
+            <!-- 4. Generator -->
+            <rect class="box" x="560" y="145" width="200" height="80"/>
+            <text class="label" x="660" y="173" text-anchor="middle">4. Generator</text>
+            <text class="label-small" x="660" y="193" text-anchor="middle">propozycja zamówień</text>
+            <text class="label-small" x="660" y="210" text-anchor="middle">(brakuje do max)</text>
+
+            <path class="arrow" d="M560,185 L490,185" marker-end="url(#arrow)"/>
+
+            <!-- 5. Zamowienie -->
+            <rect class="box-soft" x="290" y="145" width="200" height="80"/>
+            <text class="label" x="390" y="173" text-anchor="middle">5. Zamówienie</text>
+            <text class="label-small" x="390" y="193" text-anchor="middle">akceptacja, wysyłka</text>
+            <text class="label-small" x="390" y="210" text-anchor="middle">do dostawcy</text>
+
+            <path class="arrow" d="M290,185 L220,185" marker-end="url(#arrow)"/>
+
+            <!-- 6. Realizacja -->
+            <rect class="box" x="20" y="145" width="200" height="80"/>
+            <text class="label" x="120" y="173" text-anchor="middle">6. Realizacja</text>
+            <text class="label-small" x="120" y="193" text-anchor="middle">towar przyjeżdża,</text>
+            <text class="label-small" x="120" y="210" text-anchor="middle">wraca na półkę</text>
+
+            <path class="arrow" d="M120,225 L120,265" marker-end="url(#arrow)"/>
+
+            <!-- 7. Ponownie magazyn -->
+            <rect class="box-soft" x="20" y="270" width="200" height="55"/>
+            <text class="label" x="120" y="297" text-anchor="middle">7. Magazyn</text>
+            <text class="label-small" x="120" y="315" text-anchor="middle">stan uzupełniony</text>
+
+            <!-- back arrow -->
+            <path class="arrow" d="M220,297 L390,297 L390,225" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+            <text class="label-small" x="240" y="290">cykl powtarza się</text>
+
+            <!-- side note about ceny -->
+            <rect class="box-soft" x="560" y="270" width="200" height="80"/>
+            <text class="label" x="660" y="297" text-anchor="middle">Tab Zamówienia</text>
+            <text class="label-small" x="660" y="315" text-anchor="middle">historia cen i dostawców</text>
+            <text class="label-small" x="660" y="332" text-anchor="middle">dla wybranego narzędzia</text>
+        </svg>
+        <div class="diagram-caption">Cykl kontroli zaopatrzenia. Kropka po lewej w tabeli zmienia kolor zależnie od stosunku stanu do limitów.</div>
+    </div>
+
+    <h2 id="belka">3. Górna belka</h2>
+    <ul>
+        <li><span class="btn-demo info">Pomoc</span> — to okno, które właśnie czytasz.</li>
+        <li><span class="btn-demo success">Działania</span> — szybki dostęp do innych modułów operacyjnych: <strong>Zapotrzebowania</strong> (zgłoszenia od technologów), <strong>Zamówienia</strong>, <strong>Realizacje</strong>.</li>
+        <li><span class="btn-demo primary">Miejsca</span> — przejście do <strong>Magazynu</strong>.</li>
+        <li><span class="btn-demo danger">Imię i nazwisko</span> — Twoje konto. Tu znajdziesz: <strong>Ustawienia</strong>, <strong>O programie</strong>, <strong>Wyjście</strong>.</li>
+    </ul>
+
+    <h2 id="lista">4. Tabela „Lista narzędzi"</h2>
+    <p>To główna tabela na ekranie — pokazuje wszystkie typy narzędzi w katalogu razem z ich aktualnym stanem zaopatrzenia.</p>
+
+    <h3>Co znaczą kolumny</h3>
+    <ul>
+        <li><strong>Kropka</strong> (skrajna lewa, bez nagłówka) — szybki wskaźnik stanu zaopatrzenia. Szczegóły w sekcji <a href="#kropki">Kolorowe kropki</a>.</li>
+        <li><strong>Kategoria / Podkategoria</strong> — położenie w drzewie katalogu narzędzi.</li>
+        <li><strong>Opis</strong> — pełna nazwa modelu.</li>
+        <li><strong>Nr katalogowy</strong> — numer producenta lub własny.</li>
+        <li><strong>Ilość całkowita</strong> — łączna liczba sztuk w magazynie (nowe + używane + w użyciu). Czerwone „0" oznacza, że nic nie ma.</li>
+        <li><strong>Limit minimalny</strong> — gdy stan spadnie do tej wartości lub niżej, system zacznie podpowiadać zakup.</li>
+        <li><strong>Limit maksymalny</strong> — do tego poziomu Generator chce uzupełniać. Ignorowany przy ręcznej kontroli.</li>
+        <li><strong>Kontrola</strong> — <span class="btn-demo secondary">Auto</span> albo <span class="btn-demo info">Ręczna</span>. Patrz <a href="#kontrola">sekcja o trybach kontroli</a>.</li>
+        <li><strong>Ręczne dodanie</strong> — ile sztuk Generator ma proponować przy ręcznej kontroli (gdy auto, pojawia się szare „—").</li>
+        <li><strong>Akcje</strong> — <span class="btn-demo success">+</span> dodaje nowy typ, <span class="btn-demo secondary">✎</span> edytuje istniejący.</li>
+    </ul>
+
+    <h3>Kliknięcie w wiersz</h3>
+    <p>
+        Po kliknięciu wiersza w dolnej części ekranu (zakładka <em>Zamówienia</em>) pokażą się wszystkie zamówienia, w których to narzędzie kiedykolwiek było —
+        razem z dostawcą, datą, statusem i ceną jednostkową dla tego narzędzia.
+    </p>
+
+    <h2 id="kropki">5. Kolorowe kropki przy nazwie — co oznaczają</h2>
+    <table class="status-table">
+        <tr><th>Kropka</th><th>Co oznacza</th><th>Reguła</th></tr>
+        <tr>
+            <td><span class="dot green"></span> Zielona</td>
+            <td>Stan jest zdrowy — wystarczająco dużo na półce.</td>
+            <td><code>ilość ≥ limit max</code></td>
+        </tr>
+        <tr>
+            <td><span class="dot orange"></span> Pomarańczowa</td>
+            <td>Stan jest średni — działa, ale warto trzymać oko.</td>
+            <td><code>limit min &lt; ilość &lt; limit max</code></td>
+        </tr>
+        <tr>
+            <td><span class="dot red"></span> Czerwona</td>
+            <td>Brak lub stan krytyczny — Generator zaproponuje zakup.</td>
+            <td><code>ilość ≤ limit min</code></td>
+        </tr>
+        <tr>
+            <td><span class="dot blue"></span> Niebieska</td>
+            <td>Narzędzie ma <strong>ręczną kontrolę</strong> — kolory min/max nie są stosowane, bo to Ty ręcznie decydujesz, ile dokupić.</td>
+            <td>tryb „Ręczna kontrola"</td>
+        </tr>
+    </table>
+    <div class="tip">
+        <strong>Rzut okiem na tabelę:</strong> Dużo czerwonych kropek = czas wygenerować zamówienia. Większość zielonych = magazyn jest w dobrym stanie.
+    </div>
+
+    <h2 id="filtrowanie">6. Wyszukiwanie i filtry</h2>
+    <ul>
+        <li><strong>Pole „Szukaj…"</strong> w panelu nagłówka — wpisz fragment kategorii, podkategorii, opisu lub numeru katalogowego. Lista zawęża się od razu (z krótkim opóźnieniem przy szybkim wpisywaniu).</li>
+        <li><strong>Filtr Kategoria</strong> — rozwijana lista wszystkich kategorii.</li>
+        <li><strong>Filtr Podkategoria</strong> — aktywuje się dopiero po wybraniu kategorii.</li>
+    </ul>
+    <p>Domyślnie tabela jest sortowana alfabetycznie po kategorii i podkategorii — łatwo znajdziesz interesującą Cię grupę.</p>
+
+    <h2 id="edycja">7. Dodawanie i edycja narzędzia</h2>
+    <p>Okno otwierasz przyciskiem <span class="btn-demo success">+</span> w nagłówku tabeli (lub ołówkiem przy wierszu, żeby coś poprawić).</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — z gotowej, pogrupowanej listy. Jeśli zostawisz puste, narzędzie trafi do „Główne".</li>
+        <li><strong>Opis / Specyfikacja</strong> — główna nazwa narzędzia (np. „Frez walcowy ⌀12 HSS").</li>
+        <li><strong>Numer katalogowy</strong> — opcjonalny.</li>
+        <li><strong>Limit minimalny</strong> — przy lub poniżej tej wartości włącza się czerwona kropka i Generator zacznie podpowiadać zakup.</li>
+        <li><strong>Limit maksymalny</strong> — do tej liczby Generator próbuje uzupełnić zaopatrzenie. <em>Wyszarzony, gdy włączysz ręczną kontrolę.</em></li>
+        <li><strong>Ręczna kontrola zamówień</strong> (checkbox) — przełącza tryb (zobacz sekcję niżej).</li>
+        <li><strong>Ręczne dodanie</strong> — pojawia się, gdy zaznaczysz ręczną kontrolę. To liczba sztuk, którą Generator zaproponuje, gdy uzna, że trzeba tego narzędzia dokupić.</li>
+        <li><strong>Obraz narzędzia</strong> — opcjonalne zdjęcie (do podglądu w innych modułach).</li>
+    </ul>
+    <p>Po zapisaniu zmiany od razu zobaczysz nowe wartości w tabeli, a kropka zmieni kolor zgodnie z nowymi limitami.</p>
+
+    <h2 id="kontrola">8. Kontrola Auto vs Ręczna</h2>
+    <p>To najważniejsza decyzja, jaką podejmujesz dla każdego narzędzia. Określa, jak system zachowa się, gdy stan zacznie spadać.</p>
+
+    <h3>Tryb Auto</h3>
+    <ul>
+        <li>Generator pracuje wzorem <code>do_zamówienia = limit_max − ilość_aktualna</code>.</li>
+        <li>Czerwona kropka = stan ≤ minimum, więc Generator zaproponuje zakup tej różnicy.</li>
+        <li>Idealne dla narzędzi <strong>regularnie zużywanych</strong>, gdzie znamy bezpieczne minimum i typową rezerwę.</li>
+    </ul>
+
+    <h3>Tryb Ręczny</h3>
+    <ul>
+        <li>Limit maksymalny przestaje mieć znaczenie (jest wyszarzony w oknie edycji).</li>
+        <li>Generator <strong>nie próbuje</strong> sam liczyć, ile dokupić.</li>
+        <li>Decyduje wartość <strong>Ręczne dodanie</strong> — stała liczba, którą Generator wstawi do propozycji.</li>
+        <li>Kropka w tabeli zmienia się na <span class="dot blue"></span> niebieską — żeby było jasne, że to narzędzie ma swój własny tryb.</li>
+        <li>Idealne dla narzędzi <strong>nietypowych</strong> (np. zamawianych okazjonalnie, drogich, długi czas dostawy) — gdzie chcesz mieć kontrolę nad każdą sztuką.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Przykład:</strong> Frez walcowy ⌀12 zużywany codziennie = Auto, min 5, max 15 (system sam dba). Specjalna głowica frezująca, kupowana raz na rok = Ręczna, ręczne dodanie = 1.
+    </div>
+
+    <h2 id="zamowienia">9. Tab „Zamówienia"</h2>
+    <p>
+        Zakładka „Zamówienia" w dolnej części ekranu pojawia się dopiero, gdy klikniesz wiersz w górnej tabeli. Pokazuje wszystkie zamówienia,
+        w których to konkretne narzędzie kiedykolwiek się znalazło. To Twoja historia zakupów dla tego narzędzia.
+    </p>
+
+    <h3>Kolumny</h3>
+    <ul>
+        <li><strong>Numer</strong> — numer zamówienia. Klikalny w module Zamówień, tutaj tylko informacyjny.</li>
+        <li><strong>Dostawca</strong> — od kogo zostało (lub miało być) kupione.</li>
+        <li><strong>Data utworzenia</strong> — kiedy logistyk wystawił zamówienie.</li>
+        <li><strong>Status</strong> — etap, na którym jest zamówienie. Te same kolory co w module Zamówień:
+            <ul>
+                <li><span class="tag draft">Szkic</span> — wersja robocza, jeszcze nie wysłane do akceptacji.</li>
+                <li><span class="tag verified">Zweryfikowane</span> — zaakceptowane przez szefa, gotowe do wysyłki do dostawcy.</li>
+                <li><span class="tag sent">Wysłane</span> — e-mail poszedł, czekamy na towar.</li>
+                <li><span class="tag partial">Częściowo zrealizowane</span> — część towaru już przyszła.</li>
+                <li><span class="tag completed">Zrealizowane</span> — całość przyjęta na magazyn.</li>
+            </ul>
+        </li>
+        <li><strong>Cena jedn.</strong> — cena jednostkowa <em>tej konkretnej pozycji</em> w tym konkretnym zamówieniu (więcej w sekcji <a href="#cena">Cena jedn.</a>).</li>
+    </ul>
+
+    <h2 id="cena">10. Cena jedn. — jak ją czytać</h2>
+    <p>
+        Kolumna „Cena jedn." pokazuje cenę zaznaczonego narzędzia w danym zamówieniu — w formacie polskiej waluty (np. <code>12,50 zł</code>).
+        Jeśli cena nie została jeszcze ustawiona, w tabeli pojawia się szare <code>0,00 zł</code>.
+    </p>
+    <p>Skąd się biorą ceny:</p>
+    <ol>
+        <li><strong>Generator zamówień</strong> — przy tworzeniu zamówienia pobiera ostatnio znaną cenę dla tego narzędzia (z poprzedniego zamówienia).</li>
+        <li><strong>Moduł Zamówień → Szczegóły</strong> — logistyk może ręcznie poprawić cenę w dowolnej chwili (nawet po realizacji), żeby historia była dokładna.</li>
+    </ol>
+    <p>
+        Dzięki temu, patrząc tutaj na listę zamówień jednego narzędzia, masz prosty <strong>wykres historii cen</strong>: widzisz, czy cena rośnie, czy spada,
+        u którego dostawcy było taniej, kiedy ostatnio kupowałeś.
+    </p>
+    <div class="tip">
+        <strong>Praktyczne zastosowanie:</strong> Kliknij narzędzie, popatrz na 2–3 ostatnie zamówienia i już wiesz, czy aktualna cena u dostawcy jest „normalna", czy ktoś próbuje Ci doliczyć.
+    </div>
+
+    <h2 id="faq">11. Najczęstsze pytania</h2>
+
+    <h4>Ustawiłem limit minimalny, ale nic się nie dzieje — Generator nie podpowiada.</h4>
+    <p>Sprawdź dwie rzeczy: 1) czy faktycznie ilość spadła do/poniżej minimum (zielona/pomarańczowa kropka oznacza, że jeszcze nie); 2) czy narzędzie nie ma trybu „Ręczna kontrola" (niebieska kropka) — w tym trybie minimum/maximum są ignorowane.</p>
+
+    <h4>Po co w ogóle limit maksymalny?</h4>
+    <p>Bez maksimum Generator nie wiedziałby, ile sztuk masz w sumie zamówić. Maksimum mówi: „chcę mieć tyle na półce w optymalnym stanie". Generator liczy <code>max − aktualna_ilość</code> i to jest propozycja zakupu.</p>
+
+    <h4>Włączyłem ręczną kontrolę i ustawiłem „Ręczne dodanie" na 5, ale nic się nie pojawia w Generatorze.</h4>
+    <p>Ręczna kontrola nie obserwuje stanu magazynu. Wystarczy, że uznasz, że trzeba tego narzędzia dokupić — Generator wstawi je z ilością 5 do najbliższej propozycji. Jeśli Generator nadal nie pokazuje pozycji, sprawdź, czy w ustawieniach konta logistyki masz uprawnienia do generowania zamówień.</p>
+
+    <h4>Cena jedn. wszędzie pokazuje szare „0,00 zł". Czy to błąd?</h4>
+    <p>Nie. To znaczy, że dla tego narzędzia nigdy nie wpisano ceny w żadnym zamówieniu. Otwórz moduł <em>Zamówienia</em>, wejdź w Szczegóły konkretnego zamówienia z tym narzędziem i wpisz właściwą cenę — od następnego razu Generator zacznie ją pamiętać i podpowiadać.</p>
+
+    <h4>Dwa różne dostawcy mają różne ceny tego samego narzędzia — co zapamiętuje Generator?</h4>
+    <p>Generator pobiera cenę z <strong>ostatniego</strong> zamówienia tego narzędzia, niezależnie od dostawcy. Jeśli świadomie chcesz „zafiksować" cenę z konkretnego dostawcy, najprościej: utwórz nowe zamówienie ręcznie u właściwego dostawcy z odpowiednią ceną — od tego momentu to ona staje się ostatnio znana.</p>
+
+    <h4>Mogę usunąć typ narzędzia z poziomu Zakupów?</h4>
+    <p>Nie — usuwanie typów narzędzi jest dostępne tylko w module <em>Magazyn</em>. Tutaj masz przyciski tylko do dodawania i edycji, bo Zakupy są skupione na strojeniu reguł, nie na zarządzaniu katalogiem.</p>
+
+    <h4>Filtruję tabelę po kategorii, ale to bardzo wolno działa.</h4>
+    <p>Jeśli katalog ma setki narzędzi, przy pierwszym wejściu filtrowanie może chwilę potrwać. Możesz przyspieszyć korzystając z pola „Szukaj…" — wpisz część nazwy, a tabela skróci się natychmiast (z lekkim opóźnieniem 250 ms, żeby system nie reagował na każdą literę z osobna).</p>
+
+    <footer>
+        Pomoc dla modułu Zakupów — CNC Tools.
+        <br>Zamknij to okno, gdy skończysz, i wróć do aplikacji.
+    </footer>
+
+</div>
+</body>
+</html>

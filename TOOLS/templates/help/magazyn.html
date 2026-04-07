@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomoc — Magazyn</title>
+    <style>
+        :root {
+            --bg: #212529;
+            --bg-soft: #2d3238;
+            --bg-card: #343a40;
+            --text: #dee2e6;
+            --text-muted: #adb5bd;
+            --accent: #ffc107;
+            --primary: #0d6efd;
+            --success: #198754;
+            --warning: #ffc107;
+            --orange: #fb923c;
+            --danger: #dc3545;
+            --info: #0dcaf0;
+            --secondary: #6c757d;
+            --border: #495057;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+        .wrap {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 28px 80px;
+        }
+        header.page-head {
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 16px;
+            margin-bottom: 28px;
+        }
+        h1 {
+            margin: 0 0 6px;
+            color: var(--accent);
+            font-size: 1.85rem;
+        }
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+        h2 {
+            color: var(--accent);
+            margin-top: 42px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            font-size: 1.4rem;
+        }
+        h3 {
+            color: #ffda6a;
+            margin-top: 26px;
+            font-size: 1.1rem;
+        }
+        h4 {
+            color: var(--text);
+            margin-top: 22px;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        p { margin: 8px 0; }
+        ul, ol { padding-left: 22px; }
+        li { margin-bottom: 6px; }
+        strong { color: #fff; }
+        code {
+            background: var(--bg-soft);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.88em;
+            color: #ffda6a;
+            border: 1px solid var(--border);
+        }
+        .toc {
+            background: var(--bg-soft);
+            border-left: 4px solid var(--accent);
+            padding: 14px 22px;
+            border-radius: 4px;
+            margin-bottom: 28px;
+        }
+        .toc strong { color: var(--accent); }
+        .toc ol { margin: 8px 0 0; }
+        .toc a {
+            color: var(--text);
+            text-decoration: none;
+        }
+        .toc a:hover { color: var(--accent); text-decoration: underline; }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin: 14px 0;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .tip {
+            background: rgba(13, 202, 240, 0.08);
+            border-left: 4px solid var(--info);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .warn {
+            background: rgba(251, 146, 60, 0.1);
+            border-left: 4px solid var(--orange);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .danger-box {
+            background: rgba(220, 53, 69, 0.1);
+            border-left: 4px solid var(--danger);
+            padding: 12px 16px;
+            margin: 14px 0;
+            border-radius: 0 4px 4px 0;
+        }
+
+        /* Statusy / tagi w postaci znaczków, te same kolory co w aplikacji */
+        .tag {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .tag.nowe { background: var(--success); }
+        .tag.uzywane { background: var(--info); color: #000; }
+        .tag.uszkodzone { background: var(--danger); }
+        .tag.zuzyte { background: var(--orange); color: #431407; }
+
+        .status-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+        }
+        .status-table th, .status-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            vertical-align: top;
+        }
+        .status-table th {
+            background: var(--bg-soft);
+            color: var(--accent);
+        }
+
+        /* Diagram */
+        .diagram {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 18px;
+            margin: 20px 0;
+            text-align: center;
+            overflow-x: auto;
+        }
+        .diagram svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .diagram-caption {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+
+        kbd {
+            background: var(--bg-soft);
+            border: 1px solid var(--border);
+            border-bottom-width: 2px;
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-size: 0.85em;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        .btn-demo {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #fff;
+            margin: 0 2px;
+            white-space: nowrap;
+        }
+        .btn-demo.success { background: var(--success); }
+        .btn-demo.primary { background: var(--primary); }
+        .btn-demo.warn { background: var(--orange); color: #431407; }
+        .btn-demo.info { background: var(--info); color: #000; }
+        .btn-demo.danger { background: var(--danger); }
+        .btn-demo.secondary { background: var(--secondary); }
+        .btn-demo.purple { background: #6f42c1; }
+
+        footer {
+            margin-top: 60px;
+            padding-top: 18px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <header class="page-head">
+        <h1>Pomoc — Magazyn</h1>
+        <div class="subtitle">Praktyczny przewodnik po module magazynu narzędzi: katalog typów, egzemplarze, wydawanie, zwroty i historia.</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#wstep">O co w tym chodzi?</a></li>
+            <li><a href="#przeplyw">Życie narzędzia — od wejścia do magazynu po zwrot</a></li>
+            <li><a href="#belka">Górna belka — co tam jest</a></li>
+            <li><a href="#typy">Tabela „Lista typów narzędzi”</a></li>
+            <li><a href="#typ-edycja">Dodawanie i edycja typu narzędzia</a></li>
+            <li><a href="#szczegoly">Zakładka „Szczegóły” — egzemplarze konkretnego narzędzia</a></li>
+            <li><a href="#egz-edycja">Dodawanie i edycja egzemplarza</a></li>
+            <li><a href="#wydawanie">Wydawanie narzędzia (Pobierz)</a></li>
+            <li><a href="#zwroty">Zwrot narzędzia</a></li>
+            <li><a href="#uszkodzenia">Karta uszkodzenia</a></li>
+            <li><a href="#stany">Stany techniczne egzemplarzy</a></li>
+            <li><a href="#komplety">Komplety i sztuki — jak to działa</a></li>
+            <li><a href="#historia">Zakładka „Historia użycia”</a></li>
+            <li><a href="#w-uzyciu">Zakładka „Narzędzia aktualnie w użyciu”</a></li>
+            <li><a href="#etykiety">Etykiety DXF</a></li>
+            <li><a href="#tryb-prod">Tryb produkcyjny</a></li>
+            <li><a href="#faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="wstep">1. O co w tym chodzi?</h2>
+    <p>
+        Moduł <strong>Magazyn</strong> jest sercem systemu CNC Tools. Tu prowadzisz katalog wszystkich narzędzi, dokładnie wiesz ile masz sztuk każdego typu, w jakim są stanie, kto je wziął, na jaką maszynę i kiedy.
+        Z magazynu wydajesz narzędzia pracownikom i przyjmujesz je z powrotem.
+    </p>
+    <p>Magazyn rozróżnia dwa pojęcia, których łatwo nie pomylić:</p>
+    <ul>
+        <li><strong>Typ narzędzia</strong> — opis modelu (np. „Frez walcowy ⌀12 HSS", numer katalogowy, kategoria). Typ istnieje w katalogu raz.</li>
+        <li><strong>Egzemplarz</strong> — fizyczna sztuka tego typu, leżąca na półce w konkretnej lokalizacji, ze swoim oznaczeniem (np. nr seryjny). Egzemplarzy danego typu możesz mieć wiele.</li>
+    </ul>
+    <div class="tip">
+        <strong>Najkrócej:</strong> Typ narzędzia opisuje „co to jest" (jeden raz). Egzemplarz odpowiada na pytanie „która konkretna sztuka, gdzie leży, w jakim jest stanie".
+    </div>
+
+    <h2 id="przeplyw">2. Życie narzędzia</h2>
+    <p>Tak wygląda typowy cykl życia narzędzia w magazynie — od momentu, gdy decydujesz, że chcesz je w katalogu, do chwili gdy fizycznie wraca z hali.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 480" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Typ narzędzia -->
+            <rect class="box" x="20" y="20" width="200" height="80"/>
+            <text class="label" x="120" y="48" text-anchor="middle">1. Typ narzędzia</text>
+            <text class="label-small" x="120" y="68" text-anchor="middle">+ kategoria, opis, nr kat.</text>
+            <text class="label-small" x="120" y="85" text-anchor="middle">opakowanie szt./kompl.</text>
+
+            <path class="arrow" d="M220,60 L290,60" marker-end="url(#arrow)"/>
+
+            <!-- 2. Egzemplarz -->
+            <rect class="box" x="290" y="20" width="200" height="80"/>
+            <text class="label" x="390" y="48" text-anchor="middle">2. Egzemplarz</text>
+            <text class="label-small" x="390" y="68" text-anchor="middle">lokalizacja, oznaczenie</text>
+            <text class="label-small" x="390" y="85" text-anchor="middle">stan: nowe / używane</text>
+
+            <path class="arrow" d="M490,60 L560,60" marker-end="url(#arrow)"/>
+
+            <!-- 3. Wydanie -->
+            <rect class="box-soft" x="560" y="20" width="200" height="80"/>
+            <text class="label" x="660" y="48" text-anchor="middle">3. Wydanie</text>
+            <text class="label-small" x="660" y="68" text-anchor="middle">→ pracownik + maszyna</text>
+            <text class="label-small" x="660" y="85" text-anchor="middle">+ nr zlecenia</text>
+
+            <path class="arrow" d="M660,100 L660,140" marker-end="url(#arrow)"/>
+
+            <!-- 4. W użyciu -->
+            <rect class="box-soft" x="560" y="145" width="200" height="80"/>
+            <text class="label" x="660" y="173" text-anchor="middle">4. W użyciu</text>
+            <text class="label-small" x="660" y="193" text-anchor="middle">na hali, na maszynie</text>
+            <text class="label-small" x="660" y="210" text-anchor="middle">widoczne w zakładce W użyciu</text>
+
+            <path class="arrow" d="M560,185 L490,185" marker-end="url(#arrow)"/>
+
+            <!-- 5. Zwrot -->
+            <rect class="box-soft" x="290" y="145" width="200" height="80"/>
+            <text class="label" x="390" y="173" text-anchor="middle">5. Zwrot</text>
+            <text class="label-small" x="390" y="193" text-anchor="middle">stan: nowe / używane /</text>
+            <text class="label-small" x="390" y="210" text-anchor="middle">uszkodzone / zużyte</text>
+
+            <path class="arrow" d="M290,185 L220,185" marker-end="url(#arrow)"/>
+
+            <!-- 6. Powrót na półkę / złom -->
+            <rect class="box" x="20" y="145" width="200" height="80"/>
+            <text class="label" x="120" y="173" text-anchor="middle">6a. Z powrotem na półkę</text>
+            <text class="label-small" x="120" y="195" text-anchor="middle">jako używane lub nowe,</text>
+            <text class="label-small" x="120" y="210" text-anchor="middle">gotowe do kolejnego wydania</text>
+
+            <!-- alt: uszkodzone -->
+            <rect class="box-soft" x="290" y="270" width="200" height="80"/>
+            <text class="label" x="390" y="298" text-anchor="middle">6b. Uszkodzone</text>
+            <text class="label-small" x="390" y="318" text-anchor="middle">wystawiana karta</text>
+            <text class="label-small" x="390" y="335" text-anchor="middle">uszkodzenia</text>
+
+            <path class="arrow" d="M390,225 L390,270" marker-end="url(#arrow)"/>
+
+            <!-- arrow back from used to egzemplarz pool -->
+            <path class="arrow" d="M120,225 L120,265 L250,265 L250,80" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+            <text class="label-small" x="155" y="260">cykl powtarza się</text>
+        </svg>
+        <div class="diagram-caption">Cykl pracy z egzemplarzem narzędzia. Linia przerywana = ten sam egzemplarz wraca do puli.</div>
+    </div>
+
+    <h2 id="belka">3. Górna belka</h2>
+    <p>W zwykłym trybie magazynu znajdziesz tu wszystko, czego potrzebujesz w jednym miejscu:</p>
+    <ul>
+        <li><span class="btn-demo info">Pomoc</span> — to okno, które właśnie czytasz.</li>
+        <li><span class="btn-demo purple">Logi</span> — widoczne tylko dla administratora. Pełny dziennik zdarzeń systemu.</li>
+        <li><span class="btn-demo success">Działania</span> — szybki dostęp do innych modułów operacyjnych: <strong>Zapotrzebowania</strong> (zgłoszenia od technologów), <strong>Zamówienia</strong>, <strong>Realizacje</strong>.</li>
+        <li><span class="btn-demo primary">Miejsca</span> — przejście do <strong>Zakupów</strong> i <strong>Zwrotów</strong>.</li>
+        <li><span class="btn-demo danger">Imię i nazwisko</span> — Twoje konto. Tu znajdziesz: <strong>Ustawienia</strong>, <strong>O programie</strong>, <strong>Wyjście</strong>.</li>
+    </ul>
+    <p>W trybie produkcyjnym belka jest uproszczona — patrz sekcja <a href="#tryb-prod">Tryb produkcyjny</a>.</p>
+
+    <h2 id="typy">4. Tabela „Lista typów narzędzi"</h2>
+    <p>To główna tabela na górze ekranu. Pokazuje wszystkie typy narzędzi w katalogu wraz z liczbą posiadanych sztuk w podziale na stany.</p>
+
+    <h3>Wyszukiwanie i filtry</h3>
+    <ul>
+        <li><strong>Pole „Szukaj…"</strong> — wpisz fragment kategorii, podkategorii, opisu lub numeru katalogowego. Lista sama się zawęża.</li>
+        <li><strong>Filtr Kategoria</strong> — rozwijana lista wszystkich kategorii. Po wybraniu konkretnej, drugi filtr aktywuje się i pokazuje jej podkategorie.</li>
+        <li><strong>Filtr Podkategoria</strong> — działa tylko po wybraniu kategorii. Wartością domyślną jest „Wszystkie podkategorie".</li>
+    </ul>
+
+    <h3>Co znaczą kolumny</h3>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — gdzie narzędzie należy w drzewie katalogu.</li>
+        <li><strong>Opis / Specyfikacja</strong> — pełna nazwa modelu (np. „Frez walcowy ⌀12 mm HSS").</li>
+        <li><strong>Nr katalogowy</strong> — numer producenta lub własny. Jeśli pusty, pojawia się szare „<code>-</code>".</li>
+        <li><strong>Nowe</strong> — sztuki w stanie nowym (jeszcze nie używane).</li>
+        <li><strong>Używane</strong> — sztuki, które już były w użyciu, ale wróciły w dobrym stanie i nadają się do ponownego wydania.</li>
+        <li><strong>W użyciu</strong> — sztuki aktualnie wydane na hali (na maszynie/u pracownika).</li>
+        <li><strong>Razem</strong> — suma wszystkich sztuk tego typu w magazynie.</li>
+    </ul>
+
+    <h3>Jak się porusza po tabeli</h3>
+    <ul>
+        <li><strong>Klikasz wiersz</strong> → na dole, w zakładce „Szczegóły" pokazują się egzemplarze tego narzędzia.</li>
+        <li><strong>Przyciski w kolumnie akcji</strong> (po prawej, nie widoczne w trybie produkcji):
+            <ul>
+                <li><span class="btn-demo success">+</span> w nagłówku → dodaje nowy typ narzędzia.</li>
+                <li><span class="btn-demo secondary">✎</span> przy wierszu → edytuje typ.</li>
+                <li><span class="btn-demo danger">🗑</span> przy wierszu → usuwa typ (jeśli nie ma egzemplarzy ani historii).</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2 id="typ-edycja">5. Dodawanie i edycja typu narzędzia</h2>
+    <p>Okno otwierasz przyciskiem <span class="btn-demo success">+</span> w nagłówku tabeli (lub ołówkiem przy wierszu, jeśli chcesz coś poprawić).</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — z gotowej listy. Jeśli zostawisz puste, narzędzie trafi do „Główne" (bez kategorii).</li>
+        <li><strong>Opis / Specyfikacja</strong> — wymagany. To główna nazwa, po której będziesz narzędzie rozpoznawać w tabelach.</li>
+        <li><strong>Numer katalogowy</strong> — opcjonalny.</li>
+        <li><strong>Domyślna lokalizacja</strong> — szafa/półka/kolumna, w której będą się znajdować nowe egzemplarze tego typu (możesz ją potem zmienić indywidualnie dla każdego egzemplarza).</li>
+        <li><strong>Obraz narzędzia</strong> — opcjonalny. Pokaże się w zakładce „Szczegóły" obok listy egzemplarzy. Pomaga rozpoznać narzędzie bez czytania opisu.</li>
+    </ul>
+
+    <h4>Sekcja „Zakup" — jednostka zakupu</h4>
+    <ul>
+        <li><strong>Sztuka</strong> — kupujesz pojedynczo (np. frez kupowany na sztukę).</li>
+        <li><strong>Komplet</strong> — kupujesz w zestawie (np. opakowanie 10 płytek skrawających). Po wybraniu tej opcji pojawia się pole „Ilość sztuk w komplecie" — wpisz, ile fizycznych sztuk jest w jednym opakowaniu.</li>
+    </ul>
+
+    <h4>Sekcja „Wydawanie" (tylko gdy jednostka = Komplet)</h4>
+    <ul>
+        <li><strong>Tylko całe komplety</strong> — pracownik dostaje całe opakowanie, nawet jeśli potrzebuje tylko jednej sztuki.</li>
+        <li><strong>Komplet lub pojedyncze sztuki</strong> — pracownik może dostać albo cały komplet, albo wskazaną liczbę luźnych sztuk z otwartego opakowania.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Przykład:</strong> Płytki skrawające kupujesz po 10 szt. w opakowaniu. Wydajesz operatorom pojedynczo. Wybierasz „Komplet" + „10 szt. w komplecie" + „Komplet lub pojedyncze sztuki".
+    </div>
+
+    <h2 id="szczegoly">6. Zakładka „Szczegóły"</h2>
+    <p>Zakładka „Szczegóły" pojawia się dopiero, gdy klikniesz wiersz w górnej tabeli. Pokazuje wszystkie egzemplarze (fizyczne sztuki) wybranego typu narzędzia.</p>
+
+    <h4>Kolumny</h4>
+    <ul>
+        <li><strong>Lokalizacja</strong> — adres półki w formacie <code>szafa/półka/kolumna</code>. Po najechaniu pojawia się informacja o powiązanej fakturze zakupu (jeśli jest).</li>
+        <li><strong>Data</strong> — data ostatniej modyfikacji egzemplarza.</li>
+        <li><strong>Oznaczenie</strong> — np. nr seryjny, nr partii, własna etykieta. Przy nowych wpisach (świeżo dodanych) obok pojawia się ikona <span class="btn-demo info">🏷</span> umożliwiająca pobranie etykiety DXF (zobacz <a href="#etykiety">Etykiety DXF</a>).</li>
+        <li><strong>Opakowanie</strong> — czy egzemplarz jest cały komplet, „X z kompletu" (luźne sztuki) czy pojedyncza sztuka.</li>
+        <li><strong>Stan</strong> — kolorowy znacznik: <span class="tag nowe">Nowe</span>, <span class="tag uzywane">Używane</span>, <span class="tag uszkodzone">Uszkodzone</span>, <span class="tag zuzyte">Uszkodzone do regeneracji</span>.</li>
+        <li><strong>Akcja Pobierz</strong> — niebieska strzałka w dół. Otwiera modal wydawania. Wyszarzona, jeśli ten egzemplarz jest już w użyciu.</li>
+        <li><strong>Akcje</strong> (poza trybem produkcji) — <span class="btn-demo success">+</span> dodaje nowy egzemplarz, <span class="btn-demo secondary">✎</span> edytuje, <span class="btn-demo danger">🗑</span> usuwa.</li>
+    </ul>
+
+    <h4>Obrazek narzędzia</h4>
+    <p>Po prawej stronie zakładki widzisz zdjęcie narzędzia (jeśli było załączone w typie) lub domyślną ikonkę zastępczą. Obrazek służy tylko do szybkiej identyfikacji wzrokiem.</p>
+
+    <h2 id="egz-edycja">7. Dodawanie i edycja egzemplarza</h2>
+    <p>Okno otwierasz <span class="btn-demo success">+</span> w nagłówku zakładki Szczegóły lub <span class="btn-demo secondary">✎</span> przy istniejącym egzemplarzu.</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Typ narzędzia</strong> — wypełniony automatycznie (zaznaczony powyżej w tabeli).</li>
+        <li><strong>Stan techniczny</strong> — Nowe / Używane / Uszkodzone.</li>
+        <li><strong>Lokalizacja</strong> — gdzie egzemplarz fizycznie leży. Pole z wyszukiwarką, więc szybko znajdziesz nawet w dużej liście półek.</li>
+        <li><strong>Oznaczenie</strong> — twoja własna etykieta tego egzemplarza (numer seryjny, partia, kod). Pomocne przy identyfikacji.</li>
+        <li><strong>Zamówienie</strong> (tylko przy dodawaniu) — możesz powiązać egzemplarz z konkretnym zamówieniem zakupu, dzięki czemu w „Lokalizacji" w przyszłości będzie widoczna faktura.</li>
+        <li><strong>Ilość</strong> — ile sztuk dodajesz. Dla narzędzi typu „komplet" jest to liczba kompletów (program automatycznie liczy łączną liczbę sztuk i pokazuje pod polem).</li>
+    </ul>
+
+    <h4>Pole „Typ dodawania" — tylko dla kompletów z wydawaniem sztuk</h4>
+    <p>
+        Jeśli masz narzędzie typu „komplet" z opcją „Komplet lub pojedyncze sztuki" (np. opakowanie 10 płytek), w trybie dodawania pojawi się dodatkowe pole:
+    </p>
+    <ul>
+        <li><strong>Pełny komplet</strong> — dodajesz N całych opakowań.</li>
+        <li><strong>Luźne sztuki</strong> — dodajesz X pojedynczych sztuk z otwartego opakowania (maksimum: <code>ilość_w_komplecie - 1</code>, bo cały komplet to nie są luźne sztuki).</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Po co tak?</strong> Czasem otwarte opakowanie zostaje wykorzystane w połowie i wracasz z 4 luźnymi sztukami. Wtedy dodajesz je jako „4 luźne sztuki", a nie jako kolejny komplet.
+    </div>
+
+    <h2 id="wydawanie">8. Wydawanie narzędzia (Pobierz)</h2>
+    <p>Wydawanie uruchamiasz niebieską strzałką w dół przy konkretnym egzemplarzu w zakładce „Szczegóły".</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Narzędzie</strong> — wypełnione automatycznie (z wybranego egzemplarza).</li>
+        <li><strong>Typ wydania</strong> (tylko dla kompletów z wydawaniem sztuk i ilością > 1) — pełny komplet czy pojedyncze sztuki.</li>
+        <li><strong>Ilość sztuk do wydania</strong> (tylko gdy wybrano „sztuki") — ile pojedynczych sztuk wydajesz. Reszta zostaje w magazynie.</li>
+        <li><strong>Maszyna</strong> — opcjonalna. Wybierz, jeśli wiadomo, na której maszynie narzędzie pracuje.</li>
+        <li><strong>Pracownik</strong> — wymagany. Lista z wyszukiwarką.</li>
+        <li><strong>Nr zlecenia</strong> — opcjonalny. Pomaga potem powiązać użycie narzędzia ze konkretną pracą.</li>
+    </ul>
+
+    <p>Po kliknięciu „Pobierz":</p>
+    <ol>
+        <li>Egzemplarz znika z puli „dostępnych" i pojawia się w zakładce „Narzędzia aktualnie w użyciu".</li>
+        <li>Liczniki w głównej tabeli automatycznie się przeliczają (zmniejsza się „Nowe"/„Używane", rośnie „W użyciu").</li>
+        <li>Wpis trafia do „Historii użycia".</li>
+    </ol>
+
+    <h2 id="zwroty">9. Zwrot narzędzia</h2>
+    <p>Zwroty robisz w zakładce <strong>„Narzędzia aktualnie w użyciu"</strong> — przy każdym wierszu jest zielony przycisk <span class="btn-demo success">↶ Zwróć</span>.</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Pracownik zwracający</strong> — wymagany. Może to być inna osoba niż ta, która pobierała.</li>
+        <li><strong>Ile zwracasz?</strong> (tylko gdy wydany komplet/wiele sztuk) — Cały komplet czy część sztuk.</li>
+        <li><strong>Ilość sztuk do zwrotu</strong> (tylko gdy „część") — wpisujesz, ile pracownik oddaje. Reszta nadal jest oznaczona jako w użyciu.</li>
+        <li><strong>Stan techniczny</strong>:
+            <ul>
+                <li><strong>Nowym</strong> — pracownik nawet go nie użył. Wraca do puli „Nowe".</li>
+                <li><strong>Dobrym</strong> — używany, ale sprawny. Wraca jako „Używane".</li>
+                <li><strong>Uszkodzonym</strong> — uszkodzenie wymagające opisania → po zwrocie otworzy się <a href="#uszkodzenia">Karta uszkodzenia</a>.</li>
+                <li><strong>Zużytym</strong> — narzędzie do regeneracji (np. ostrzenie). Wraca jako „Uszkodzone do regeneracji" (pomarańczowy znacznik).</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h2 id="uszkodzenia">10. Karta uszkodzenia</h2>
+    <p>Pojawia się automatycznie po zwrocie ze stanem „Uszkodzonym". Trzeba ją wypełnić i zatwierdzić — to formalna dokumentacja zdarzenia.</p>
+
+    <h4>Pola wypełniane przez Ciebie</h4>
+    <ul>
+        <li><strong>Kto zgłasza uszkodzenie?</strong> — wybierasz typ zgłaszającego (np. operator, technolog).</li>
+        <li><strong>Nazwisko zgłaszającego</strong> — dopisuje się automatycznie po wybraniu typu.</li>
+        <li><strong>Przyczyna uszkodzenia</strong> — krótki, konkretny opis (np. „uderzenie w uchwyt podczas pozycjonowania").</li>
+        <li><strong>Uwagi</strong> — dodatkowe informacje, jeśli są istotne.</li>
+        <li><strong>Stracony czas na maszynach</strong> — orientacyjny czas postoju, np. „45 min".</li>
+    </ul>
+    <p>
+        Pola „Nr karty", „Data wystawienia", „Maszyna", „Uszkodzone narzędzie" są wypełniane automatycznie.
+        Zatwierdzenie kartą zamyka cały proces zwrotu uszkodzonego narzędzia.
+    </p>
+
+    <h2 id="stany">11. Stany techniczne egzemplarzy</h2>
+    <table class="status-table">
+        <tr><th>Stan</th><th>Co oznacza</th><th>Co można zrobić</th></tr>
+        <tr>
+            <td><span class="tag nowe">Nowe</span></td>
+            <td>Egzemplarz świeży, nie był jeszcze użyty.</td>
+            <td>Wydać pracownikowi, edytować, usunąć.</td>
+        </tr>
+        <tr>
+            <td><span class="tag uzywane">Używane</span></td>
+            <td>Wracał już z hali w dobrym stanie, sprawny.</td>
+            <td>Wydać ponownie, edytować, usunąć.</td>
+        </tr>
+        <tr>
+            <td><span class="tag uszkodzone">Uszkodzone</span></td>
+            <td>Trafił do magazynu jako uszkodzony — istnieje karta uszkodzenia.</td>
+            <td>Tylko podgląd, edycja i usunięcie. Wydać się nie da.</td>
+        </tr>
+        <tr>
+            <td><span class="tag zuzyte">Uszkodzone do regeneracji</span></td>
+            <td>Zużyty (np. tępe ostrze) — czeka na regenerację (ostrzenie, naprawę).</td>
+            <td>Po regeneracji edycją zmieniasz stan na „Używane" i wraca do puli.</td>
+        </tr>
+    </table>
+
+    <h2 id="komplety">12. Komplety i sztuki</h2>
+    <p>Ten temat bywa mylący, więc krótko:</p>
+    <ul>
+        <li><strong>Sztuka</strong> — najprostszy wariant. Kupujesz po jednej, wydajesz po jednej.</li>
+        <li><strong>Komplet, tylko całe komplety</strong> — kupujesz opakowanie i wydajesz całe opakowanie. Sztuki są niepodzielne (np. zestaw kluczy).</li>
+        <li><strong>Komplet, komplet lub luźne sztuki</strong> — kupujesz opakowanie, ale możesz wydać dowolną liczbę pojedynczych sztuk. Reszta zostaje w magazynie jako „X z kompletu".</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Co widać w kolumnie „Opakowanie":</strong>
+        <br>• <em>Komplet (10 szt.)</em> — całe niemarnowane opakowanie.
+        <br>• <em>3 z kompletu</em> — 3 luźne sztuki z otwartego opakowania.
+        <br>• <em>Sztuka</em> — narzędzie kupowane na sztuki.
+    </div>
+
+    <h2 id="historia">13. Zakładka „Historia użycia"</h2>
+    <p>Widoczna tylko w zwykłym trybie magazynu. Pokazuje pełną historię wydań i zwrotów wybranego narzędzia (zaznaczonego w górnej tabeli).</p>
+    <p>Kolumny: Pracownik, Maszyna, Data pobrania, Data zwrotu, Kto zwrócił, Stan po zwrocie, Opakowanie, Oznaczenie, Nr zlecenia, Uwagi.</p>
+    <p>Świetne miejsce, żeby sprawdzić, kto ostatnio brał konkretne narzędzie i co z nim zrobił.</p>
+
+    <h2 id="w-uzyciu">14. Zakładka „Narzędzia aktualnie w użyciu"</h2>
+    <p>
+        Lista wszystkich narzędzi, które są <em>w tej chwili</em> wydane na halę. Liczba w kolorowym znaczku obok nazwy zakładki to łączna liczba aktywnych wydań.
+    </p>
+
+    <h4>Filtry</h4>
+    <ul>
+        <li><strong>Pole „Szukaj…"</strong> — przeszukuje narzędzie, pracownika, oznaczenie, nr zlecenia.</li>
+        <li><strong>Filtruj po maszynie</strong> — pokaże tylko narzędzia wydane na konkretną maszynę.</li>
+        <li><strong>Filtruj po narzędziu</strong> — lista zbudowana z faktycznie wydanych pozycji (jeśli nikt nie ma w użyciu „Frezów walcowych", taka opcja w ogóle się nie pojawi). Wybór filtruje po kategorii i podkategorii.</li>
+    </ul>
+    <p>Filtry działają razem — możesz np. zobaczyć tylko frezy wydane na maszynę ML-3.</p>
+
+    <h4>Akcje</h4>
+    <p>Przy każdym wierszu zielony przycisk <span class="btn-demo success">↶</span> uruchamia <a href="#zwroty">Zwrot narzędzia</a>.</p>
+
+    <h2 id="etykiety">15. Etykiety DXF</h2>
+    <p>
+        Po dodaniu nowego egzemplarza w zakładce „Szczegóły" obok jego oznaczenia pojawia się ikonka <span class="btn-demo info">🏷</span> z podpowiedzią „Pobierz etykietę DXF".
+        Klik pobiera plik <code>.dxf</code> z prostokątną etykietą o wymiarach <strong>19 mm × 2,5 mm</strong>, zawierającą oznaczenie egzemplarza wycentrowane w środku.
+    </p>
+    <div class="tip">
+        <strong>Po co to?</strong> Plik DXF można otworzyć w plotterze grawerującym i wytłoczyć fizyczną tabliczkę, którą przyklejasz do narzędzia/szuflady — szybka identyfikacja egzemplarza w magazynie.
+    </div>
+    <p>Ikonka pokazuje się tylko przy nowych wpisach (świeżo dodanych) — żeby ułatwić oznaczenie tych, których jeszcze nie etykietowałeś.</p>
+
+    <h2 id="tryb-prod">16. Tryb produkcyjny</h2>
+    <p>
+        Tryb produkcyjny to uproszczony widok magazynu przeznaczony dla stanowiska na hali. Po zalogowaniu pracownik widzi tylko to, co jest mu rzeczywiście potrzebne:
+    </p>
+    <ul>
+        <li>Tytuł zmienia się z „MAGAZYN" na „NARZĘDZIA".</li>
+        <li>Imię i nazwisko zalogowanego pracownika jest widoczne na środku belki — żeby było jasne, kto jest na stanowisku.</li>
+        <li>W belce są tylko dwa przyciski: <strong>Wróć do Produkcji</strong> i <strong>Wyjście</strong>.</li>
+        <li>Zakładka <em>Historia użycia</em> jest ukryta.</li>
+        <li>Przyciski edycji typów i egzemplarzy oraz dodawania ich nie są dostępne.</li>
+        <li>Można jedynie pobierać i zwracać egzemplarze.</li>
+    </ul>
+
+    <h2 id="faq">17. Najczęstsze pytania</h2>
+
+    <h4>Nie mogę usunąć typu narzędzia.</h4>
+    <p>Aplikacja nie pozwoli usunąć typu, który ma egzemplarze albo historię użycia (to celowe — żeby nie tracić śladu). Najpierw usuń wszystkie egzemplarze tego typu, potem typ.</p>
+
+    <h4>Pomyliłem się przy wydaniu — wpisałem złą maszynę.</h4>
+    <p>Najprościej: zwróć egzemplarz (z poprawnym pracownikiem i stanem „Nowym/Dobrym") i wydaj go ponownie z poprawnymi danymi. W historii zostaną dwa wpisy — to nie problem.</p>
+
+    <h4>Pracownik oddał narzędzie ostatecznie zużyte.</h4>
+    <p>Przy zwrocie wybierz stan „Zużytym". Egzemplarz wróci do magazynu z pomarańczowym znacznikiem „Uszkodzone do regeneracji" i czeka na ostrzenie/naprawę. Po regeneracji otwierasz egzemplarz ołówkiem i ręcznie zmieniasz stan na „Używane".</p>
+
+    <h4>Nie ma jeszcze typu narzędzia, które chcę dodać.</h4>
+    <p>Najpierw <span class="btn-demo success">+</span> w nagłówku górnej tabeli i dodaj typ (kategoria, opis, nr katalogowy, opakowanie). Dopiero potem zaznacz go i w zakładce „Szczegóły" dodaj fizyczne egzemplarze.</p>
+
+    <h4>Jak rozróżnić dwa identyczne egzemplarze tego samego typu?</h4>
+    <p>Wpisz różne <strong>oznaczenia</strong> (np. nr seryjny, data, własna etykieta). Oznaczenie pojawia się w tabeli, a dla nowych wpisów możesz pobrać etykietę DXF i przykleić fizycznie.</p>
+
+    <h4>Wydałem cały komplet, a pracownik wraca z kilkoma sztukami zużytymi i kilkoma dobrymi. Co wtedy?</h4>
+    <p>To rzadki przypadek — najprościej wykonać dwa zwroty: pierwszy dla części „Dobrym", drugi dla części „Zużytym". W każdym wybierasz „część" i wpisujesz odpowiednią ilość sztuk. Po obu zwrotach komplet jest rozliczony.</p>
+
+    <h4>Skąd się biorą wpisy w historii — kto je tworzy?</h4>
+    <p>Sam program. Każde wydanie i zwrot tworzy wpis automatycznie. Ty nigdy nie piszesz w historii ręcznie — pojawia się dzięki Twoim akcjom „Pobierz" i „Zwróć".</p>
+
+    <h4>Czy w trybie produkcyjnym mogę dodać nowy egzemplarz?</h4>
+    <p>Nie. Tryb produkcyjny celowo nie pozwala edytować katalogu — po to, żeby pracownik na hali nie zmienił czegoś przez przypadek. Dodawanie i edycja są dostępne tylko w pełnym trybie magazynu.</p>
+
+    <footer>
+        Pomoc dla modułu Magazyn — CNC Tools.
+        <br>Zamknij to okno, gdy skończysz, i wróć do aplikacji.
+    </footer>
+
+</div>
+</body>
+</html>
