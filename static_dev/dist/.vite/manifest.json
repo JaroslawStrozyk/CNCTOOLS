@@ -46,7 +46,7 @@
     "src": "images/tlo.png"
   },
   "js/app.js": {
-    "file": "main-C9fKMqOY.js",
+    "file": "main-BG3YL0vl.js",
     "name": "main",
     "src": "js/app.js",
     "isEntry": true,
@@ -54,7 +54,7 @@
       "../node_modules/chart.js/auto/auto.js"
     ],
     "css": [
-      "main-CqxJwz0i.css"
+      "main-BGkm87a9.css"
     ],
     "assets": [
       "cnc-logo-D-CPlYZH.png",
