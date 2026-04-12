@@ -236,6 +236,15 @@ def generator_zamowien_api(request):
     from django.db.models import Count, Q
     import math
 
+    # Czyszczenie zaszłości po BUG: pozycje 'auto' dla narzędzi z stan_maksymalny=0
+    # nie powinny istnieć. Wcześniejsza wersja kodu tworzyła je na podstawie magicznej
+    # wartości 10. Usuwamy je przy każdym odświeżeniu, żeby widok generatora się
+    # zsynchronizował z regułą "stan_max=0 → nie zamawiaj".
+    PozycjaGeneratora.objects.filter(
+        zrodlo='auto',
+        narzedzie_typ__stan_maksymalny=0
+    ).delete()
+
     # Najpierw pobierz wszystkie istniejące pozycje z generatora
     istniejace_pozycje = PozycjaGeneratora.objects.select_related(
         'narzedzie_typ',
@@ -314,9 +323,10 @@ def generator_zamowien_api(request):
             continue
 
         # --- Automatyczna kontrola (min/max) ---
-        stan_maksymalny = narzedzie.stan_maksymalny if narzedzie.stan_maksymalny else 10
+        # stan_maksymalny == 0 oznacza "nie zamawiaj automatycznie" — narzędzie pomijane
+        stan_maksymalny = narzedzie.stan_maksymalny
 
-        if narzedzie.stan_aktualny < stan_maksymalny:
+        if stan_maksymalny > 0 and narzedzie.stan_aktualny < stan_maksymalny:
             ilosc_brakujacych_sztuk = stan_maksymalny - narzedzie.stan_aktualny
 
             if narzedzie.opakowanie == 'kompl' and narzedzie.ilosc_w_opakowaniu > 0:
@@ -393,12 +403,13 @@ def generator_zamowien_api(request):
     if zapotrzebowania_ids:
         PozycjaZapotrzebowania.objects.filter(id__in=zapotrzebowania_ids).update(w_zamowieniu=True)
 
-    # Zmień status zapotrzebowań na 'ordered' jeśli WSZYSTKIE pozycje z narzedzie_typ są w_zamowieniu
+    # Zmień status zapotrzebowań na 'ordered' tylko gdy WSZYSTKIE pozycje (też bez narzędzia)
+    # są przetworzone. Pozycje bez narzędzia (w_zamowieniu=False) utrzymują status 'completed',
+    # żeby logistyk mógł je ręcznie przypisać/odrzucić w panelu "nieprzypisane".
     from .models import ZapotrzebowanieTechnologa
     for zap_id in zapotrzebowania_do_ordered:
         zap = ZapotrzebowanieTechnologa.objects.get(id=zap_id)
-        pozycje_z_narzedziem = zap.pozycje.filter(narzedzie_typ__isnull=False)
-        if pozycje_z_narzedziem.exists() and not pozycje_z_narzedziem.filter(w_zamowieniu=False).exists():
+        if not zap.pozycje.filter(w_zamowieniu=False).exists():
             zap.status = 'ordered'
             zap.save(update_fields=['status'])
 
@@ -462,9 +473,11 @@ def generator_zamowien_api(request):
     # Sortowanie
     wynik.sort(key=lambda x: (x['kategoria'].lower(), x['podkategoria'].lower(), x['opis'].lower()))
 
-    # Pozycje zapotrzebowań BEZ powiązanego narzędzia (do ręcznego przetworzenia)
+    # Pozycje zapotrzebowań BEZ powiązanego narzędzia (do ręcznego przetworzenia).
+    # Status 'ordered' też akceptujemy — zaszłości po starym bugu, w którym zapotrzebowanie
+    # było przedwcześnie oznaczane jako 'ordered' mimo nieprzypisanych pozycji.
     nieprzypisane = PozycjaZapotrzebowania.objects.filter(
-        zapotrzebowanie__status='completed',
+        zapotrzebowanie__status__in=['completed', 'ordered'],
         narzedzie_typ__isnull=True,
         w_zamowieniu=False
     ).select_related('zapotrzebowanie', 'zapotrzebowanie__technolog')
@@ -556,33 +569,123 @@ def generator_zamowien_update_api(request, narzedzie_id):
 def generator_zamowien_delete_api(request, narzedzie_id):
     """
     Endpoint do usuwania pozycji z generatora.
-    Usuwa pozycję z PozycjaGeneratora i ustawia stan_maksymalny = calkowita_ilosc
+    Usuwa pozycję z PozycjaGeneratora. Jeśli pozycja pochodziła z zapotrzebowania
+    technologa, resetuje flagę w_zamowieniu, aby mogła wrócić przy kolejnym odświeżeniu.
     """
-    from .models import NarzedzieMagazynowe, PozycjaGeneratora
+    from .models import NarzedzieMagazynowe, PozycjaGeneratora, PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
 
     try:
         narzedzie = NarzedzieMagazynowe.objects.get(id=narzedzie_id)
     except NarzedzieMagazynowe.DoesNotExist:
         return Response({'error': 'Narzędzie nie istnieje'}, status=404)
 
-    # Usuń pozycję generatora
-    PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie).delete()
+    # Znajdź pozycje generatora i cofnij flagę w_zamowieniu na powiązanych zapotrzebowaniach
+    pozycje_generatora = PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie)
+    zapotrzebowania_do_cofniecia = set()
 
-    # Ustaw stan_maksymalny równy aktualnemu stanowi
-    calkowita_ilosc = narzedzie.egzemplarze.exclude(
-        stan='uszkodzone'
-    ).exclude(
-        stan='uszkodzone_regeneracja'
-    ).count()
+    for pg in pozycje_generatora:
+        if pg.zrodlo == 'zapotrzebowanie' and pg.zrodlo_zapotrzebowanie_ids:
+            for zn in pg.zrodlo_zapotrzebowanie_ids.split(','):
+                zn = zn.strip()
+                if zn.startswith('ZAM-'):
+                    try:
+                        zap_id = int(zn.replace('ZAM-', ''))
+                        PozycjaZapotrzebowania.objects.filter(
+                            zapotrzebowanie_id=zap_id,
+                            narzedzie_typ=narzedzie
+                        ).update(w_zamowieniu=False)
+                        zapotrzebowania_do_cofniecia.add(zap_id)
+                    except ValueError:
+                        continue
 
-    narzedzie.stan_maksymalny = calkowita_ilosc
-    narzedzie.save()
+    pozycje_generatora.delete()
+
+    # Cofnij status 'ordered' → 'completed' dla zapotrzebowań, które znów mają pozycje oczekujące
+    for zap_id in zapotrzebowania_do_cofniecia:
+        zap = ZapotrzebowanieTechnologa.objects.filter(id=zap_id, status='ordered').first()
+        if zap and zap.pozycje.filter(narzedzie_typ__isnull=False, w_zamowieniu=False).exists():
+            zap.status = 'completed'
+            zap.save(update_fields=['status'])
 
     # Logowanie
     user_name = get_user_display_name(request.user)
     app_logger.warning(user_name, f"Usunięto z generatora zamówień: {narzedzie.opis}")
 
     return Response({'success': True, 'message': 'Usunięto z listy zamówień'})
+
+
+@api_view(['POST'])
+def generator_zamowien_przypisz_pozycje_api(request, pozycja_id):
+    """
+    Przypisuje istniejące narzędzie magazynowe do pozycji zapotrzebowania,
+    która została stworzona bez powiązania (np. technolog opisał nowe narzędzie).
+    Po przypisaniu pozycja pojawi się automatycznie w generatorze przy kolejnym GET.
+    """
+    from .models import NarzedzieMagazynowe, PozycjaZapotrzebowania
+
+    narzedzie_id = request.data.get('narzedzie_id')
+    if not narzedzie_id:
+        return Response({'error': 'Wymagane pole: narzedzie_id'}, status=400)
+
+    try:
+        pozycja = PozycjaZapotrzebowania.objects.select_related('zapotrzebowanie').get(id=pozycja_id)
+    except PozycjaZapotrzebowania.DoesNotExist:
+        return Response({'error': 'Pozycja zapotrzebowania nie istnieje'}, status=404)
+
+    try:
+        narzedzie = NarzedzieMagazynowe.objects.get(id=narzedzie_id)
+    except NarzedzieMagazynowe.DoesNotExist:
+        return Response({'error': 'Narzędzie nie istnieje'}, status=404)
+
+    pozycja.narzedzie_typ = narzedzie
+    pozycja.w_zamowieniu = False  # żeby generator podjął ją przy najbliższym odświeżeniu
+    pozycja.save(update_fields=['narzedzie_typ', 'w_zamowieniu'])
+
+    user_name = get_user_display_name(request.user)
+    app_logger.success(
+        user_name,
+        f"Przypisano narzędzie '{narzedzie.opis}' do pozycji zapotrzebowania "
+        f"ZAM-{pozycja.zapotrzebowanie.id:04d} (specyfikacja: {pozycja.specyfikacja or '-'})"
+    )
+
+    return Response({
+        'success': True,
+        'message': f'Przypisano narzędzie do pozycji. Odśwież generator aby zobaczyć zmianę.'
+    })
+
+
+@api_view(['DELETE'])
+def generator_zamowien_odrzuc_pozycje_api(request, pozycja_id):
+    """
+    Odrzuca nieprzypisaną pozycję zapotrzebowania — oznacza ją jako przetworzoną,
+    żeby znikła z panelu nieprzypisanych. Używane gdy logistyk nie chce realizować
+    pozycji (np. już mamy, niepotrzebna, błędna specyfikacja).
+    """
+    from .models import PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
+
+    try:
+        pozycja = PozycjaZapotrzebowania.objects.select_related('zapotrzebowanie').get(id=pozycja_id)
+    except PozycjaZapotrzebowania.DoesNotExist:
+        return Response({'error': 'Pozycja zapotrzebowania nie istnieje'}, status=404)
+
+    spec = pozycja.specyfikacja or '-'
+    zap_id = pozycja.zapotrzebowanie.id
+    pozycja.w_zamowieniu = True
+    pozycja.save(update_fields=['w_zamowieniu'])
+
+    # Jeśli wszystkie pozycje zapotrzebowania zostały przetworzone — oznacz jako 'ordered'
+    zap = pozycja.zapotrzebowanie
+    if not zap.pozycje.filter(w_zamowieniu=False).exists() and zap.status == 'completed':
+        zap.status = 'ordered'
+        zap.save(update_fields=['status'])
+
+    user_name = get_user_display_name(request.user)
+    app_logger.warning(
+        user_name,
+        f"Odrzucono pozycję zapotrzebowania ZAM-{zap_id:04d}: {spec}"
+    )
+
+    return Response({'success': True, 'message': 'Pozycja została odrzucona'})
 
 
 @api_view(['POST'])

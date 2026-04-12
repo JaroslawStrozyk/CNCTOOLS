@@ -100,6 +100,12 @@ urlpatterns = [
          name='generator-zamowien-update'),
     path('api/generator-zamowien/<int:narzedzie_id>/delete/', views.generator_zamowien_delete_api,
          name='generator-zamowien-delete'),
+    path('api/generator-zamowien/przypisz-pozycje/<int:pozycja_id>/',
+         views.generator_zamowien_przypisz_pozycje_api,
+         name='generator-zamowien-przypisz-pozycje'),
+    path('api/generator-zamowien/odrzuc-pozycje/<int:pozycja_id>/',
+         views.generator_zamowien_odrzuc_pozycje_api,
+         name='generator-zamowien-odrzuc-pozycje'),
 
     # Email endpoints
     path('api/email/test/', views.test_email_view, name='test_email'),

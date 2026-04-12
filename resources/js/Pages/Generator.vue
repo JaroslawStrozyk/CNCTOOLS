@@ -1,7 +1,7 @@
 <template>
     <div class="generator-app">
         <header class="app-header">
-            <h2 class="header-title">CNC MILLING: <span class="yellow">Generator Zamówień</span></h2>
+            <h2 class="header-title"><span class="yellow">Generator Zamówień</span></h2>
             <div class="header-buttons">
                 <button class="btn btn-success" @click="zamowienieGotowe" style="margin-right: 50px;">
                     <i class="pi pi-check"></i> Zamówienie gotowe
@@ -82,10 +82,66 @@
                             <template #body="{ data }"><strong>{{ data.ilosc }}</strong></template>
                         </Column>
                         <Column field="uwagi" header="Uwagi" />
+                        <Column header="" style="width: 120px; text-align: center;">
+                            <template #body="{ data }">
+                                <div style="display: flex; gap: 4px; justify-content: center;">
+                                    <Button icon="pi pi-link" class="p-button-success p-button-sm" @click="openAssignModal(data)" title="Przypisz narzędzie" />
+                                    <Button icon="pi pi-times" class="p-button-danger p-button-sm" @click="openRejectModal(data)" title="Odrzuć pozycję" />
+                                </div>
+                            </template>
+                        </Column>
                     </DataTable>
                 </div>
             </div>
         </main>
+
+        <!-- Modal Przypisywania narzędzia do pozycji zapotrzebowania -->
+        <Dialog v-model:visible="assignModalVisible" header="Przypisz narzędzie do pozycji zapotrzebowania" :modal="true" :style="{ width: '550px' }">
+            <div class="p-fluid" v-if="assignItem">
+                <div class="field">
+                    <label><strong>Zapotrzebowanie:</strong></label>
+                    <p class="text-muted">{{ assignItem.zapotrzebowanie_numer }} — {{ assignItem.technolog }}</p>
+                </div>
+                <div class="field">
+                    <label><strong>Specyfikacja technologa:</strong></label>
+                    <p class="text-muted">{{ assignItem.specyfikacja }}</p>
+                    <p v-if="assignItem.uwagi" class="text-muted small">Uwagi: {{ assignItem.uwagi }}</p>
+                </div>
+                <div class="field">
+                    <label>Kategoria</label>
+                    <Dropdown v-model="assignForm.kategoria_id" :options="kategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz kategorię" @change="onAssignKategoriaChange" />
+                </div>
+                <div class="field">
+                    <label>Podkategoria</label>
+                    <Dropdown v-model="assignForm.podkategoria_id" :options="assignPodkategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz podkategorię" :disabled="!assignForm.kategoria_id" @change="onAssignPodkategoriaChange" />
+                </div>
+                <div class="field">
+                    <label>Narzędzie</label>
+                    <Dropdown v-model="assignForm.narzedzie_id" :options="assignNarzedziaOptions" optionLabel="label" optionValue="value" placeholder="Wybierz narzędzie" :disabled="!assignForm.podkategoria_id" filter />
+                </div>
+                <Message v-if="assignError" severity="error" :closable="false">{{ assignError }}</Message>
+                <Message severity="info" :closable="false">
+                    Brak pasującego narzędzia? Najpierw dodaj je w <strong>Zakupach</strong>, potem wróć tutaj.
+                </Message>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" class="p-button-text" @click="assignModalVisible = false" />
+                <Button label="Przypisz" class="p-button-success" @click="confirmAssign" :loading="isAssigning" />
+            </template>
+        </Dialog>
+
+        <!-- Modal Odrzucania pozycji zapotrzebowania -->
+        <Dialog v-model:visible="rejectModalVisible" header="Odrzucić pozycję zapotrzebowania?" :modal="true" :style="{ width: '450px' }">
+            <div v-if="rejectItem">
+                <p>Czy na pewno odrzucić pozycję <strong>{{ rejectItem.specyfikacja }}</strong>?</p>
+                <p class="small text-muted">Od: {{ rejectItem.technolog }} ({{ rejectItem.zapotrzebowanie_numer }})</p>
+                <p class="small text-muted">Pozycja zniknie z listy bez trafiania do zamówienia.</p>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" class="p-button-text" @click="rejectModalVisible = false" />
+                <Button label="Odrzuć" class="p-button-danger" @click="confirmReject" :loading="isRejecting" />
+            </template>
+        </Dialog>
 
         <!-- Modal Edycji -->
         <Dialog v-model:visible="editModalVisible" header="Edytuj pozycję zamówienia" :modal="true" :style="{ width: '450px' }">
@@ -188,6 +244,17 @@ const addForm = ref({ dostawca_id: null, kategoria_id: null, podkategoria_id: nu
 const addError = ref('');
 const selectedNarzedzie = ref(null);
 
+// Stan przypisywania nieprzypisanych pozycji zapotrzebowania
+const assignModalVisible = ref(false);
+const assignItem = ref(null);
+const assignForm = ref({ kategoria_id: null, podkategoria_id: null, narzedzie_id: null });
+const assignError = ref('');
+const isAssigning = ref(false);
+
+const rejectModalVisible = ref(false);
+const rejectItem = ref(null);
+const isRejecting = ref(false);
+
 const dostawcyOptions = computed(() => [{ label: 'Brak', value: null }, ...dostawcy.value.map(d => ({ label: d.nazwa_firmy, value: d.id }))]);
 const kategorieOptions = computed(() => [{ label: 'Wybierz kategorię', value: null }, ...kategorie.value.map(k => ({ label: k.nazwa, value: k.id }))]);
 const filteredPodkategorieOptions = computed(() => {
@@ -198,6 +265,16 @@ const filteredPodkategorieOptions = computed(() => {
 const filteredNarzedziaOptions = computed(() => {
     if (!addForm.value.podkategoria_id) return [];
     return [{ label: 'Wybierz narzędzie', value: null }, ...narzedzia.value.filter(n => n.podkategoria?.id === addForm.value.podkategoria_id).map(n => ({ label: `${n.opis} ${n.numer_katalogowy ? '(' + n.numer_katalogowy + ')' : ''}`, value: n.id }))];
+});
+
+const assignPodkategorieOptions = computed(() => {
+    if (!assignForm.value.kategoria_id) return [];
+    const kat = kategorie.value.find(k => k.id === assignForm.value.kategoria_id);
+    return kat ? [{ label: 'Wybierz podkategorię', value: null }, ...kat.podkategorie.map(p => ({ label: p.nazwa, value: p.id }))] : [];
+});
+const assignNarzedziaOptions = computed(() => {
+    if (!assignForm.value.podkategoria_id) return [];
+    return [{ label: 'Wybierz narzędzie', value: null }, ...narzedzia.value.filter(n => n.podkategoria?.id === assignForm.value.podkategoria_id).map(n => ({ label: `${n.opis}${n.numer_katalogowy ? ' (' + n.numer_katalogowy + ')' : ''}`, value: n.id }))];
 });
 
 const onKategoriaChange = () => { addForm.value.podkategoria_id = null; addForm.value.narzedzie_id = null; selectedNarzedzie.value = null; };
@@ -226,9 +303,65 @@ const saveEdit = async () => {
 const confirmDelete = async () => {
     if (!deleteItem.value) return;
     isDeleting.value = true;
-    try { await axios.delete(`${API_URL}/generator-zamowien/${deleteItem.value.id}/delete/`); deleteModalVisible.value = false; await fetchToolsToOrder(); }
+    try {
+        await axios.delete(`${API_URL}/generator-zamowien/${deleteItem.value.id}/delete/`);
+        // Lokalne usunięcie - bez refetchu, żeby pozycja nie wróciła od razu z GET.
+        // Wróci dopiero przy ponownym wejściu w generator (nowa sesja).
+        toolsToOrder.value = toolsToOrder.value.filter(t => t.id !== deleteItem.value.id);
+        deleteModalVisible.value = false;
+    }
     catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isDeleting.value = false; deleteItem.value = null; }
+};
+
+const openAssignModal = (item) => {
+    assignItem.value = item;
+    assignForm.value = { kategoria_id: null, podkategoria_id: null, narzedzie_id: null };
+    assignError.value = '';
+    assignModalVisible.value = true;
+};
+const onAssignKategoriaChange = () => { assignForm.value.podkategoria_id = null; assignForm.value.narzedzie_id = null; };
+const onAssignPodkategoriaChange = () => { assignForm.value.narzedzie_id = null; };
+
+const confirmAssign = async () => {
+    if (!assignItem.value) return;
+    if (!assignForm.value.narzedzie_id) {
+        assignError.value = 'Wybierz narzędzie';
+        return;
+    }
+    isAssigning.value = true;
+    assignError.value = '';
+    try {
+        await axios.post(`${API_URL}/generator-zamowien/przypisz-pozycje/${assignItem.value.id}/`, {
+            narzedzie_id: assignForm.value.narzedzie_id
+        });
+        assignModalVisible.value = false;
+        await fetchToolsToOrder();
+    } catch (error) {
+        assignError.value = error.response?.data?.error || 'Błąd przypisywania';
+    } finally {
+        isAssigning.value = false;
+    }
+};
+
+const openRejectModal = (item) => {
+    rejectItem.value = item;
+    rejectModalVisible.value = true;
+};
+
+const confirmReject = async () => {
+    if (!rejectItem.value) return;
+    isRejecting.value = true;
+    try {
+        await axios.delete(`${API_URL}/generator-zamowien/odrzuc-pozycje/${rejectItem.value.id}/`);
+        rejectModalVisible.value = false;
+        rejectItem.value = null;
+        await fetchToolsToOrder();
+    } catch (error) {
+        alert('Błąd: ' + (error.response?.data?.error || error.message));
+    } finally {
+        isRejecting.value = false;
+    }
 };
 
 const zamowienieGotowe = () => { if (toolsToOrder.value.length === 0) { alert('Brak pozycji w generatorze!'); return; } confirmOrderModalVisible.value = true; };
@@ -278,9 +411,17 @@ onMounted(async () => {
     padding: 8px 16px;
     border-radius: 4px;
 }
-.app-main { flex: 1; padding: 16px 24px; min-height: 0; }
+.app-main {
+    flex: 1;
+    padding: 16px 24px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
 .generator-panel {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: linear-gradient(to bottom, #343a40, #212529);
@@ -303,7 +444,10 @@ onMounted(async () => {
 }
 
 .nieprzypisane-panel {
-    margin-top: 16px;
+    flex-shrink: 0;
+    max-height: 40%;
+    display: flex;
+    flex-direction: column;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);

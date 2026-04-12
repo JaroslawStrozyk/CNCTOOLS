@@ -69,7 +69,9 @@ from rest_framework import status
 from .models import (
     Kategoria, Podkategoria, Lokalizacja, Maszyna,
     Dostawca, Pracownik, NarzedzieMagazynowe, EgzemplarzNarzedzia,
-    HistoriaUzyciaNarzedzia, FakturaZakupu
+    HistoriaUzyciaNarzedzia, FakturaZakupu, PozycjaGeneratora,
+    Zamowienie, PozycjaZamowienia, ZapotrzebowanieTechnologa,
+    PozycjaZapotrzebowania
 )
 
 
@@ -543,6 +545,367 @@ class MagazynTestCase(APITestCase):
         response = self.client.get(f'/api/narzedzia/{self.narzedzie.id}/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data['ilosc_w_uzyciu'], 1)
+
+
+class GeneratorZamowienTestCase(APITestCase):
+    """
+    Testy pokrywające trzy bugi generatora zamówień zgłoszone przez grupę Logistyk:
+
+    BUG#1: Generator tworzył pozycje dla narzędzi ze stan_maksymalny=0 (magia 10).
+    BUG#2: Po usunięciu pozycji nie wracała przy kolejnym generowaniu.
+    BUG#3: Pozycje zapotrzebowań technologa bez powiązanego narzędzia nie dało się
+           przypisać/odrzucić z poziomu generatora.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('logistyk', 'log@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(
+            nazwa="VHM", kategoria=self.kategoria
+        )
+        self.lokalizacja = Lokalizacja.objects.create(szafa="A", kolumna="01", polka="1")
+        self.dostawca = Dostawca.objects.create(
+            kod_dostawcy="TEST01", nazwa_firmy="Test Sp. z o.o."
+        )
+
+        # Narzędzie A: limit_min=0, limit_max=0 (nic nie zamawiaj automatycznie)
+        self.narzedzie_bez_limitow = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez bez limitów",
+            numer_katalogowy="NO-LIMIT",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=0,
+            stan_maksymalny=0,
+            ostatni_dostawca=self.dostawca,
+        )
+
+        # Narzędzie B: limit_max=20, stan=0 → brakuje 20 szt.
+        self.narzedzie_z_limitami = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez z limitami",
+            numer_katalogowy="WITH-LIMIT",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=5,
+            stan_maksymalny=20,
+            ostatni_dostawca=self.dostawca,
+        )
+
+        # Dla narzędzia B nie tworzymy egzemplarzy → stan_aktualny=0, limit=20
+
+    # ========================================================================
+    # BUG #1: stan_maksymalny=0 → narzędzie pomijane
+    # ========================================================================
+
+    def test_bug1_narzedzie_bez_limitow_nie_trafia_do_generatora(self):
+        """
+        REGRESJA BUG#1: narzędzie z limit_max=0 NIE może trafić do generatora.
+        Wcześniejszy kod stosował magiczną wartość 10 i generował pozycję.
+        """
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        pozycje = response.data.get('pozycje', [])
+        ids_w_generatorze = [p['id'] for p in pozycje]
+        self.assertNotIn(
+            self.narzedzie_bez_limitow.id,
+            ids_w_generatorze,
+            "Narzędzie z stan_maksymalny=0 NIE powinno być w generatorze"
+        )
+
+    def test_bug1_narzedzie_z_limitem_trafia_z_prawidlowa_iloscia(self):
+        """
+        Kontrola: narzędzie z stan_maksymalny=20 i stan=0 ma trafić z iloscia=20.
+        """
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        pozycje = response.data.get('pozycje', [])
+        moja = next((p for p in pozycje if p['id'] == self.narzedzie_z_limitami.id), None)
+        self.assertIsNotNone(moja, "Narzędzie z limitem powinno być w generatorze")
+        self.assertEqual(moja['ilosc_do_zamowienia'], 20)
+
+    def test_bug1_narzedzie_z_stanem_rownym_limitowi_nie_trafia(self):
+        """
+        Narzędzie gdzie stan == limit_max nie powinno trafić (granicznie).
+        """
+        # Dodaj 20 egzemplarzy nowych
+        for _ in range(20):
+            EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=self.narzedzie_z_limitami,
+                stan='nowe',
+                lokalizacja=self.lokalizacja
+            )
+
+        response = self.client.get('/api/generator-zamowien/')
+        pozycje = response.data.get('pozycje', [])
+        ids = [p['id'] for p in pozycje]
+        self.assertNotIn(self.narzedzie_z_limitami.id, ids)
+
+    # ========================================================================
+    # BUG #2: DELETE nie może psuć stan_maksymalny ani blokować powrotu pozycji
+    # ========================================================================
+
+    def test_bug2_delete_nie_modyfikuje_stan_maksymalny(self):
+        """
+        REGRESJA BUG#2: DELETE pozycji z generatora nie może zmieniać stan_maksymalny
+        narzędzia (wcześniej ustawiało go = aktualnemu stanowi, co blokowało powrót).
+        """
+        # Najpierw utwórz pozycję w generatorze
+        self.client.get('/api/generator-zamowien/')
+        self.assertTrue(
+            PozycjaGeneratora.objects.filter(narzedzie_typ=self.narzedzie_z_limitami).exists()
+        )
+
+        stan_max_przed = self.narzedzie_z_limitami.stan_maksymalny
+
+        # Usuń z generatora
+        response = self.client.delete(
+            f'/api/generator-zamowien/{self.narzedzie_z_limitami.id}/delete/'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.narzedzie_z_limitami.refresh_from_db()
+        self.assertEqual(
+            self.narzedzie_z_limitami.stan_maksymalny,
+            stan_max_przed,
+            "DELETE nie powinien modyfikować stan_maksymalny"
+        )
+
+    def test_bug2_pozycja_wraca_po_usunieciu_i_ponownym_generowaniu(self):
+        """
+        REGRESJA BUG#2: po DELETE kolejny GET musi ponownie dodać pozycję
+        (bo stan_aktualny < stan_maksymalny nadal spełnia warunek).
+        """
+        # Pierwszy GET → pozycja powstaje
+        self.client.get('/api/generator-zamowien/')
+        self.assertTrue(
+            PozycjaGeneratora.objects.filter(narzedzie_typ=self.narzedzie_z_limitami).exists()
+        )
+
+        # DELETE
+        self.client.delete(
+            f'/api/generator-zamowien/{self.narzedzie_z_limitami.id}/delete/'
+        )
+        self.assertFalse(
+            PozycjaGeneratora.objects.filter(narzedzie_typ=self.narzedzie_z_limitami).exists()
+        )
+
+        # Drugi GET → pozycja wraca
+        response = self.client.get('/api/generator-zamowien/')
+        pozycje = response.data.get('pozycje', [])
+        ids = [p['id'] for p in pozycje]
+        self.assertIn(
+            self.narzedzie_z_limitami.id, ids,
+            "Po DELETE pozycja powinna wrócić przy kolejnym GET"
+        )
+
+    def test_bug2_delete_resetuje_w_zamowieniu_na_zapotrzebowaniu(self):
+        """
+        REGRESJA BUG#2: pozycja pochodząca z zapotrzebowania, po usunięciu z generatora,
+        musi mieć cofniętą flagę w_zamowieniu, żeby mogła wrócić.
+        """
+        # Stwórz narzędzie powiązane z zapotrzebowaniem
+        narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez zapotrzebowanie",
+            opakowanie="szt",
+            stan_minimalny=0,
+            stan_maksymalny=0,  # celowo 0, żeby TYLKO zapotrzebowanie go napędzało
+        )
+        zap = ZapotrzebowanieTechnologa.objects.create(
+            technolog=self.user, status='completed'
+        )
+        pozycja_zap = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=zap,
+            narzedzie_typ=narzedzie,
+            ilosc=5,
+        )
+
+        # GET generator → wykryje zapotrzebowanie i doda pozycję
+        self.client.get('/api/generator-zamowien/')
+        self.assertTrue(
+            PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie).exists()
+        )
+        pozycja_zap.refresh_from_db()
+        self.assertTrue(pozycja_zap.w_zamowieniu)
+
+        # DELETE z generatora
+        self.client.delete(f'/api/generator-zamowien/{narzedzie.id}/delete/')
+
+        pozycja_zap.refresh_from_db()
+        self.assertFalse(
+            pozycja_zap.w_zamowieniu,
+            "DELETE powinien cofnąć flagę w_zamowieniu na PozycjaZapotrzebowania"
+        )
+
+        # Drugi GET → pozycja wraca z zapotrzebowania
+        response = self.client.get('/api/generator-zamowien/')
+        ids = [p['id'] for p in response.data.get('pozycje', [])]
+        self.assertIn(narzedzie.id, ids)
+
+    # ========================================================================
+    # BUG #3: nieprzypisane pozycje zapotrzebowania — assign/reject
+    # ========================================================================
+
+    def _stworz_nieprzypisane_zapotrzebowanie(self, specyfikacja="prowadnice fi 25"):
+        """Helper: zapotrzebowanie completed z jedną pozycją bez narzedzie_typ."""
+        technolog = User.objects.create_user('zenia', 'z@test.pl', 'pwd')
+        zap = ZapotrzebowanieTechnologa.objects.create(
+            technolog=technolog, status='completed'
+        )
+        poz = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=zap,
+            narzedzie_typ=None,
+            specyfikacja=specyfikacja,
+            kategoria_nazwa="Prowadnice",
+            ilosc=2,
+        )
+        return zap, poz
+
+    def test_bug3_nieprzypisana_pozycja_pojawia_sie_w_panelu(self):
+        """Pozycja zapotrzebowania bez narzedzie_typ trafia do listy nieprzypisanych."""
+        _, poz = self._stworz_nieprzypisane_zapotrzebowanie()
+
+        response = self.client.get('/api/generator-zamowien/')
+        nieprzypisane = response.data.get('nieprzypisane', [])
+        ids = [n['id'] for n in nieprzypisane]
+        self.assertIn(poz.id, ids)
+
+    def test_bug3_przypisz_narzedzie_do_pozycji(self):
+        """
+        REGRESJA BUG#3: endpoint przypisz-pozycje ustawia narzedzie_typ i odblokowuje
+        pozycję (w_zamowieniu=False), żeby generator ją podjął.
+        """
+        _, poz = self._stworz_nieprzypisane_zapotrzebowanie()
+
+        # Utwórz narzędzie do przypisania (z limit_max, aby także potem wystąpiło w generatorze)
+        narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Prowadnica fi 25",
+            opakowanie="szt",
+            stan_minimalny=0,
+            stan_maksymalny=0,
+        )
+
+        response = self.client.post(
+            f'/api/generator-zamowien/przypisz-pozycje/{poz.id}/',
+            {'narzedzie_id': narzedzie.id},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        poz.refresh_from_db()
+        self.assertEqual(poz.narzedzie_typ_id, narzedzie.id)
+        self.assertFalse(poz.w_zamowieniu)
+
+        # Po odświeżeniu generatora pozycja powinna się tam pojawić
+        response = self.client.get('/api/generator-zamowien/')
+        ids = [p['id'] for p in response.data.get('pozycje', [])]
+        self.assertIn(narzedzie.id, ids)
+
+        # I już nie powinna być na liście nieprzypisanych
+        nieprzypisane_ids = [n['id'] for n in response.data.get('nieprzypisane', [])]
+        self.assertNotIn(poz.id, nieprzypisane_ids)
+
+    def test_bug3_przypisz_wymaga_narzedzie_id(self):
+        """Bez pola narzedzie_id endpoint ma zwrócić 400."""
+        _, poz = self._stworz_nieprzypisane_zapotrzebowanie()
+        response = self.client.post(
+            f'/api/generator-zamowien/przypisz-pozycje/{poz.id}/',
+            {},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bug3_odrzuc_nieprzypisana_pozycja(self):
+        """
+        REGRESJA BUG#3: DELETE /odrzuc-pozycje/ znika pozycję z listy nieprzypisanych
+        (flaga w_zamowieniu=True), nie tworząc pozycji w generatorze.
+        """
+        _, poz = self._stworz_nieprzypisane_zapotrzebowanie()
+
+        response = self.client.delete(
+            f'/api/generator-zamowien/odrzuc-pozycje/{poz.id}/'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        poz.refresh_from_db()
+        self.assertTrue(poz.w_zamowieniu)
+
+        response = self.client.get('/api/generator-zamowien/')
+        nieprzypisane_ids = [n['id'] for n in response.data.get('nieprzypisane', [])]
+        self.assertNotIn(poz.id, nieprzypisane_ids)
+
+    def test_bug3_mix_pozycji_z_narzedziem_i_bez_narzedzia(self):
+        """
+        REGRESJA: zapotrzebowanie zawierające JEDNOCZEŚNIE pozycję z narzędziem
+        i pozycję bez narzędzia (np. INNE/INNE spec='TEST'). Po uruchomieniu
+        generatora:
+          - pozycja z narzędziem idzie do głównej listy,
+          - pozycja BEZ narzędzia idzie do panelu nieprzypisane,
+          - zapotrzebowanie pozostaje w statusie 'completed' (NIE 'ordered'),
+            dopóki logistyk nie rozwiąże pozycji nieprzypisanej.
+        """
+        technolog = User.objects.create_user('zenia2', 'z2@test.pl', 'pwd')
+        zap = ZapotrzebowanieTechnologa.objects.create(
+            technolog=technolog, status='completed'
+        )
+        # Pozycja z narzędziem (już istniejącym w bazie)
+        narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez zwykły",
+            opakowanie="szt",
+            stan_minimalny=0,
+            stan_maksymalny=0,
+        )
+        PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=zap,
+            narzedzie_typ=narzedzie,
+            ilosc=3,
+        )
+        # Pozycja bez narzędzia (nowe narzędzie opisane przez technologa)
+        pozycja_bez = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=zap,
+            narzedzie_typ=None,
+            specyfikacja="TEST",
+            kategoria_nazwa="INNE",
+            podkategoria_nazwa="INNE",
+            ilosc=1,
+        )
+
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Pozycja z narzędziem — w głównej liście
+        ids_glowne = [p['id'] for p in response.data.get('pozycje', [])]
+        self.assertIn(narzedzie.id, ids_glowne)
+
+        # Pozycja bez narzędzia — w panelu nieprzypisane
+        ids_nieprzypisane = [n['id'] for n in response.data.get('nieprzypisane', [])]
+        self.assertIn(pozycja_bez.id, ids_nieprzypisane)
+
+        # Zapotrzebowanie MUSI pozostać 'completed' — pozycja bez narzędzia nadal czeka
+        zap.refresh_from_db()
+        self.assertEqual(
+            zap.status, 'completed',
+            "Status zapotrzebowania nie może być 'ordered' dopóki pozycje bez narzędzia czekają"
+        )
+
+    def test_bug3_odrzucenie_wszystkich_pozycji_zmienia_status_na_ordered(self):
+        """
+        Jeśli WSZYSTKIE pozycje zapotrzebowania zostały przetworzone (w_zamowieniu=True),
+        status zapotrzebowania ma zmienić się na 'ordered'.
+        """
+        zap, poz = self._stworz_nieprzypisane_zapotrzebowanie()
+
+        self.client.delete(f'/api/generator-zamowien/odrzuc-pozycje/{poz.id}/')
+
+        zap.refresh_from_db()
+        self.assertEqual(zap.status, 'ordered')
 
 
 class MagazynViewTestCase(TestCase):
