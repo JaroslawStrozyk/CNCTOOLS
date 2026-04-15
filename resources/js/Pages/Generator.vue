@@ -24,9 +24,8 @@
                         <p>Ładowanie danych...</p>
                     </div>
                     <div v-else-if="toolsToOrder.length === 0" class="empty-state success">
-                        <i class="pi pi-check-circle" style="font-size: 3rem; color: #198754;"></i>
-                        <h5>Wszystkie narzędzia są na odpowiednim poziomie</h5>
-                        <p>Nie ma nic do zamówienia.</p>
+                        <i class="pi pi-check-circle" style="font-size: 3rem; color: #198754; margin-right: 0.5rem;"></i>
+                        <h5>Wszystkie narzędzia są na odpowiednim poziomie - Nie ma nic do zamówienia.</h5>
                     </div>
                     <DataTable v-else :value="toolsToOrder" :scrollable="true" scrollHeight="flex">
                         <Column field="dostawca_nazwa" header="Dostawca">
@@ -182,13 +181,90 @@
         </Dialog>
 
         <!-- Modal Dodawania -->
-        <Dialog v-model:visible="addModalVisible" header="Dodaj ręcznie pozycję do zamówienia" :modal="true" :style="{ width: '500px' }">
+        <Dialog v-model:visible="addModalVisible" header="Dodaj ręcznie pozycję do zamówienia" :modal="true" :style="{ width: '560px' }">
             <div class="p-fluid">
+                <div class="field">
+                    <label>Tryb dodawania</label>
+                    <div style="display: flex; gap: 8px;">
+                        <Button
+                            label="Z listy narzędzi"
+                            icon="pi pi-list"
+                            :severity="addForm.tryb === 'istniejace' ? 'secondary' : 'info'"
+                            :outlined="addForm.tryb !== 'istniejace'"
+                            style="flex: 1;"
+                            @click="addForm.tryb = 'istniejace'"
+                        />
+                        <Button
+                            label="Nowe narzędzie"
+                            icon="pi pi-plus-circle"
+                            :severity="addForm.tryb === 'nowe' ? 'secondary' : 'info'"
+                            :outlined="addForm.tryb !== 'nowe'"
+                            style="flex: 1;"
+                            @click="addForm.tryb = 'nowe'"
+                        />
+                    </div>
+                </div>
+
                 <div class="field"><label>Dostawca</label><Dropdown v-model="addForm.dostawca_id" :options="dostawcyOptions" optionLabel="label" optionValue="value" placeholder="Brak" /></div>
-                <div class="field"><label>Kategoria</label><Dropdown v-model="addForm.kategoria_id" :options="kategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz kategorię" @change="onKategoriaChange" /></div>
-                <div class="field"><label>Podkategoria</label><Dropdown v-model="addForm.podkategoria_id" :options="filteredPodkategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz podkategorię" :disabled="!addForm.kategoria_id" @change="onPodkategoriaChange" /></div>
-                <div class="field"><label>Narzędzie</label><Dropdown v-model="addForm.narzedzie_id" :options="filteredNarzedziaOptions" optionLabel="label" optionValue="value" placeholder="Wybierz narzędzie" :disabled="!addForm.podkategoria_id" @change="onNarzedzieChange" /></div>
-                <div class="field"><label>Ilość <span v-if="selectedNarzedzie" class="text-muted">({{ selectedNarzedzie.opakowanie === 'kompl' ? 'komplety' : 'sztuki' }})</span></label><InputNumber v-model="addForm.ilosc_do_zamowienia" :min="1" /></div>
+
+                <!-- Kategoria: istniejąca lub nowa -->
+                <div class="field">
+                    <label>Kategoria</label>
+                    <div class="p-inputgroup" v-if="!addForm.nowa_kategoria">
+                        <Dropdown v-model="addForm.kategoria_id" :options="kategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz kategorię" @change="onKategoriaChange" />
+                        <Button v-if="addForm.tryb === 'nowe'" icon="pi pi-plus" class="p-button-secondary" title="Nowa kategoria" @click="toggleNowaKategoria(true)" />
+                    </div>
+                    <div class="p-inputgroup" v-else>
+                        <InputText v-model="addForm.nowa_kategoria_nazwa" placeholder="Nazwa nowej kategorii" />
+                        <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaKategoria(false)" />
+                    </div>
+                </div>
+
+                <!-- Podkategoria: istniejąca lub nowa -->
+                <div class="field">
+                    <label>Podkategoria</label>
+                    <div class="p-inputgroup" v-if="!addForm.nowa_podkategoria">
+                        <Dropdown v-model="addForm.podkategoria_id" :options="filteredPodkategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz podkategorię" :disabled="!addForm.kategoria_id && !addForm.nowa_kategoria" @change="onPodkategoriaChange" />
+                        <Button v-if="addForm.tryb === 'nowe'" icon="pi pi-plus" class="p-button-secondary" title="Nowa podkategoria" @click="toggleNowaPodkategoria(true)" />
+                    </div>
+                    <div class="p-inputgroup" v-else>
+                        <InputText v-model="addForm.nowa_podkategoria_nazwa" placeholder="Nazwa nowej podkategorii" />
+                        <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaPodkategoria(false)" :disabled="addForm.nowa_kategoria" />
+                    </div>
+                </div>
+
+                <!-- TRYB: istniejące — wybór narzędzia z listy -->
+                <template v-if="addForm.tryb === 'istniejace'">
+                    <div class="field"><label>Narzędzie</label><Dropdown v-model="addForm.narzedzie_id" :options="filteredNarzedziaOptions" optionLabel="label" optionValue="value" placeholder="Wybierz narzędzie" :disabled="!addForm.podkategoria_id" @change="onNarzedzieChange" /></div>
+                </template>
+
+                <!-- TRYB: nowe — pola nowego narzędzia -->
+                <template v-else>
+                    <div class="field"><label>Opis / nazwa narzędzia *</label><InputText v-model="addForm.opis" placeholder="Np. Frez węglikowy 10mm" /></div>
+                    <div class="field"><label>Numer katalogowy</label><InputText v-model="addForm.numer_katalogowy" placeholder="Opcjonalnie" /></div>
+                    <div class="p-grid" style="display: flex; gap: 12px;">
+                        <div class="field" style="flex: 1;">
+                            <label>Jednostka zakupu</label>
+                            <Dropdown v-model="addForm.opakowanie" :options="opakowanieOptions" optionLabel="label" optionValue="value" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                            <label>Ilość w opakowaniu</label>
+                            <InputNumber v-model="addForm.ilosc_w_opakowaniu" :min="1" />
+                        </div>
+                    </div>
+                    <div class="p-grid" style="display: flex; gap: 12px;">
+                        <div class="field" style="flex: 1;">
+                            <label>Stan minimalny</label>
+                            <InputNumber v-model="addForm.stan_minimalny" :min="0" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                            <label>Stan maksymalny</label>
+                            <InputNumber v-model="addForm.stan_maksymalny" :min="0" />
+                        </div>
+                    </div>
+                </template>
+
+                <div class="field"><label>Ilość do zamówienia <span v-if="selectedNarzedzie" class="text-muted">({{ selectedNarzedzie.opakowanie === 'kompl' ? 'komplety' : 'sztuki' }})</span></label><InputNumber v-model="addForm.ilosc_do_zamowienia" :min="1" /></div>
                 <div class="field"><label>Cena jednostkowa (zł)</label><InputNumber v-model="addForm.cena_jednostkowa" :minFractionDigits="2" :maxFractionDigits="2" :min="0" /></div>
                 <Message v-if="addError" severity="error" :closable="false">{{ addError }}</Message>
             </div>
@@ -201,7 +277,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 
 import Button from 'primevue/button';
@@ -240,9 +316,33 @@ const confirmOrderModalVisible = ref(false);
 const editForm = ref({ id: null, element: '', dostawca_id: null, numer_katalogowy: '', ilosc_do_zamowienia: 1, cena_jednostkowa: 0 });
 const editError = ref('');
 const deleteItem = ref(null);
-const addForm = ref({ dostawca_id: null, kategoria_id: null, podkategoria_id: null, narzedzie_id: null, ilosc_do_zamowienia: 1, cena_jednostkowa: 0 });
+const defaultAddForm = () => ({
+    tryb: 'istniejace',
+    dostawca_id: null,
+    kategoria_id: null,
+    podkategoria_id: null,
+    narzedzie_id: null,
+    nowa_kategoria: false,
+    nowa_kategoria_nazwa: '',
+    nowa_podkategoria: false,
+    nowa_podkategoria_nazwa: '',
+    opis: '',
+    numer_katalogowy: '',
+    opakowanie: 'szt',
+    ilosc_w_opakowaniu: 1,
+    stan_minimalny: 0,
+    stan_maksymalny: 0,
+    ilosc_do_zamowienia: 1,
+    cena_jednostkowa: 0,
+});
+const addForm = ref(defaultAddForm());
 const addError = ref('');
 const selectedNarzedzie = ref(null);
+
+const opakowanieOptions = [
+    { label: 'Sztuka', value: 'szt' },
+    { label: 'Komplet', value: 'kompl' },
+];
 
 // Stan przypisywania nieprzypisanych pozycji zapotrzebowania
 const assignModalVisible = ref(false);
@@ -281,14 +381,92 @@ const onKategoriaChange = () => { addForm.value.podkategoria_id = null; addForm.
 const onPodkategoriaChange = () => { addForm.value.narzedzie_id = null; selectedNarzedzie.value = null; };
 const onNarzedzieChange = () => { selectedNarzedzie.value = addForm.value.narzedzie_id ? narzedzia.value.find(n => n.id === addForm.value.narzedzie_id) : null; };
 
-const openAddModal = () => { addForm.value = { dostawca_id: null, kategoria_id: null, podkategoria_id: null, narzedzie_id: null, ilosc_do_zamowienia: 1, cena_jednostkowa: 0 }; selectedNarzedzie.value = null; addError.value = ''; addModalVisible.value = true; };
+const toggleNowaKategoria = (val) => {
+    addForm.value.nowa_kategoria = val;
+    addForm.value.kategoria_id = null;
+    addForm.value.nowa_kategoria_nazwa = val ? addForm.value.nowa_kategoria_nazwa : '';
+    // Nowa kategoria wymusza też nową podkategorię
+    if (val) {
+        addForm.value.nowa_podkategoria = true;
+        addForm.value.podkategoria_id = null;
+    }
+};
+const toggleNowaPodkategoria = (val) => {
+    addForm.value.nowa_podkategoria = val;
+    addForm.value.podkategoria_id = null;
+    addForm.value.nowa_podkategoria_nazwa = val ? addForm.value.nowa_podkategoria_nazwa : '';
+};
+
+const openAddModal = () => { addForm.value = defaultAddForm(); selectedNarzedzie.value = null; addError.value = ''; addModalVisible.value = true; };
+
+// Przełączenie trybu — resetuj flagi "nowa kategoria/podkategoria" żeby UI był spójny
+watch(() => addForm.value.tryb, (nowy) => {
+    if (nowy === 'istniejace') {
+        addForm.value.nowa_kategoria = false;
+        addForm.value.nowa_kategoria_nazwa = '';
+        addForm.value.nowa_podkategoria = false;
+        addForm.value.nowa_podkategoria_nazwa = '';
+    }
+});
 const openEditModal = (tool) => { editForm.value = { id: tool.id, element: tool.element, dostawca_id: tool.dostawca_id, numer_katalogowy: tool.numer_katalogowy || '', ilosc_do_zamowienia: tool.ilosc_do_zamowienia, cena_jednostkowa: tool.cena_jednostkowa || 0 }; editError.value = ''; editModalVisible.value = true; };
 const openDeleteModal = (tool) => { deleteItem.value = tool; deleteModalVisible.value = true; };
 
 const saveAdd = async () => {
     isAdding.value = true; addError.value = '';
-    if (!addForm.value.narzedzie_id) { addError.value = 'Wybierz narzędzie'; isAdding.value = false; return; }
-    try { await axios.post(`${API_URL}/generator-zamowien/add/`, addForm.value); addModalVisible.value = false; await fetchToolsToOrder(); }
+    const f = addForm.value;
+
+    // Walidacja po stronie klienta
+    if (f.tryb === 'istniejace') {
+        if (!f.narzedzie_id) { addError.value = 'Wybierz narzędzie'; isAdding.value = false; return; }
+    } else {
+        if (!f.opis || !f.opis.trim()) { addError.value = 'Podaj opis narzędzia'; isAdding.value = false; return; }
+        if (!f.kategoria_id && !(f.nowa_kategoria && f.nowa_kategoria_nazwa.trim())) {
+            addError.value = 'Wybierz kategorię lub podaj nazwę nowej'; isAdding.value = false; return;
+        }
+        if (!f.podkategoria_id && !(f.nowa_podkategoria && f.nowa_podkategoria_nazwa.trim())) {
+            addError.value = 'Wybierz podkategorię lub podaj nazwę nowej'; isAdding.value = false; return;
+        }
+        if (f.opakowanie === 'kompl' && (f.ilosc_w_opakowaniu || 0) <= 1) {
+            addError.value = 'Dla opakowania "Komplet" ilość w opakowaniu musi być > 1'; isAdding.value = false; return;
+        }
+    }
+
+    // Zbuduj payload
+    const payload = {
+        tryb: f.tryb,
+        dostawca_id: f.dostawca_id,
+        ilosc_do_zamowienia: f.ilosc_do_zamowienia,
+        cena_jednostkowa: f.cena_jednostkowa,
+    };
+    if (f.tryb === 'istniejace') {
+        payload.narzedzie_id = f.narzedzie_id;
+    } else {
+        payload.kategoria_id = f.nowa_kategoria ? null : f.kategoria_id;
+        payload.nowa_kategoria_nazwa = f.nowa_kategoria ? f.nowa_kategoria_nazwa.trim() : '';
+        payload.podkategoria_id = f.nowa_podkategoria ? null : f.podkategoria_id;
+        payload.nowa_podkategoria_nazwa = f.nowa_podkategoria ? f.nowa_podkategoria_nazwa.trim() : '';
+        payload.opis = f.opis.trim();
+        payload.numer_katalogowy = f.numer_katalogowy;
+        payload.opakowanie = f.opakowanie;
+        payload.ilosc_w_opakowaniu = f.ilosc_w_opakowaniu;
+        payload.stan_minimalny = f.stan_minimalny;
+        payload.stan_maksymalny = f.stan_maksymalny;
+    }
+
+    try {
+        await axios.post(`${API_URL}/generator-zamowien/add/`, payload);
+        addModalVisible.value = false;
+        // Odśwież słowniki, bo mogły powstać nowe kategoria/podkategoria/narzędzie
+        if (f.tryb === 'nowe') {
+            const [katRes, narRes] = await Promise.all([
+                axios.get(`${API_URL}/kategorie/`),
+                axios.get(`${API_URL}/narzedzia/`),
+            ]);
+            kategorie.value = katRes.data;
+            narzedzia.value = narRes.data.results || narRes.data;
+        }
+        await fetchToolsToOrder();
+    }
     catch (error) { addError.value = error.response?.data?.error || 'Błąd dodawania'; }
     finally { isAdding.value = false; }
 };
@@ -466,4 +644,5 @@ onMounted(async () => {
     align-items: center;
     justify-content: center;
 }
+
 </style>

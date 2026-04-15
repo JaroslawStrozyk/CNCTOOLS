@@ -245,6 +245,29 @@ def generator_zamowien_api(request):
         narzedzie_typ__stan_maksymalny=0
     ).delete()
 
+    # Czyszczenie zombie: auto-pozycje dla narzędzi, których stan już osiągnął lub
+    # przekroczył limit maksymalny (np. po dostawie). Bez tego pozycja utworzona
+    # kiedyś przy niskim stanie "trzyma się" generatora mimo że zamówienie jest
+    # nieuzasadnione (stan aktualny >= stan_maksymalny).
+    # Stan liczymy jak Zakupy: SUMA ilosc_w_komplecie (nie liczba egzemplarzy) —
+    # inaczej egzemplarz o ilosc_w_komplecie=10 byłby liczony jako 1 szt.
+    from django.db.models import F, Sum
+    from django.db.models.functions import Coalesce
+    zombie_ids = list(
+        PozycjaGeneratora.objects.filter(
+            zrodlo='auto',
+            narzedzie_typ__stan_maksymalny__gt=0,
+        ).annotate(
+            _stan=Coalesce(Sum(
+                'narzedzie_typ__egzemplarze__ilosc_w_komplecie',
+                filter=~Q(narzedzie_typ__egzemplarze__stan='uszkodzone')
+                     & ~Q(narzedzie_typ__egzemplarze__stan='uszkodzone_regeneracja'),
+            ), 0)
+        ).filter(_stan__gte=F('narzedzie_typ__stan_maksymalny')).values_list('id', flat=True)
+    )
+    if zombie_ids:
+        PozycjaGeneratora.objects.filter(id__in=zombie_ids).delete()
+
     # Najpierw pobierz wszystkie istniejące pozycje z generatora
     istniejace_pozycje = PozycjaGeneratora.objects.select_related(
         'narzedzie_typ',
@@ -282,16 +305,19 @@ def generator_zamowien_api(request):
         if poz:
             ostatnie_ceny[row['narzedzie_typ_id']] = poz.cena_jednostkowa
 
-    # Pobierz narzędzia z annotowanym stanem (egzemplarze bez uszkodzonych)
+    # Pobierz narzędzia z annotowanym stanem (egzemplarze bez uszkodzonych).
+    # UWAGA: liczymy SUMĘ ilosc_w_komplecie, NIE liczby egzemplarzy — zgodnie z Zakupy.
+    # Egzemplarz może reprezentować komplet (np. ilosc_w_komplecie=10), więc
+    # Count() zaniżyłby faktyczny stan fizycznych sztuk i prowadził do nieuzasadnionych zamówień.
     narzedzia = NarzedzieMagazynowe.objects.select_related(
         'podkategoria',
         'podkategoria__kategoria',
         'ostatni_dostawca'
     ).annotate(
-        stan_aktualny=Count(
-            'egzemplarze',
+        stan_aktualny=Coalesce(Sum(
+            'egzemplarze__ilosc_w_komplecie',
             filter=~Q(egzemplarze__stan='uszkodzone') & ~Q(egzemplarze__stan='uszkodzone_regeneracja')
-        )
+        ), 0)
     ).all()
 
     # Lista narzędzi z ręczną kontrolą, których pole reczne_dodanie zostało odczytane — do wyzerowania
@@ -692,15 +718,109 @@ def generator_zamowien_odrzuc_pozycje_api(request, pozycja_id):
 def generator_zamowien_add_api(request):
     """
     Endpoint do ręcznego dodawania pozycji do generatora zamówień.
-    """
-    from .models import NarzedzieMagazynowe, Dostawca, PozycjaGeneratora
-    import math
 
-    narzedzie_id = request.data.get('narzedzie_id')
+    Obsługuje dwa tryby:
+    - tryb='istniejace' (domyślny): wybór narzędzia z istniejącej listy
+    - tryb='nowe': tworzy nowe narzędzie (z opcjonalnym utworzeniem kategorii/podkategorii)
+    """
+    from .models import NarzedzieMagazynowe, Dostawca, PozycjaGeneratora, Kategoria, Podkategoria
+
+    tryb = request.data.get('tryb', 'istniejace')
     dostawca_id = request.data.get('dostawca_id')
     ilosc = request.data.get('ilosc_do_zamowienia', 1)
     cena = request.data.get('cena_jednostkowa', 0)
 
+    # Pobierz dostawcę jeśli podano (wspólne dla obu trybów)
+    dostawca = None
+    if dostawca_id:
+        try:
+            dostawca = Dostawca.objects.get(id=dostawca_id)
+        except Dostawca.DoesNotExist:
+            return Response({'error': 'Dostawca nie istnieje'}, status=400)
+
+    if tryb == 'nowe':
+        # === TRYB: Nowe narzędzie ===
+        kategoria_id = request.data.get('kategoria_id')
+        nowa_kategoria_nazwa = (request.data.get('nowa_kategoria_nazwa') or '').strip()
+        podkategoria_id = request.data.get('podkategoria_id')
+        nowa_podkategoria_nazwa = (request.data.get('nowa_podkategoria_nazwa') or '').strip()
+        opis = (request.data.get('opis') or '').strip()
+        numer_katalogowy = (request.data.get('numer_katalogowy') or '').strip() or None
+        opakowanie = request.data.get('opakowanie', 'szt')
+        ilosc_w_opakowaniu = int(request.data.get('ilosc_w_opakowaniu') or 1)
+        stan_minimalny = int(request.data.get('stan_minimalny') or 0)
+        stan_maksymalny = int(request.data.get('stan_maksymalny') or 0)
+
+        if not opis:
+            return Response({'error': 'Podaj opis narzędzia'}, status=400)
+        if not kategoria_id and not nowa_kategoria_nazwa:
+            return Response({'error': 'Wybierz kategorię lub podaj nazwę nowej'}, status=400)
+        if not podkategoria_id and not nowa_podkategoria_nazwa:
+            return Response({'error': 'Wybierz podkategorię lub podaj nazwę nowej'}, status=400)
+        if opakowanie == 'kompl' and ilosc_w_opakowaniu <= 1:
+            return Response({'error': 'Dla opakowania "Komplet" ilość w opakowaniu musi być większa niż 1'}, status=400)
+
+        try:
+            with transaction.atomic():
+                # Kategoria
+                if kategoria_id:
+                    try:
+                        kategoria = Kategoria.objects.get(id=kategoria_id)
+                    except Kategoria.DoesNotExist:
+                        return Response({'error': 'Kategoria nie istnieje'}, status=400)
+                else:
+                    kategoria, _ = Kategoria.objects.get_or_create(nazwa=nowa_kategoria_nazwa)
+
+                # Podkategoria
+                if podkategoria_id:
+                    try:
+                        podkategoria = Podkategoria.objects.get(id=podkategoria_id, kategoria=kategoria)
+                    except Podkategoria.DoesNotExist:
+                        return Response({'error': 'Podkategoria nie istnieje w wybranej kategorii'}, status=400)
+                else:
+                    podkategoria, _ = Podkategoria.objects.get_or_create(
+                        nazwa=nowa_podkategoria_nazwa,
+                        kategoria=kategoria
+                    )
+
+                # Narzędzie
+                narzedzie = NarzedzieMagazynowe.objects.create(
+                    podkategoria=podkategoria,
+                    opis=opis,
+                    numer_katalogowy=numer_katalogowy,
+                    opakowanie=opakowanie,
+                    ilosc_w_opakowaniu=ilosc_w_opakowaniu,
+                    stan_minimalny=stan_minimalny,
+                    stan_maksymalny=stan_maksymalny,
+                    ostatni_dostawca=dostawca,
+                )
+
+                PozycjaGeneratora.objects.create(
+                    narzedzie_typ=narzedzie,
+                    dostawca=dostawca,
+                    ilosc_do_zamowienia=ilosc,
+                    cena_jednostkowa=cena,
+                    zrodlo='reczne',
+                    utworzone_narzedzie=True,
+                )
+        except Exception as e:
+            return Response({'error': f'Błąd tworzenia narzędzia: {e}'}, status=400)
+
+        user_name = get_user_display_name(request.user)
+        app_logger.success(
+            user_name,
+            f"Utworzono nowe narzędzie i dodano do generatora: {kategoria.nazwa}/{podkategoria.nazwa} - {opis} ({ilosc} szt.)"
+        )
+        return Response({
+            'success': True,
+            'message': 'Utworzono narzędzie i dodano do generatora',
+            'narzedzie_id': narzedzie.id,
+            'kategoria_id': kategoria.id,
+            'podkategoria_id': podkategoria.id,
+        })
+
+    # === TRYB: Istniejące narzędzie (domyślny) ===
+    narzedzie_id = request.data.get('narzedzie_id')
     if not narzedzie_id:
         return Response({'error': 'Wybierz narzędzie'}, status=400)
 
@@ -709,19 +829,9 @@ def generator_zamowien_add_api(request):
     except NarzedzieMagazynowe.DoesNotExist:
         return Response({'error': 'Narzędzie nie istnieje'}, status=404)
 
-    # Sprawdź czy pozycja już istnieje
     if PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie).exists():
         return Response({'error': 'To narzędzie jest już w generatorze'}, status=400)
 
-    # Pobierz dostawcę jeśli podano
-    dostawca = None
-    if dostawca_id:
-        try:
-            dostawca = Dostawca.objects.get(id=dostawca_id)
-        except Dostawca.DoesNotExist:
-            return Response({'error': 'Dostawca nie istnieje'}, status=400)
-
-    # Utwórz pozycję generatora
     PozycjaGeneratora.objects.create(
         narzedzie_typ=narzedzie,
         dostawca=dostawca,
@@ -730,7 +840,6 @@ def generator_zamowien_add_api(request):
         zrodlo='reczne'
     )
 
-    # Logowanie
     user_name = get_user_display_name(request.user)
     app_logger.success(user_name, f"Dodano do generatora zamówień: {narzedzie.opis} ({ilosc} szt.)")
 
@@ -811,6 +920,21 @@ def generator_zamowien_gotowe_api(request):
                     status='draft'
                 )
 
+                # Zbierz ID zapotrzebowań źródłowych z pozycji generatora
+                # (format w polu: "ZAM-0001,ZAM-0002" — gdzie liczba = id ZapotrzebowanieTechnologa)
+                zapotrzebowania_ids_set = set()
+                for pozycja_gen in pozycje:
+                    if pozycja_gen.zrodlo == 'zapotrzebowanie' and pozycja_gen.zrodlo_zapotrzebowanie_ids:
+                        for token in pozycja_gen.zrodlo_zapotrzebowanie_ids.split(','):
+                            token = token.strip()
+                            if token.startswith('ZAM-'):
+                                try:
+                                    zapotrzebowania_ids_set.add(int(token[4:]))
+                                except ValueError:
+                                    continue
+                if zapotrzebowania_ids_set:
+                    zamowienie.zrodlowe_zapotrzebowania.add(*zapotrzebowania_ids_set)
+
                 # Utwórz pozycje zamówienia
                 for pozycja_gen in pozycje:
                     narzedzie = pozycja_gen.narzedzie_typ
@@ -838,6 +962,12 @@ def generator_zamowien_gotowe_api(request):
                         cena_jednostkowa=cena,
                         wartosc_pozycji=wartosc_poz
                     )
+
+                    # Jeśli narzędzie zostało utworzone ręcznie razem z tą pozycją —
+                    # podepnij FK do zamówienia, by kasowanie zamówienia mogło je usunąć.
+                    if pozycja_gen.utworzone_narzedzie and narzedzie.utworzone_wraz_z_zamowieniem_id is None:
+                        narzedzie.utworzone_wraz_z_zamowieniem = zamowienie
+                        narzedzie.save(update_fields=['utworzone_wraz_z_zamowieniem'])
 
                 utworzone_zamowienia.append({
                     'id': zamowienie.id,
@@ -965,6 +1095,89 @@ def cofnij_do_roboczej_api(request):
     app_logger.info(user_name, f"Cofnięto zamówienie {zam.numer} do wersji roboczej")
 
     return Response({'success': True, 'message': f'Zamówienie {zam.numer} cofnięte do wersji roboczej.'})
+
+
+@api_view(['POST'])
+@login_required
+def zmien_dostawce_api(request):
+    """
+    Zmienia dostawcę istniejącego zamówienia (z istniejącej listy).
+    Dozwolone tylko gdy status ∈ {draft, pending_approval, verified} — czyli zamówienie
+    nie jest jeszcze w realizacji. Aktualizuje również email_docelowy na email nowego dostawcy.
+    Przyjmuje: { "zamowienie_id": 1, "dostawca_id": 7 }
+    """
+    from .models import Zamowienie, Dostawca
+
+    zamowienie_id = request.data.get('zamowienie_id')
+    dostawca_id = request.data.get('dostawca_id')
+    if not zamowienie_id or not dostawca_id:
+        return Response({'error': 'Wymagane: zamowienie_id i dostawca_id'}, status=400)
+
+    try:
+        zam = Zamowienie.objects.get(id=zamowienie_id)
+    except Zamowienie.DoesNotExist:
+        return Response({'error': 'Zamówienie nie istnieje'}, status=404)
+
+    if zam.status not in ('draft', 'pending_approval', 'verified'):
+        return Response({'error': 'Zmiana dostawcy dozwolona tylko dla zamówień przed wysyłką'}, status=400)
+
+    try:
+        nowy_dostawca = Dostawca.objects.get(id=dostawca_id)
+    except Dostawca.DoesNotExist:
+        return Response({'error': 'Dostawca nie istnieje'}, status=404)
+
+    if zam.dostawca_id == nowy_dostawca.id:
+        return Response({'error': 'To już jest bieżący dostawca'}, status=400)
+
+    stary_dostawca_nazwa = zam.dostawca.nazwa_firmy if zam.dostawca else 'brak'
+    zam.dostawca = nowy_dostawca
+    zam.email_docelowy = nowy_dostawca.email or ''
+    zam.save(update_fields=['dostawca', 'email_docelowy'])
+
+    user_name = get_user_display_name(request.user)
+    app_logger.info(
+        user_name,
+        f"Zmieniono dostawcę zam. {zam.numer}: {stary_dostawca_nazwa} → {nowy_dostawca.nazwa_firmy}"
+    )
+
+    return Response({
+        'success': True,
+        'message': f'Dostawca zmieniony na: {nowy_dostawca.nazwa_firmy}',
+    })
+
+
+@api_view(['POST'])
+@login_required
+def cofnij_do_zatwierdzone_api(request):
+    """
+    Cofnięcie zamówienia ze statusu 'sent' (wysłane) do 'verified' (zatwierdzone).
+    Zastosowanie: dostawca przedłuża realizację, chcemy zmienić dostawcę i wysłać ponownie.
+    Blokada, gdy rozpoczęto już realizację (status 'partially_received' lub 'completed').
+    Przyjmuje: { "zamowienie_id": 1 }
+    """
+    from .models import Zamowienie, RealizacjaZamowienia
+
+    zamowienie_id = request.data.get('zamowienie_id')
+    if not zamowienie_id:
+        return Response({'error': 'Brak ID zamówienia'}, status=400)
+
+    try:
+        zam = Zamowienie.objects.get(id=zamowienie_id, status='sent')
+    except Zamowienie.DoesNotExist:
+        return Response({'error': 'Zamówienie nie istnieje lub nie jest w statusie "Wysłane"'}, status=400)
+
+    # Dodatkowy bezpiecznik — gdyby istniała realizacja, blokuj cofnięcie.
+    if RealizacjaZamowienia.objects.filter(zamowienie=zam).exists():
+        return Response({'error': 'Nie można cofnąć — istnieje już rozpoczęta realizacja tego zamówienia'}, status=400)
+
+    zam.status = 'verified'
+    zam.data_wyslania = None
+    zam.save(update_fields=['status', 'data_wyslania'])
+
+    user_name = get_user_display_name(request.user)
+    app_logger.info(user_name, f"Cofnięto zamówienie {zam.numer} do statusu 'Zatwierdzone' (było 'Wysłane')")
+
+    return Response({'success': True, 'message': f'Zamówienie {zam.numer} cofnięte do statusu "Zatwierdzone".'})
 
 
 @api_view(['POST'])
@@ -1778,6 +1991,25 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
         return response
 
 
+def _propaguj_status_zapotrzebowan(zamowienie):
+    """
+    Po zmianie statusu zamówienia na completed/partially_received propaguje
+    status do powiązanych ZapotrzebowanieTechnologa:
+    - jeśli WSZYSTKIE zamówienia powiązane z danym zapotrzebowaniem mają
+      status='completed' → ustaw status zapotrzebowania na 'completed'.
+    """
+    from django.utils import timezone as _tz
+    powiazane = zamowienie.zrodlowe_zapotrzebowania.all()
+    for zap in powiazane:
+        wszystkie = zap.zamowienia.all()
+        if wszystkie.exists() and all(z.status == 'completed' for z in wszystkie):
+            if zap.status != 'completed':
+                zap.status = 'completed'
+                if not zap.data_realizacji:
+                    zap.data_realizacji = _tz.now()
+                zap.save(update_fields=['status', 'data_realizacji'])
+
+
 class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Zamowienie.objects.select_related('dostawca').prefetch_related('pozycje').all()
     serializer_class = ZamowienieSerializer
@@ -1798,6 +2030,39 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
             ).values_list('zamowienie_id', flat=True).distinct()
             queryset = queryset.filter(id__in=zamowienie_ids)
         return queryset.order_by('-data_utworzenia')
+
+    def perform_destroy(self, instance):
+        """
+        Przy kasowaniu zamówienia usuń również narzędzia utworzone ręcznie razem z tym
+        zamówieniem (tryb "Nowe narzędzie" w generatorze) — ale tylko te bez egzemplarzy
+        (czyli dostawa nie została jeszcze przyjęta). Kategorie/podkategorie zostają.
+        """
+        # Zbierz ręcznie utworzone narzędzia przypisane do tego zamówienia.
+        # Pomiń te, które mają egzemplarze (fizyczne sztuki w magazynie).
+        narzedzia_do_usuniecia = list(
+            instance.narzedzia_utworzone_recznie
+                    .annotate(liczba_egz=Count('egzemplarze'))
+                    .filter(liczba_egz=0)
+        )
+        nazwy = [n.opis for n in narzedzia_do_usuniecia]
+
+        # Najpierw usuń zamówienie (kaskadowo znikną PozycjaZamowienia wskazujące na te narzędzia).
+        super().perform_destroy(instance)
+
+        # Potem usuń same narzędzia.
+        for n in narzedzia_do_usuniecia:
+            try:
+                n.delete()
+            except Exception:
+                # Jeśli coś jeszcze trzyma narzędzie (np. historia) — zostaw, nie wywalaj całej operacji.
+                pass
+
+        if nazwy:
+            user_name = get_user_display_name(self.request.user)
+            app_logger.info(
+                user_name,
+                f"Przy usuwaniu zam. {instance.numer} skasowano {len(nazwy)} ręcznie utworzone narzędzie(a): {', '.join(nazwy)}"
+            )
 
     @action(detail=False, methods=['post'])
     def generuj_automatyczne(self, request):
@@ -2010,6 +2275,7 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
 
                 zamowienie.status = 'completed' if wszystkie else 'partially_received'
                 zamowienie.save(update_fields=['status'])
+                _propaguj_status_zapotrzebowan(zamowienie)
 
                 # Logowanie
                 user_name = get_user_display_name(request.user)
@@ -2063,10 +2329,16 @@ class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
         instance.wartosc_pozycji = instance.ilosc_zamowiona * (instance.cena_jednostkowa or 0)
         instance.save(update_fields=['wartosc_pozycji'])
         self._przelicz_wartosc_zamowienia(instance.zamowienie)
+        user_name = get_user_display_name(self.request.user)
+        app_logger.info(
+            user_name,
+            f"Edytowano pozycję zamówienia {instance.zamowienie.numer}: "
+            f"{instance.narzedzie_opis} (ilość: {instance.ilosc_zamowiona}, cena: {instance.cena_jednostkowa})"
+        )
 
     def perform_destroy(self, instance):
         zamowienie = instance.zamowienie
-        super().perform_destroy(instance)
+        super().perform_destroy(instance)  # LoggingMixin loguje usunięcie
         self._przelicz_wartosc_zamowienia(zamowienie)
 
 
@@ -2155,6 +2427,7 @@ class RealizacjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
                 else:
                     zamowienie.status = 'partially_received'
                 zamowienie.save()
+                _propaguj_status_zapotrzebowan(zamowienie)
 
                 # Logowanie
                 user_name = get_user_display_name(request.user)
@@ -2221,7 +2494,12 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Automatycznie przypisz technologa przy tworzeniu"""
-        serializer.save(technolog=self.request.user)
+        instance = serializer.save(technolog=self.request.user)
+        user_name = get_user_display_name(self.request.user)
+        app_logger.success(
+            user_name,
+            f"Utworzono zapotrzebowanie ZAM-{instance.id:04d} (status: {instance.status})"
+        )
 
     @action(detail=False, methods=['get'])
     def moj_koszyk(self, request):

@@ -91,6 +91,10 @@ urlpatterns = [
          name='zamowienia-zatwierdz'),
     path('api/zamowienia/cofnij-do-roboczej/', views.cofnij_do_roboczej_api,
          name='zamowienia-cofnij-do-roboczej'),
+    path('api/zamowienia/cofnij-do-zatwierdzone/', views.cofnij_do_zatwierdzone_api,
+         name='zamowienia-cofnij-do-zatwierdzone'),
+    path('api/zamowienia/zmien-dostawce/', views.zmien_dostawce_api,
+         name='zamowienia-zmien-dostawce'),
 
     path('api/', include(router.urls)),
     path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),

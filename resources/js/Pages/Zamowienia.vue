@@ -92,7 +92,9 @@
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-check" class="p-button-success p-button-sm" @click="zatwierdzZamowienie(data)" title="Zatwierdź zamówienie" />
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-undo" class="p-button-secondary p-button-sm" @click="cofnijDoRoboczej(data)" title="Cofnij do wersji roboczej" />
                                     <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
+                                    <Button v-if="data.status === 'sent'" icon="pi pi-undo" class="p-button-warning p-button-sm" @click="openCofnijDoZatwierdzoneModal(data)" title="Cofnij do 'Zatwierdzone' (zmiana dostawcy)" />
                                     <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="rozpocznijRealizacje(data)" title="Kontynuuj realizację" />
+                                    <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-truck" class="p-button-help p-button-sm" @click="openZmienDostawceModal(data)" title="Zmień dostawcę" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="selectZamowienie(data)" title="Edytuj pozycje" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
                                 </div>
@@ -252,6 +254,51 @@
             <Message :severity="emailResult.success ? 'success' : 'error'" :closable="false">{{ emailResult.message }}</Message>
             <template #footer>
                 <Button label="Zamknij" @click="emailResultModalVisible = false" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Zmiana dostawcy -->
+        <Dialog v-model:visible="zmienDostawceModalVisible" header="Zmiana dostawcy" :modal="true" :style="{ width: '520px' }">
+            <div v-if="selectedZmienDostawceZamowienie" class="p-fluid">
+                <p>
+                    <strong>Zamówienie:</strong> {{ selectedZmienDostawceZamowienie.numer }}<br>
+                    <strong>Aktualny dostawca:</strong> {{ selectedZmienDostawceZamowienie.dostawca?.nazwa_firmy }}
+                </p>
+                <div class="field">
+                    <label>Nowy dostawca</label>
+                    <Dropdown
+                        v-model="nowyDostawcaId"
+                        :options="dostawcyZmianaOptions"
+                        optionLabel="label"
+                        optionValue="value"
+                        placeholder="Wybierz dostawcę"
+                        filter
+                    />
+                </div>
+                <Message v-if="nowyDostawcaInfo" severity="info" :closable="false">
+                    <strong>Email nowego dostawcy:</strong> {{ nowyDostawcaInfo.email || '(brak — uzupełnij w kartotece)' }}<br>
+                    Email zamówienia zostanie zaktualizowany do tego adresu.
+                </Message>
+                <Message v-if="zmienDostawceError" severity="error" :closable="false">{{ zmienDostawceError }}</Message>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="zmienDostawceModalVisible = false" />
+                <Button label="Zmień dostawcę" icon="pi pi-check" class="p-button-success" @click="confirmZmienDostawce" :loading="isZmianaDostawcy" :disabled="!nowyDostawcaId" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Potwierdzenie cofnięcia z "Wysłane" do "Zatwierdzone" -->
+        <Dialog v-model:visible="cofnijDoZatwierdzoneModalVisible" header="Cofnięcie do 'Zatwierdzone'" :modal="true" :style="{ width: '500px' }">
+            <p>Czy na pewno chcesz cofnąć zamówienie do statusu <strong>„Zatwierdzone”</strong>?</p>
+            <Message severity="warn" :closable="false">
+                <strong>Numer:</strong> {{ selectedCofnijZamowienie?.numer }}<br>
+                <strong>Dostawca:</strong> {{ selectedCofnijZamowienie?.dostawca?.nazwa_firmy }}<br>
+                Po cofnięciu będziesz mógł zmienić dostawcę / pozycje i wysłać zamówienie ponownie.<br>
+                Data wysłania zostanie zresetowana.
+            </Message>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="cofnijDoZatwierdzoneModalVisible = false" />
+                <Button label="Cofnij do 'Zatwierdzone'" icon="pi pi-undo" class="p-button-warning" @click="confirmCofnijDoZatwierdzone" :loading="isCofajacDoZatwierdzone" />
             </template>
         </Dialog>
 
@@ -788,6 +835,79 @@ const cofnijDoRoboczej = async (zamowienie) => {
         await fetchInitialData();
     } catch (error) {
         alert('Błąd: ' + (error.response?.data?.error || error.message));
+    }
+};
+
+// Zmiana dostawcy zamówienia
+const zmienDostawceModalVisible = ref(false);
+const selectedZmienDostawceZamowienie = ref(null);
+const nowyDostawcaId = ref(null);
+const isZmianaDostawcy = ref(false);
+const zmienDostawceError = ref('');
+
+const dostawcyZmianaOptions = computed(() => {
+    const aktualnyId = selectedZmienDostawceZamowienie.value?.dostawca?.id;
+    return dostawcy.value
+        .filter(d => d.id !== aktualnyId)
+        .map(d => ({ label: d.nazwa_firmy + (d.email ? ` — ${d.email}` : ''), value: d.id }));
+});
+
+const nowyDostawcaInfo = computed(() => {
+    if (!nowyDostawcaId.value) return null;
+    return dostawcy.value.find(d => d.id === nowyDostawcaId.value) || null;
+});
+
+const openZmienDostawceModal = (zamowienie) => {
+    selectedZmienDostawceZamowienie.value = zamowienie;
+    nowyDostawcaId.value = null;
+    zmienDostawceError.value = '';
+    zmienDostawceModalVisible.value = true;
+};
+
+const confirmZmienDostawce = async () => {
+    if (!selectedZmienDostawceZamowienie.value || !nowyDostawcaId.value) return;
+    isZmianaDostawcy.value = true;
+    zmienDostawceError.value = '';
+    try {
+        await axios.post(`${API_URL}/zamowienia/zmien-dostawce/`, {
+            zamowienie_id: selectedZmienDostawceZamowienie.value.id,
+            dostawca_id: nowyDostawcaId.value,
+        });
+        zmienDostawceModalVisible.value = false;
+        selectedZmienDostawceZamowienie.value = null;
+        nowyDostawcaId.value = null;
+        await fetchInitialData();
+    } catch (error) {
+        zmienDostawceError.value = error.response?.data?.error || error.message;
+    } finally {
+        isZmianaDostawcy.value = false;
+    }
+};
+
+// Cofnięcie z "Wysłane" do "Zatwierdzone" — dla przypadku zmiany dostawcy
+const cofnijDoZatwierdzoneModalVisible = ref(false);
+const selectedCofnijZamowienie = ref(null);
+const isCofajacDoZatwierdzone = ref(false);
+
+const openCofnijDoZatwierdzoneModal = (zamowienie) => {
+    selectedCofnijZamowienie.value = zamowienie;
+    cofnijDoZatwierdzoneModalVisible.value = true;
+};
+
+const confirmCofnijDoZatwierdzone = async () => {
+    if (!selectedCofnijZamowienie.value) return;
+    isCofajacDoZatwierdzone.value = true;
+    try {
+        await axios.post(`${API_URL}/zamowienia/cofnij-do-zatwierdzone/`, {
+            zamowienie_id: selectedCofnijZamowienie.value.id
+        });
+        cofnijDoZatwierdzoneModalVisible.value = false;
+        selectedCofnijZamowienie.value = null;
+        await fetchInitialData();
+    } catch (error) {
+        alert('Błąd: ' + (error.response?.data?.error || error.message));
+    } finally {
+        isCofajacDoZatwierdzone.value = false;
     }
 };
 

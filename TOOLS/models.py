@@ -188,6 +188,17 @@ class NarzedzieMagazynowe(models.Model):
         verbose_name='Możliwość wydawania pojedynczych sztuk',
         help_text='Jeśli zaznaczone, można wydawać pojedyncze sztuki z kompletu. Jeśli nie, tylko całe komplety.'
     )
+    # Narzędzie utworzone w generatorze wraz z zamówieniem — kasowane razem z zamówieniem
+    # (tylko jeśli nie ma jeszcze egzemplarzy). Kategorie/podkategorie zostają.
+    utworzone_wraz_z_zamowieniem = models.ForeignKey(
+        'Zamowienie',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='narzedzia_utworzone_recznie',
+        verbose_name='Utworzone wraz z zamówieniem',
+        help_text='Jeśli ustawione, narzędzie zostanie skasowane razem z tym zamówieniem (gdy nie ma egzemplarzy).'
+    )
 
     class Meta:
         verbose_name_plural = "Narzędzia magazynowe"
@@ -437,6 +448,12 @@ class Zamowienie(models.Model):
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     uwagi = models.TextField(blank=True)
+    zrodlowe_zapotrzebowania = models.ManyToManyField(
+        'ZapotrzebowanieTechnologa',
+        blank=True,
+        related_name='zamowienia',
+        help_text="Zapotrzebowania technologów, z których pochodzi to zamówienie"
+    )
 
     class Meta:
         verbose_name_plural = "Zamówienia"
@@ -592,6 +609,10 @@ class PozycjaGeneratora(models.Model):
         max_length=50,
         default='auto',
         help_text="Źródło pozycji: auto, reczne, zapotrzebowanie"
+    )
+    utworzone_narzedzie = models.BooleanField(
+        default=False,
+        help_text="True = narzędzie zostało utworzone ręcznie razem z tą pozycją (przy generowaniu zamówienia zostanie podpięte przez utworzone_wraz_z_zamowieniem)."
     )
     zrodlo_zapotrzebowanie_ids = models.CharField(
         max_length=200,

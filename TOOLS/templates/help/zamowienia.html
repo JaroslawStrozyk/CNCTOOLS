@@ -345,10 +345,31 @@
 
     <h3>Skąd biorą się pozycje?</h3>
     <ul>
-        <li><strong>Z magazynu</strong> — wszystko, czego stan spadł poniżej ustawionego minimum.</li>
+        <li><strong>Z magazynu</strong> — wszystko, czego stan spadł poniżej ustawionego <em>limitu maksymalnego</em>. Stan porównywany jest jako <strong>suma fizycznych sztuk</strong> (pole <em>ilość w komplecie</em> każdego egzemplarza), nie liczba rekordów — czyli tak samo, jak widzisz w Magazynie/Zakupach.</li>
         <li><strong>Z zapotrzebowań</strong> — pozycje, które technolog zgłosił ręcznie (zapotrzebowanie).</li>
         <li><strong>Ręcznie</strong> — możesz dodać dowolną pozycję klikając <span class="btn-demo success">+</span> w nagłówku tabeli.</li>
     </ul>
+    <div class="warn">
+        <strong>Dobrze wiedzieć:</strong> Jeżeli stan narzędzia osiągnie lub przekroczy limit maksymalny (np. po przyjęciu dostawy), wcześniejsza „auto-propozycja” w generatorze <strong>zniknie sama</strong> przy kolejnym wejściu w generator. Pozycje dodane <em>ręcznie</em> lub <em>z zapotrzebowań</em> nie są automatycznie czyszczone.
+    </div>
+
+    <h3>Modal „Dodaj ręcznie pozycję do zamówienia”</h3>
+    <p>
+        Okno otwierane przyciskiem <span class="btn-demo success">+</span>. Na górze wybierasz <strong>tryb dodawania</strong>:
+    </p>
+    <ul>
+        <li><strong>Z listy narzędzi</strong> (domyślny) — wybierasz narzędzie z istniejącego katalogu (Kategoria → Podkategoria → Narzędzie). Podajesz dostawcę, ilość, cenę.</li>
+        <li><strong>Nowe narzędzie</strong> — tworzy <em>nowy wpis w katalogu</em> narzędzi jednocześnie z dodaniem go do generatora. Przydatne, gdy zamawiasz coś, czego jeszcze w Magazynie nie było.
+            <ul>
+                <li>Przy polu <strong>Kategoria</strong> i <strong>Podkategoria</strong> jest przycisk „+” — pozwala wpisać <em>nową</em> nazwę (jeśli jej jeszcze nie ma w drzewie). Nazwa „×” wraca do wyboru z listy.</li>
+                <li>Wypełniasz: <strong>Opis</strong> (nazwa), <strong>Numer katalogowy</strong> (opcjonalnie), <strong>Jednostka zakupu</strong> (szt/kompl), <strong>Ilość w opakowaniu</strong>, <strong>Stan minimalny/maksymalny</strong>.</li>
+                <li>Po kliknięciu <em>Dodaj</em> powstaje nowe narzędzie + pozycja w generatorze. Kategorie/podkategorie są tworzone tylko wtedy, gdy jeszcze nie istnieją.</li>
+            </ul>
+        </li>
+    </ul>
+    <div class="warn">
+        <strong>Ważne:</strong> Jeśli utworzysz „nowe narzędzie” w generatorze, a później <strong>skasujesz powstałe zamówienie</strong> (zanim przyjmiesz dostawę), to nowe narzędzie zostanie <em>również skasowane</em> — jako „śmieć” wprowadzony przez pomyłkę. Kategoria/podkategoria, którą przy okazji utworzyłeś, <strong>zostanie</strong> w drzewie. Jeżeli w międzyczasie doszło do przyjęcia i powstały egzemplarze — narzędzie NIE jest kasowane (fizyczny stan w magazynie nie znika sam).
+    </div>
 
     <h3>Co możesz zrobić z każdą pozycją?</h3>
     <ul>
@@ -406,9 +427,20 @@
         <tr><td><span class="btn-demo success">✓</span></td><td>status <span class="tag pending">Oczekuje</span></td><td>Zatwierdza zamówienie (po ustnej zgodzie szefa).</td></tr>
         <tr><td><span class="btn-demo secondary">↶</span></td><td>status <span class="tag pending">Oczekuje</span></td><td>Cofa zamówienie do <span class="tag draft">Wersji roboczej</span> (np. żeby coś dopisać).</td></tr>
         <tr><td><span class="btn-demo info">📦</span></td><td>status <span class="tag sent">Wysłane</span> lub <span class="tag partial">Częściowo</span></td><td>Otwiera okno przyjęcia towaru (rozpoczyna realizację).</td></tr>
+        <tr><td><span class="btn-demo" style="background:#fd7e14; color:#fff;">↺</span></td><td>status <span class="tag sent">Wysłane</span></td><td><strong>Cofa zamówienie do „Zatwierdzone”</strong>. Przydaje się, gdy dostawca przedłuża realizację i chcesz zmienić dostawcę. Data wysłania zostaje wyzerowana. Blokowane, gdy rozpoczęto już realizację.</td></tr>
+        <tr><td><span class="btn-demo" style="background:#9c6ade; color:#fff;">🚚</span></td><td>statusy: robocza, oczekuje, zatwierdzone</td><td><strong>Zmień dostawcę</strong>. Otwiera okno z listą dostawców. Po zmianie <em>email dostawcy</em> jest automatycznie aktualizowany na adres nowego dostawcy. Potem możesz ponownie wysłać zamówienie (zielony ✉).</td></tr>
         <tr><td><span class="btn-demo secondary">✎</span></td><td>statusy: robocza, oczekuje, zatwierdzone</td><td>Otwiera okno szczegółów do edycji pozycji.</td></tr>
         <tr><td><span class="btn-demo danger">🗑</span></td><td>statusy: robocza, oczekuje, zatwierdzone</td><td>Usuwa całe zamówienie (z potwierdzeniem).</td></tr>
     </table>
+
+    <h3>Typowy scenariusz: zmiana dostawcy przy opóźnieniu</h3>
+    <ol>
+        <li>Zamówienie jest w statusie <span class="tag sent">Wysłane</span>, ale dostawca przeciąga realizację.</li>
+        <li>Klikasz pomarańczowy <strong>↺ Cofnij do „Zatwierdzone”</strong>. Zamówienie wraca do stanu <span class="tag verified">Zatwierdzone</span>.</li>
+        <li>Klikasz fioletowy <strong>🚚 Zmień dostawcę</strong>, wybierasz nowego kontrahenta z listy. Email się aktualizuje.</li>
+        <li>(Opcjonalnie) klikasz <span class="btn-demo secondary">✎</span> i korygujesz pozycje/ceny.</li>
+        <li>Klikasz zielony <span class="btn-demo success">✉ E-mail</span> — wysyłka idzie do nowego dostawcy.</li>
+    </ol>
 
     <h3>Okno „Szczegóły zamówienia”</h3>
     <p>Otwierasz je klikając numer zamówienia <em>lub</em> przycisk ołówka. Co tu zrobisz:</p>
