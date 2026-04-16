@@ -1101,14 +1101,15 @@ const dzialaniaMenu = ref(null);
 const dzialaniaMenuItems = ref([
     { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania + '?from=magazyn'; } },
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
-    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
+    { label: 'Realizacje', icon: 'pi pi-box', visible: false, command: () => { window.location.href = props.urls.realizacja; } }
 ]);
 const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 
-// Menu Miejsca
+// Menu Miejsca — "Zakupy" tylko dla administrator/logistyka
 const miejscaMenu = ref(null);
-const miejscaMenuItems = ref([
-    { label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } },
+const canSeeZakupy = computed(() => props.auth.isAdministrator || props.auth.isLogistyka);
+const miejscaMenuItems = computed(() => [
+    { label: 'Zakupy', icon: 'pi pi-truck', visible: canSeeZakupy.value, command: () => { window.location.href = props.urls.zakupy; } },
     { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
 ]);
 const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
@@ -3534,6 +3535,36 @@ onUnmounted(() => {
 .p-dropdown-empty-message {
     color: #6c757d !important;
     padding: 10px 16px !important;
+}
+
+/* Dropdown "Kategorie" w panelu "Lista typów narzędzi" — dopasowanie wielkości
+   do natywnego <select> "Podkategorie" (klasa .form-select): font-size 14px,
+   padding taki jak w Bootstrap form-select. */
+.kategoria-dropdown .p-dropdown-label {
+    font-size: 14px !important;
+    padding: 6px 12px !important;
+    line-height: 1.5 !important;
+}
+.kategoria-dropdown .p-dropdown-trigger {
+    width: 32px !important;
+}
+.kategoria-dropdown-panel .p-dropdown-item {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+}
+.kategoria-dropdown-panel .p-dropdown-empty-message {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+}
+.kategoria-dropdown-panel .p-dropdown-header .p-dropdown-filter {
+    font-size: 14px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 6px 12px !important;
+}
+.kategoria-dropdown-panel .p-dropdown-item-group {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
 }
 
 /* PrimeVue InputText - Bootstrap 5 Dark */

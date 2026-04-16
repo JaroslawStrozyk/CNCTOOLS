@@ -4,6 +4,9 @@
     <header class="app-header">
       <h2 class="header-title">ZAPOTRZEBOWANIA</h2>
       <div class="header-buttons">
+        <a v-if="canAddZapotrzebowanie" :href="addUrl" class="btn btn-success" title="Dodaj zapotrzebowanie">
+          <i class="pi pi-plus"></i> Dodaj
+        </a>
         <a :href="backUrl" class="btn btn-primary">
           <i :class="backIcon"></i> {{ backLabel }}
         </a>
@@ -348,6 +351,7 @@ const props = defineProps({
       zakupy: '/zakupy/',
       ustawienia: '/ustawienia/',
       zapotrzebowania: '/zapotrzebowania/',
+      technologia: '/technologia/',
       logout: '/logout/'
     })
   },
@@ -362,6 +366,22 @@ const fromParam = new URLSearchParams(window.location.search).get('from');
 const backUrl = fromParam === 'zakupy' ? (props.urls.zakupy || '/zakupy/') : (props.urls.magazyn || '/magazyn/');
 const backLabel = fromParam === 'zakupy' ? 'Zakupy' : 'Magazyn';
 const backIcon = fromParam === 'zakupy' ? 'pi pi-truck' : 'pi pi-warehouse';
+
+// "Dodaj" — tylko dla grup administrator / logistyka / magazyn (NIE technologia)
+const canAddZapotrzebowanie = computed(() => {
+  const grupa = props.auth.user.grupa;
+  return ['administrator', 'logistyka', 'magazyn'].includes(grupa);
+});
+
+const addUrl = computed(() => {
+  const base = props.urls.technologia || '/technologia/';
+  const params = new URLSearchParams();
+  params.set('from', 'zapotrzebowania');
+  if (fromParam) {
+    params.set('origin', fromParam);
+  }
+  return `${base}?${params.toString()}`;
+});
 
 // State
 const zapotrzebowania = ref([]);

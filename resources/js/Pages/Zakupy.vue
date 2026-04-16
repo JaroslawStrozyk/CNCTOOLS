@@ -369,7 +369,7 @@ const dzialaniaMenu = ref(null);
 const dzialaniaMenuItems = ref([
     { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania + '?from=zakupy'; } },
     { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
-    { label: 'Realizacje', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
+    { label: 'Realizacje', icon: 'pi pi-box', visible: false, command: () => { window.location.href = props.urls.realizacja; } }
 ]);
 
 // Pomoc — otwiera w nowym oknie typu popup (działa też w trybie PWA)

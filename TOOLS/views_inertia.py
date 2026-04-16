@@ -145,8 +145,10 @@ def zakupy_view(request):
 @login_required
 def zamowienia_view(request):
     """Panel zamówień - Inertia"""
-    is_logistyka = request.user.groups.filter(name='logistyka').exists()
-    can_generate = is_logistyka or request.user.is_superuser
+    can_generate = (
+        request.user.is_superuser
+        or request.user.groups.filter(name__in=['logistyka', 'administrator', 'magazyn']).exists()
+    )
 
     return render(request, 'Zamowienia', {
         'auth': get_auth_data(request),

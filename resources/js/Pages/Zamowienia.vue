@@ -341,7 +341,12 @@
                     <DataTable :value="realizacjaPozycje" class="p-datatable-sm realizacja-table" :scrollable="true" scrollHeight="400px">
                         <Column header="" style="width: 50px; text-align: center;">
                             <template #body="{ data }">
-                                <Checkbox v-model="data.przyjmij" :binary="true" :disabled="data.ilosc_pozostala <= 0" />
+                                <Checkbox
+                                    v-model="data.przyjmij"
+                                    :binary="true"
+                                    :disabled="data.ilosc_pozostala <= 0"
+                                    @change="onPrzyjmijToggle(data)"
+                                />
                             </template>
                         </Column>
                         <Column field="narzedzie_opis" header="Narzędzie" />
@@ -378,6 +383,18 @@
                                 <span v-else>-</span>
                             </template>
                         </Column>
+                        <Column header="Odpisz" style="width: 80px; text-align: center;">
+                            <template #body="{ data }">
+                                <Checkbox
+                                    v-if="data.ilosc_pozostala > 0"
+                                    v-model="data.odpisz"
+                                    :binary="true"
+                                    @change="onOdpiszToggle(data)"
+                                    title="Skasuj pozycję z zamówienia (wróci do generatora)"
+                                />
+                                <span v-else class="text-muted">-</span>
+                            </template>
+                        </Column>
                         <Column header="Cena jedn." style="width: 120px; text-align: right;">
                             <template #body="{ data }">
                                 <span>{{ Number(data.cena_jednostkowa || 0).toFixed(2) }} zł</span>
@@ -397,9 +414,9 @@
                 </div>
             </div>
             <template #footer>
-                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="realizacjaConfirmModalVisible = false" />
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="onAnulujRealizacja" />
                 <Button
-                    label="Zatwierdź przyjęcie"
+                    label="Zatwierdź"
                     icon="pi pi-check"
                     class="p-button-success"
                     @click="confirmRealizuj"
@@ -980,7 +997,7 @@ const realizacjaModalTitle = computed(() => {
 });
 
 const hasSelectedPozycje = computed(() => {
-    return realizacjaPozycje.value.some(p => p.przyjmij && p.ilosc_pozostala > 0);
+    return realizacjaPozycje.value.some(p => (p.przyjmij || p.odpisz) && p.ilosc_pozostala > 0);
 });
 
 const rozpocznijRealizacje = async (zamowienie) => {
@@ -996,6 +1013,7 @@ const rozpocznijRealizacje = async (zamowienie) => {
         realizacjaPozycje.value = res.data.pozycje.map(poz => ({
             ...poz,
             przyjmij: false,
+            odpisz: false,
             ilosc_do_przyjecia: poz.ilosc_pozostala,
         }));
     } catch (error) {
@@ -1005,12 +1023,48 @@ const rozpocznijRealizacje = async (zamowienie) => {
     }
 };
 
+const onAnulujRealizacja = async () => {
+    // Skrót do przeliczenia statusu: "Zaznacz wszystkie" + "Anuluj" → backend
+    // ponownie liczy status zamówienia (bezpiecznie, bez ruszania pozycji).
+    if (realizacjaSelectAll.value && selectedRealizacjaZamowienie.value) {
+        try {
+            const res = await axios.post(
+                `${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/przelicz_status/`
+            );
+            realizacjaConfirmModalVisible.value = false;
+            realizacjaResult.value = {
+                success: res.data.success,
+                message: res.data.message,
+                egzemplarze: []
+            };
+            realizacjaResultModalVisible.value = true;
+            if (res.data.changed) await fetchInitialData();
+            return;
+        } catch (error) {
+            realizacjaError.value = error.response?.data?.error || 'Błąd przeliczania statusu';
+            return;
+        }
+    }
+    realizacjaConfirmModalVisible.value = false;
+};
+
+const onPrzyjmijToggle = (poz) => {
+    if (poz.przyjmij) poz.odpisz = false;
+};
+
+const onOdpiszToggle = (poz) => {
+    if (poz.odpisz) poz.przyjmij = false;
+};
+
 const toggleSelectAll = () => {
     const val = realizacjaSelectAll.value;
     realizacjaPozycje.value.forEach(poz => {
         if (poz.ilosc_pozostala > 0) {
             poz.przyjmij = val;
-            if (val) poz.ilosc_do_przyjecia = poz.ilosc_pozostala;
+            if (val) {
+                poz.odpisz = false;
+                poz.ilosc_do_przyjecia = poz.ilosc_pozostala;
+            }
         }
     });
 };
@@ -1019,8 +1073,10 @@ const confirmRealizuj = async () => {
     realizacjaError.value = '';
 
     const zaznaczone = realizacjaPozycje.value.filter(p => p.przyjmij && p.ilosc_pozostala > 0);
-    if (zaznaczone.length === 0) {
-        realizacjaError.value = 'Zaznacz przynajmniej jedną pozycję do przyjęcia.';
+    const odpisane = realizacjaPozycje.value.filter(p => p.odpisz && p.ilosc_pozostala > 0);
+
+    if (zaznaczone.length === 0 && odpisane.length === 0) {
+        realizacjaError.value = 'Zaznacz przynajmniej jedną pozycję do przyjęcia lub odpisania.';
         return;
     }
 
@@ -1042,10 +1098,11 @@ const confirmRealizuj = async () => {
             pozycja_zamowienia_id: poz.pozycja_zamowienia_id,
             ilosc_przyjeta: poz.ilosc_do_przyjecia,
         }));
+        const pozycje_do_odpisania = odpisane.map(p => p.pozycja_zamowienia_id);
 
         const response = await axios.post(
             `${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/realizuj/`,
-            { pozycje: pozycje_dane }
+            { pozycje: pozycje_dane, pozycje_do_odpisania }
         );
 
         if (response.data.success) {

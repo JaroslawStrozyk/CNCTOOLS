@@ -975,18 +975,26 @@ def generator_zamowien_gotowe_api(request):
                     'dostawca': dostawca.nazwa_firmy
                 })
 
-            # Wyczyść tabelę PozycjaGeneratora
-            PozycjaGeneratora.objects.all().delete()
+            # Skasuj z generatora TYLKO pozycje, które faktycznie trafiły do zamówień.
+            # Pozycje bez dostawcy (grouped[None]) były pominięte powyżej — zostają
+            # w generatorze, żeby user mógł uzupełnić dostawcę lub skasować je ręcznie.
+            pominiete_count = len(grouped.get(None, []))
+            PozycjaGeneratora.objects.exclude(dostawca__isnull=True).delete()
 
             # Logowanie
             user_name = get_user_display_name(request.user)
             numery = ', '.join([z['numer'] for z in utworzone_zamowienia])
             app_logger.success(user_name, f"Wygenerowano {len(utworzone_zamowienia)} zamówień: {numery}")
 
+            message = f'Utworzono {len(utworzone_zamowienia)} zamówień'
+            if pominiete_count > 0:
+                message += f'. Pominięto {pominiete_count} pozycji bez dostawcy — pozostają w generatorze do uzupełnienia.'
+
             return Response({
                 'success': True,
-                'message': f'Utworzono {len(utworzone_zamowienia)} zamówień',
-                'zamowienia': utworzone_zamowienia
+                'message': message,
+                'zamowienia': utworzone_zamowienia,
+                'pominiete_count': pominiete_count,
             })
 
     except Exception as e:
@@ -2179,14 +2187,84 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
         })
 
     @action(detail=True, methods=['post'])
+    def przelicz_status(self, request, pk=None):
+        """Ponownie wylicza status zamówienia z aktualnego stanu pozycji i realizacji.
+        Bezpieczna operacja: nie rusza pozycji, realizacji ani egzemplarzy —
+        zmienia wyłącznie pole `status`. Działa tylko dla 'sent' / 'partially_received'."""
+        zamowienie = self.get_object()
+
+        if zamowienie.status not in ('sent', 'partially_received'):
+            return Response({
+                'success': False,
+                'error': f'Przeliczenie dozwolone tylko dla zamówień w statusie "Wysłane" lub "Częściowo odebrane" (bieżący: {zamowienie.status})'
+            }, status=400)
+
+        realizacja = RealizacjaZamowienia.objects.filter(zamowienie=zamowienie).first()
+        pozostale_pozycje = list(PozycjaZamowienia.objects.filter(zamowienie=zamowienie))
+
+        if not pozostale_pozycje:
+            return Response({'success': False, 'error': 'Zamówienie nie zawiera pozycji'}, status=400)
+
+        wszystkie = True
+        any_received = False
+        for poz_zam in pozostale_pozycje:
+            ilosc_przyjeta = 0
+            if realizacja:
+                poz_real = realizacja.pozycje.filter(pozycja_zamowienia=poz_zam).first()
+                if poz_real:
+                    ilosc_przyjeta = poz_real.ilosc_przyjeta or 0
+            if ilosc_przyjeta > 0:
+                any_received = True
+            if ilosc_przyjeta < poz_zam.ilosc_zamowiona:
+                wszystkie = False
+
+        if wszystkie:
+            new_status = 'completed'
+        elif any_received:
+            new_status = 'partially_received'
+        else:
+            new_status = 'sent'
+
+        old_status = zamowienie.status
+        if old_status == new_status:
+            return Response({
+                'success': True,
+                'changed': False,
+                'status': new_status,
+                'message': f'Status nie wymaga zmiany (nadal: {new_status}).'
+            })
+
+        zamowienie.status = new_status
+        zamowienie.save(update_fields=['status'])
+        _propaguj_status_zapotrzebowan(zamowienie)
+
+        user_name = get_user_display_name(request.user)
+        app_logger.info(
+            user_name,
+            f"Przeliczono status zamówienia {zamowienie.numer}: {old_status} → {new_status}"
+        )
+
+        return Response({
+            'success': True,
+            'changed': True,
+            'old_status': old_status,
+            'status': new_status,
+            'message': f'Status zaktualizowany: {old_status} → {new_status}.'
+        })
+
+    @action(detail=True, methods=['post'])
     def realizuj(self, request, pk=None):
-        """Realizacja zamówienia — częściowa lub pełna. Tworzy egzemplarze w magazynie."""
+        """Realizacja zamówienia — częściowa lub pełna. Tworzy egzemplarze w magazynie.
+        Obsługuje także odpisanie pozycji (skasowanie z zamówienia) — niezrealizowane
+        pozycje wracają do puli generatora."""
+        from .models import PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
         try:
             zamowienie = self.get_object()
             pozycje_dane = request.data.get('pozycje', [])
+            pozycje_do_odpisania = request.data.get('pozycje_do_odpisania', []) or []
 
-            if not pozycje_dane:
-                return Response({'error': 'Brak danych pozycji do przyjęcia'}, status=400)
+            if not pozycje_dane and not pozycje_do_odpisania:
+                return Response({'error': 'Brak pozycji do przyjęcia lub odpisania'}, status=400)
 
             with transaction.atomic():
                 # Utwórz lub pobierz realizację
@@ -2265,9 +2343,59 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                             'ilosc': poz_zam.ilosc_w_komplecie or 1,
                         })
 
-                # Sprawdź czy wszystkie pozycje w pełni zrealizowane
+                # Odpisz (skasuj) wskazane pozycje — wracają do puli generatora
+                odpisane_opisy = []
+                zapotrzebowania_do_sprawdzenia = set()
+                if pozycje_do_odpisania:
+                    zrodlowe_zap_ids = list(zamowienie.zrodlowe_zapotrzebowania.values_list('id', flat=True))
+                    for pz_id in pozycje_do_odpisania:
+                        try:
+                            poz_zam = PozycjaZamowienia.objects.select_related('narzedzie_typ').get(
+                                id=pz_id, zamowienie=zamowienie
+                            )
+                        except PozycjaZamowienia.DoesNotExist:
+                            continue
+
+                        # Cofnij flagę w_zamowieniu na powiązanych pozycjach zapotrzebowań,
+                        # żeby generator mógł je ponownie wykryć.
+                        if poz_zam.narzedzie_typ and zrodlowe_zap_ids:
+                            PozycjaZapotrzebowania.objects.filter(
+                                zapotrzebowanie_id__in=zrodlowe_zap_ids,
+                                narzedzie_typ=poz_zam.narzedzie_typ,
+                                w_zamowieniu=True,
+                            ).update(w_zamowieniu=False)
+                            zapotrzebowania_do_sprawdzenia.update(zrodlowe_zap_ids)
+
+                        odpisane_opisy.append(poz_zam.narzedzie_opis)
+                        poz_zam.delete()
+
+                    # Cofnij status zapotrzebowań z 'ordered' na 'completed' jeśli mają
+                    # teraz pozycje oczekujące na przeniesienie do generatora.
+                    for zap_id in zapotrzebowania_do_sprawdzenia:
+                        zap = ZapotrzebowanieTechnologa.objects.filter(
+                            id=zap_id, status='ordered'
+                        ).first()
+                        if zap and zap.pozycje.filter(w_zamowieniu=False, narzedzie_typ__isnull=False).exists():
+                            zap.status = 'completed'
+                            zap.save(update_fields=['status'])
+
+                    # Przelicz wartość zamówienia po kasowaniu pozycji
+                    from django.db.models import Sum, F
+                    total = zamowienie.pozycje.aggregate(
+                        suma=Sum(F('ilosc_zamowiona') * F('cena_jednostkowa'))
+                    )['suma'] or 0
+                    zamowienie.wartosc_zamowienia = total
+                    zamowienie.save(update_fields=['wartosc_zamowienia'])
+
+                # Sprawdź czy wszystkie pozycje w pełni zrealizowane.
+                # UWAGA: NIE używamy `zamowienie.pozycje.all()` — self.get_object() ma
+                # prefetch_related('pozycje'), więc ten manager zwraca cache sprzed
+                # odpisywania. Idziemy bezpośrednio po PozycjaZamowienia.
+                pozostale_pozycje = list(
+                    PozycjaZamowienia.objects.filter(zamowienie=zamowienie)
+                )
                 wszystkie = True
-                for poz_zam in zamowienie.pozycje.all():
+                for poz_zam in pozostale_pozycje:
                     poz_real = realizacja.pozycje.filter(pozycja_zamowienia=poz_zam).first()
                     if not poz_real or poz_real.ilosc_przyjeta < poz_zam.ilosc_zamowiona:
                         wszystkie = False
@@ -2286,11 +2414,22 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                     f"Przyjęto {len(utworzone_egzemplarze)} szt. z zamówienia "
                     f"{zamowienie.numer} ({dostawca}) - {status_tekst}"
                 )
+                if odpisane_opisy:
+                    app_logger.warning(
+                        user_name,
+                        f"Odpisano {len(odpisane_opisy)} pozycji z zamówienia "
+                        f"{zamowienie.numer} ({dostawca}): {', '.join(odpisane_opisy)}"
+                    )
+
+            msg = f'Przyjęto {len(utworzone_egzemplarze)} pozycji do magazynu'
+            if odpisane_opisy:
+                msg += f'. Odpisano {len(odpisane_opisy)} pozycji (wrócą do generatora).'
 
             return Response({
                 'success': True,
-                'message': f'Przyjęto {len(utworzone_egzemplarze)} pozycji do magazynu',
+                'message': msg,
                 'utworzone_egzemplarze': utworzone_egzemplarze,
+                'odpisane_count': len(odpisane_opisy),
                 'status_zamowienia': zamowienie.status,
             })
 
@@ -2481,13 +2620,15 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         return f"ID: {instance.id} ({technolog})"
 
     def get_queryset(self):
-        """Filtrowanie - technolog widzi swoje, magazynier/logistyk/kierownik widzi wysłane i zatwierdzone"""
+        """Filtrowanie - technolog widzi swoje, magazynier/logistyk/kierownik widzi wysłane i zatwierdzone + własne (drafty)"""
         queryset = super().get_queryset()
         if self.request.user.is_authenticated and not self.request.user.is_superuser:
-            magazyn_groups = {'magazynier', 'logistyka', 'kierownik'}
+            magazyn_groups = {'magazyn', 'logistyka', 'kierownik', 'administrator'}
             user_groups = set(self.request.user.groups.values_list('name', flat=True))
             if user_groups & magazyn_groups:
-                queryset = queryset.filter(status__in=['submitted', 'completed', 'ordered'])
+                queryset = queryset.filter(
+                    Q(status__in=['submitted', 'completed', 'ordered']) | Q(technolog=self.request.user)
+                )
             else:
                 queryset = queryset.filter(technolog=self.request.user)
         return queryset.order_by('-data_utworzenia')
@@ -2746,16 +2887,17 @@ class PozycjaZapotrzebowaniaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filtrowanie pozycji zapotrzebowań.
-        Technolog widzi tylko swoje, magazynier/logistyk widzi wysłane."""
+        Technolog widzi tylko swoje, magazynier/logistyk widzi wysłane + własne (drafty)."""
         queryset = super().get_queryset()
         user = self.request.user
 
         if not user.is_superuser:
             user_groups = set(user.groups.values_list('name', flat=True))
-            magazyn_groups = {'magazynier', 'logistyka', 'kierownik'}
+            magazyn_groups = {'magazyn', 'logistyka', 'kierownik', 'administrator'}
             if user_groups & magazyn_groups:
-                # Magazynier/logistyk widzi pozycje wysłanych zapotrzebowań
-                queryset = queryset.filter(zapotrzebowanie__status='submitted')
+                queryset = queryset.filter(
+                    Q(zapotrzebowanie__status='submitted') | Q(zapotrzebowanie__technolog=user)
+                )
             else:
                 queryset = queryset.filter(zapotrzebowanie__technolog=user)
 

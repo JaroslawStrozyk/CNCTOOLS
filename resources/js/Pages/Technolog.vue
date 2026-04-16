@@ -25,9 +25,6 @@
                     Zamówienie
                     <span v-if="koszykCount > 0" class="badge">{{ koszykCount }}</span>
                 </button>
-                <button class="btn-about" @click="aboutModalVisible = true" title="O programie">
-                    <i class="pi pi-info-circle"></i>
-                </button>
                 <button class="btn-exit" @click="logout">
                     <i class="pi pi-sign-out"></i>
                     Wyjście
@@ -99,7 +96,8 @@
                         <Column field="opis" header="Opis / Specyfikacja" />
                         <Column field="numer_katalogowy" header="Nr katalogowy">
                             <template #body="{ data }">
-                                {{ data.numer_katalogowy || 'Brak' }}
+                                <span v-if="data.numer_katalogowy">{{ data.numer_katalogowy }}</span>
+                                <span v-else class="text-muted">-</span>
                             </template>
                         </Column>
                         <Column field="ilosc_nowych" header="Nowe" style="width: 80px; text-align: center;">
@@ -276,51 +274,6 @@
             </template>
         </Dialog>
 
-        <!-- Modal: O programie -->
-        <Dialog v-model:visible="aboutModalVisible" header="O programie" :modal="true" :style="{ width: '450px' }">
-            <div class="about-content">
-                <div class="about-header">
-                    <img :src="logoImage" alt="CNC Tools Logo" class="about-logo" />
-                    <h4><strong>CNC Tools</strong></h4>
-                    <p class="text-muted">System zarządzania narzędziami CNC</p>
-                </div>
-                <table class="about-table">
-                    <tbody>
-                        <tr>
-                            <td class="label"><i class="pi pi-code"></i> Wersja:</td>
-                            <td><strong>{{ infoProgram.WERSJA }}</strong></td>
-                        </tr>
-                        <tr>
-                            <td class="label"><i class="pi pi-calendar"></i> Data modyfikacji:</td>
-                            <td>{{ infoProgram.MODYFIKACJA }}</td>
-                        </tr>
-                        <tr>
-                            <td class="label"><i class="pi pi-building"></i> Firma:</td>
-                            <td>{{ infoProgram.FIRMA }}</td>
-                        </tr>
-                        <tr>
-                            <td class="label"><i class="pi pi-user"></i> Autor:</td>
-                            <td>{{ infoProgram.AUTOR }}</td>
-                        </tr>
-                        <tr>
-                            <td class="label"><i class="pi pi-envelope"></i> Email:</td>
-                            <td><a :href="infoProgram.EMAIL">{{ infoProgram.NEMAIL }}</a></td>
-                        </tr>
-                        <tr>
-                            <td class="label"><i class="pi pi-phone"></i> Telefon:</td>
-                            <td>{{ infoProgram.TEL }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <template #footer>
-                <div class="about-footer">
-                    <small class="copyright">© {{ infoProgram.FIRMA }} 2025</small>
-                    <Button label="Zamknij" class="btn-modal-secondary" @click="aboutModalVisible = false" />
-                </div>
-            </template>
-        </Dialog>
-
         <!-- Modal: Podgląd narzędzia -->
         <Dialog v-model:visible="previewModalVisible" :header="previewTool ? previewTool.opis : 'Podgląd'" :modal="true" :style="{ width: '500px' }">
             <div class="preview-content">
@@ -364,22 +317,31 @@
                 <div class="form-row">
                     <div class="form-group">
                         <label>Kategoria</label>
-                        <input
-                            type="text"
-                            v-model="kartaForm.kategoria_nazwa"
-                            class="form-control"
+                        <Dropdown
+                            v-model="kartaForm.kategoria_id"
+                            :options="kartaKategorieOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Brak"
+                            :showClear="true"
                             :disabled="kartaForm.narzedzie_typ_id !== null"
+                            @change="onKartaKategoriaChange"
+                            class="karta-dropdown"
                             :class="{ 'disabled-field': kartaForm.narzedzie_typ_id !== null }"
                         />
                     </div>
                     <div class="form-group">
                         <label>Podkategoria</label>
-                        <input
-                            type="text"
-                            v-model="kartaForm.podkategoria_nazwa"
-                            class="form-control"
-                            :disabled="kartaForm.narzedzie_typ_id !== null"
-                            :class="{ 'disabled-field': kartaForm.narzedzie_typ_id !== null }"
+                        <Dropdown
+                            v-model="kartaForm.podkategoria_id"
+                            :options="kartaPodkategorieOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Brak"
+                            :showClear="true"
+                            :disabled="kartaForm.narzedzie_typ_id !== null || !kartaForm.kategoria_id"
+                            class="karta-dropdown"
+                            :class="{ 'disabled-field': kartaForm.narzedzie_typ_id !== null || !kartaForm.kategoria_id }"
                         />
                     </div>
                 </div>
@@ -605,7 +567,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
-import logoImage from '@images/cnc-logo.png';
 import defaultToolImage from '@images/cnc.png';
 
 // PrimeVue Components
@@ -613,6 +574,7 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
+import Dropdown from 'primevue/dropdown';
 
 const API_URL = '/api';
 
@@ -632,12 +594,9 @@ const props = defineProps({
             zwroty: '/zwroty/',
             zamowienia: '/zamowienia/',
             zakupy: '/zakupy/',
+            zapotrzebowania: '/zapotrzebowania/',
             logout: '/logout/'
         })
-    },
-    infoProgram: {
-        type: Object,
-        default: () => ({})
     },
     pageSize: {
         type: Number,
@@ -660,7 +619,6 @@ const koszyk = ref(null);
 const pozycjeKoszyka = ref([]);
 
 // Modals visibility
-const aboutModalVisible = ref(false);
 const previewModalVisible = ref(false);
 const previewTool = ref(null);
 
@@ -680,8 +638,8 @@ const expandedHistoriaRows = ref([]);
 // Formularz karty zapotrzebowania
 const kartaForm = ref({
     narzedzie_typ_id: null,
-    kategoria_nazwa: '',
-    podkategoria_nazwa: '',
+    kategoria_id: null,
+    podkategoria_id: null,
     specyfikacja: '',
     numer_katalogowy: '',
     nr_klienta: '',
@@ -781,7 +739,17 @@ const filteredPodkategorie = computed(() => {
 
 // Methods
 
+// Kontekst wejścia — jeśli user przyszedł z Zapotrzebowania, "Wyjście" wraca tam zamiast wylogowywać
+const entryFromParam = new URLSearchParams(window.location.search).get('from');
+const entryOriginParam = new URLSearchParams(window.location.search).get('origin');
+
 const logout = () => {
+    if (entryFromParam === 'zapotrzebowania') {
+        const base = props.urls.zapotrzebowania || '/zapotrzebowania/';
+        const qs = entryOriginParam ? `?from=${encodeURIComponent(entryOriginParam)}` : '';
+        window.location.href = base + qs;
+        return;
+    }
     window.location.href = props.urls.logout;
 };
 
@@ -811,8 +779,8 @@ const onToolUnselect = () => {
 const resetKartaForm = () => {
     kartaForm.value = {
         narzedzie_typ_id: null,
-        kategoria_nazwa: '',
-        podkategoria_nazwa: '',
+        kategoria_id: null,
+        podkategoria_id: null,
         specyfikacja: '',
         numer_katalogowy: '',
         nr_klienta: '',
@@ -825,6 +793,20 @@ const resetKartaForm = () => {
     returnToKoszyk.value = false;
 };
 
+const kartaKategorieOptions = computed(() =>
+    kategorie.value.map(k => ({ label: k.nazwa, value: k.id }))
+);
+
+const kartaPodkategorieOptions = computed(() => {
+    if (!kartaForm.value.kategoria_id) return [];
+    const kat = kategorie.value.find(k => k.id === kartaForm.value.kategoria_id);
+    return (kat?.podkategorie || []).map(p => ({ label: p.nazwa, value: p.id }));
+});
+
+const onKartaKategoriaChange = () => {
+    kartaForm.value.podkategoria_id = null;
+};
+
 const openKartaModal = (tool) => {
     resetKartaForm();
 
@@ -834,8 +816,11 @@ const openKartaModal = (tool) => {
         kartaForm.value.specyfikacja = tool.opis || '';
         kartaForm.value.numer_katalogowy = tool.numer_katalogowy || '';
         if (tool.podkategoria) {
-            kartaForm.value.kategoria_nazwa = tool.podkategoria.kategoria_nazwa || '';
-            kartaForm.value.podkategoria_nazwa = tool.podkategoria.nazwa || '';
+            kartaForm.value.podkategoria_id = tool.podkategoria.id;
+            const kat = kategorie.value.find(k =>
+                k.podkategorie?.some(p => p.id === tool.podkategoria.id)
+            );
+            kartaForm.value.kategoria_id = kat?.id || null;
         }
     }
     // Jeśli tool = null, otwieramy pustą kartę (nowa ręczna pozycja)
@@ -865,11 +850,13 @@ const saveKartaForm = async () => {
     }
 
     try {
+        const kat = kategorie.value.find(k => k.id === kartaForm.value.kategoria_id);
+        const pod = kat?.podkategorie?.find(p => p.id === kartaForm.value.podkategoria_id);
         const payload = {
             zapotrzebowanie: koszyk.value.id,
             narzedzie_typ_id: kartaForm.value.narzedzie_typ_id,
-            kategoria_nazwa: kartaForm.value.kategoria_nazwa,
-            podkategoria_nazwa: kartaForm.value.podkategoria_nazwa,
+            kategoria_nazwa: kat?.nazwa || '',
+            podkategoria_nazwa: pod?.nazwa || '',
             specyfikacja: kartaForm.value.specyfikacja,
             numer_katalogowy: kartaForm.value.numer_katalogowy,
             nr_klienta: kartaForm.value.nr_klienta,
@@ -907,10 +894,12 @@ const editPozycja = (pozycja) => {
     editingPozycjaId.value = pozycja.id;
     returnToKoszyk.value = true;
 
+    const kat = kategorie.value.find(k => k.nazwa === pozycja.kategoria_nazwa);
+    const pod = kat?.podkategorie?.find(p => p.nazwa === pozycja.podkategoria_nazwa);
     kartaForm.value = {
         narzedzie_typ_id: pozycja.narzedzie_typ?.id || null,
-        kategoria_nazwa: pozycja.kategoria_nazwa || '',
-        podkategoria_nazwa: pozycja.podkategoria_nazwa || '',
+        kategoria_id: kat?.id || null,
+        podkategoria_id: pod?.id || null,
         specyfikacja: pozycja.specyfikacja || '',
         numer_katalogowy: pozycja.numer_katalogowy || '',
         nr_klienta: pozycja.nr_klienta || '',
@@ -1182,27 +1171,6 @@ onMounted(() => {
     display: flex;
     gap: 10px;
     align-items: center;
-}
-
-.btn-about {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    border-radius: 4px;
-    font-size: 16px;
-    border: 1px solid #6c757d;
-    background-color: #6c757d;
-    color: #fff;
-    cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    transition: all 0.15s ease-in-out;
-}
-.btn-about:hover {
-    background-color: #5c636a;
-    border-color: #565e64;
 }
 
 .btn-preview {
@@ -1724,38 +1692,6 @@ onMounted(() => {
     z-index: 1;
 }
 
-/* === O PROGRAMIE - CIEMNY MOTYW === */
-.about-content {
-    text-align: center;
-    color: var(--dark-text-primary);
-}
-
-.about-header {
-    margin-bottom: 24px;
-}
-
-.about-logo {
-    width: 80px;
-    height: 80px;
-}
-
-.about-table {
-    width: 100%;
-    text-align: left;
-    color: var(--dark-text-primary);
-}
-
-.about-table td {
-    padding: 8px 0;
-}
-
-.about-table .label {
-    text-align: right;
-    color: var(--dark-text-muted);
-    padding-right: 16px;
-    width: 40%;
-}
-
 /* === UTILITY === */
 .text-muted {
     color: #6c757d;
@@ -1870,54 +1806,77 @@ onMounted(() => {
     gap: 8px;
 }
 
-/* About modal specjalne style */
-.p-dialog .about-content {
-    text-align: center;
-}
-
-.p-dialog .about-header h4 {
-    color: #ffc107 !important;
-    margin: 10px 0 5px 0;
-}
-
-.p-dialog .about-header p {
-    color: #adb5bd !important;
-}
-
-.p-dialog .about-table {
-    margin-top: 20px;
-}
-
-.p-dialog .about-table td {
-    padding: 8px 0;
-    color: #dee2e6;
-}
-
-.p-dialog .about-table .label {
-    color: #adb5bd !important;
-}
-
-.p-dialog .about-table a {
-    color: #0d6efd !important;
-    text-decoration: none;
-}
-
-.p-dialog .about-table a:hover {
-    color: #3d8bfd !important;
-    text-decoration: underline;
-}
-
-/* About modal footer */
-.about-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+/* === DROPDOWN W KARCIE ZAPOTRZEBOWANIA - CIEMNY MOTYW === */
+.p-dialog .karta-dropdown {
     width: 100%;
+    background-color: #343a40 !important;
+    border: 1px solid #495057 !important;
+    border-radius: 4px !important;
+    color: #dee2e6 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
 }
 
-.about-footer .copyright {
+.p-dialog .karta-dropdown .p-dropdown-label {
+    color: #dee2e6 !important;
+    padding: 6px 12px !important;
+    font-size: 14px !important;
+}
+
+.p-dialog .karta-dropdown .p-dropdown-label.p-placeholder {
     color: #6c757d !important;
-    font-size: 0.85rem;
+}
+
+.p-dialog .karta-dropdown .p-dropdown-trigger {
+    color: #adb5bd !important;
+}
+
+.p-dialog .karta-dropdown:not(.p-disabled):hover {
+    border-color: #6c757d !important;
+}
+
+.p-dialog .karta-dropdown:not(.p-disabled).p-focus {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25) !important;
+}
+
+.p-dialog .karta-dropdown.p-disabled,
+.p-dialog .karta-dropdown.disabled-field {
+    background-color: #1a1d20 !important;
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.p-dialog .karta-dropdown.p-disabled .p-dropdown-label,
+.p-dialog .karta-dropdown.disabled-field .p-dropdown-label {
+    color: #6c757d !important;
+}
+
+.p-dialog .karta-dropdown .p-dropdown-clear-icon {
+    color: #adb5bd !important;
+    right: 36px;
+}
+
+/* Panel (rozwijana lista) - ciemny motyw */
+.p-dropdown-panel {
+    background-color: #2d3238 !important;
+    border: 1px solid #495057 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item {
+    color: #dee2e6 !important;
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+}
+
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item:hover {
+    background-color: #3d444d !important;
+    color: #fff !important;
+}
+
+.p-dropdown-panel .p-dropdown-items .p-dropdown-item.p-highlight {
+    background-color: #4a3728 !important;
+    color: #fff !important;
 }
 
 /* === PRZYCISKI W MODALACH === */

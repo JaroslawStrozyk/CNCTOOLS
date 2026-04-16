@@ -17,6 +17,7 @@
                 <div class="panel-header">
                     <h3>Narzędzia do zamówienia</h3>
                     <span class="text-muted">Pozycji do zamówienia: <strong>{{ toolsToOrder.length }}</strong></span>
+                    <Button icon="pi pi-plus" class="p-button-success p-button-sm btn-add-manual" @click="openAddModal" title="Dodaj ręcznie" />
                 </div>
                 <div class="panel-body">
                     <div v-if="isLoading" class="loading-spinner">
@@ -48,9 +49,6 @@
                             </template>
                         </Column>
                         <Column header="" style="width: 120px; text-align: center;">
-                            <template #header>
-                                <Button icon="pi pi-plus" class="p-button-success p-button-sm" @click="openAddModal" title="Dodaj ręcznie" />
-                            </template>
                             <template #body="{ data }">
                                 <div style="display: flex; gap: 4px; justify-content: center;">
                                     <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openEditModal(data)" title="Edytuj" />
@@ -606,7 +604,10 @@ onMounted(async () => {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
+.panel-header { display: flex; align-items: center; padding: 12px 16px; }
 .panel-header h3 { margin: 0; color: #ffc107; }
+.panel-header .text-muted { margin-left: auto; }
+.panel-header .btn-add-manual { margin-left: 30px; }
 .panel-body { flex: 1; overflow: auto; min-height: 0; background: #212529; }
 .empty-state.success { color: #75b798; }
 .empty-state.success i { color: #198754 !important; }
