@@ -1,6 +1,6 @@
 // CNC Tools - Service Worker for PWA
 // CACHE_NAME jest automatycznie aktualizowany przez lap_prod.py
-const CACHE_NAME = 'cnctools-1.08.0g';
+const CACHE_NAME = 'cnctools-1.08.2g';
 
 // Zasoby do cache'owania przy instalacji
 const STATIC_CACHE = [
