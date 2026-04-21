@@ -871,11 +871,15 @@ def generator_zamowien_gotowe_api(request):
             if not pozycje_generatora.exists():
                 return Response({'error': 'Brak pozycji w generatorze'}, status=400)
 
-            # Grupuj według dostawcy
+            # Grupuj według dostawcy; pomiń pozycje z ilością 0 lub ujemną
             from collections import defaultdict
             grouped = defaultdict(list)
+            pominiete_zero = 0
 
             for pozycja in pozycje_generatora:
+                if pozycja.ilosc_do_zamowienia <= 0:
+                    pominiete_zero += 1
+                    continue
                 dostawca_id = pozycja.dostawca.id if pozycja.dostawca else None
                 grouped[dostawca_id].append(pozycja)
 
@@ -897,7 +901,10 @@ def generator_zamowien_gotowe_api(request):
                 ).order_by('-numer').first()
 
                 if ostatnie_zamowienie:
-                    ostatni_nr = int(ostatnie_zamowienie.numer.split('/')[-1])
+                    try:
+                        ostatni_nr = int(ostatnie_zamowienie.numer.split('/')[-1])
+                    except (ValueError, IndexError):
+                        ostatni_nr = 0
                     nowy_nr = ostatni_nr + 1
                 else:
                     nowy_nr = 1
@@ -933,7 +940,14 @@ def generator_zamowien_gotowe_api(request):
                                 except ValueError:
                                     continue
                 if zapotrzebowania_ids_set:
-                    zamowienie.zrodlowe_zapotrzebowania.add(*zapotrzebowania_ids_set)
+                    from .models import ZapotrzebowanieTechnologa
+                    istniejace_ids = set(
+                        ZapotrzebowanieTechnologa.objects.filter(
+                            id__in=zapotrzebowania_ids_set
+                        ).values_list('id', flat=True)
+                    )
+                    if istniejace_ids:
+                        zamowienie.zrodlowe_zapotrzebowania.add(*istniejace_ids)
 
                 # Utwórz pozycje zamówienia
                 for pozycja_gen in pozycje:
@@ -975,11 +989,25 @@ def generator_zamowien_gotowe_api(request):
                     'dostawca': dostawca.nazwa_firmy
                 })
 
+            # Jeśli nie powstało żadne zamówienie (wszystkie pozycje bez dostawcy
+            # lub ilość=0) — zwróć błąd zamiast mylącego sukcesu.
+            if not utworzone_zamowienia:
+                return Response({
+                    'error': 'Żadna pozycja nie trafiła do zamówienia. Uzupełnij dostawcę lub ilość.'
+                }, status=400)
+
             # Skasuj z generatora TYLKO pozycje, które faktycznie trafiły do zamówień.
             # Pozycje bez dostawcy (grouped[None]) były pominięte powyżej — zostają
             # w generatorze, żeby user mógł uzupełnić dostawcę lub skasować je ręcznie.
+            # Pozycje z ilosc=0 również zostają (user widzi i może edytować/usunąć).
             pominiete_count = len(grouped.get(None, []))
-            PozycjaGeneratora.objects.exclude(dostawca__isnull=True).delete()
+            narzedzia_do_zachowania = [
+                p.narzedzie_typ_id for p in pozycje_generatora
+                if p.ilosc_do_zamowienia <= 0 or p.dostawca is None
+            ]
+            PozycjaGeneratora.objects.exclude(
+                narzedzie_typ_id__in=narzedzia_do_zachowania
+            ).delete()
 
             # Logowanie
             user_name = get_user_display_name(request.user)
@@ -989,6 +1017,8 @@ def generator_zamowien_gotowe_api(request):
             message = f'Utworzono {len(utworzone_zamowienia)} zamówień'
             if pominiete_count > 0:
                 message += f'. Pominięto {pominiete_count} pozycji bez dostawcy — pozostają w generatorze do uzupełnienia.'
+            if pominiete_zero > 0:
+                message += f' Pominięto {pominiete_zero} pozycji z ilością 0 — pozostają w generatorze.'
 
             return Response({
                 'success': True,
