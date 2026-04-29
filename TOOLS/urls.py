@@ -22,6 +22,7 @@ from .views_inertia import (
     technologia_view as technologia_inertia_view,
     kierownik_view as kierownik_inertia_view,
     logi_view as logi_inertia_view,
+    magazyn_update_view,
 )
 
 router = DefaultRouter()
@@ -38,6 +39,7 @@ router.register(r'faktury', views.FakturaZakupuViewSet, basename='faktura')
 # Narzędzia magazynowe
 router.register(r'narzedzia', views.NarzedzieMagazynoweViewSet, basename='narzedzie')
 router.register(r'narzedzia-zakupy', views.NarzedzieMagazynoweZakupyViewSet, basename='narzedzie-zakupy')
+router.register(r'narzedzia-prod', views.NarzedzieMagazynoweProdViewSet, basename='narzedzie-prod')
 router.register(r'egzemplarze', views.EgzemplarzNarzedziaViewSet, basename='egzemplarz')
 router.register(r'historia', views.HistoriaUzyciaNarzedziaViewSet, basename='historia')
 router.register(r'uszkodzenia', views.UszkodzenieViewSet, basename='uszkodzenie')
@@ -59,6 +61,7 @@ urlpatterns = [
     path('api/login-card/', login_by_card, name='login-card'),
     path('logout/', logout_inertia_view, name='logout'),
     path('magazyn/', magazyn_inertia_view, name='magazyn'),
+    path('magazyn/update', magazyn_update_view, name='magazyn-update'),
     path('zakupy/', zakupy_inertia_view, name='zakupy'),
     path('zamowienia/', zamowienia_inertia_view, name='zamowienia'),
     path('ustawienia/', ustawienia_inertia_view, name='ustawienia'),

@@ -31,7 +31,7 @@
                     <div class="search-box">
                         <input
                             type="text"
-                            v-model="searchQuery"
+                            v-model="searchInput"
                             placeholder="Szukaj..."
                             class="form-control search-input"
                         />
@@ -71,11 +71,14 @@
                         dataKey="id"
                         class="tools-table"
                         :rowClass="rowClass"
+                        :virtualScrollerOptions="{ itemSize: 38 }"
+                        tableStyle="min-width: 100%"
+                        tableLayout="fixed"
                     >
-                        <Column field="kategoria" header="Kategoria / Podkategoria">
+                        <Column field="kategoria_nazwa" header="Kategoria / Podkategoria">
                             <template #body="{ data }">
-                                <span v-if="data.podkategoria">
-                                    <strong>{{ data.podkategoria.kategoria_nazwa }}</strong> / {{ data.podkategoria.nazwa }}
+                                <span v-if="data.kategoria_nazwa">
+                                    <strong>{{ data.kategoria_nazwa }}</strong> / {{ data.podkategoria_nazwa }}
                                 </span>
                                 <span v-else class="text-muted">Brak kategorii</span>
                             </template>
@@ -108,7 +111,7 @@
                         </Column>
                         <Column field="calkowita_ilosc" header="Razem" style="width: 80px; text-align: center;">
                             <template #body="{ data }">
-                                <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
+                                <strong :class="{ 'zero-value': data.calkowita_ilosc === 0, 'has-image': data.ma_obraz }">{{ data.calkowita_ilosc }}</strong>
                             </template>
                         </Column>
                     </DataTable>
@@ -157,12 +160,16 @@
                                         :src="selectedToolForDetails.obraz"
                                         class="tool-image"
                                         alt="Obrazek narzędzia"
+                                        loading="lazy"
+                                        decoding="async"
                                     />
                                     <img
                                         v-else
                                         :src="defaultToolImage"
                                         class="tool-image"
                                         alt="Domyślny obrazek narzędzia"
+                                        loading="lazy"
+                                        decoding="async"
                                     />
                                 </div>
                             </div>
@@ -214,7 +221,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import defaultToolImage from '@images/cnc.png';
 
@@ -250,16 +257,22 @@ const props = defineProps({
     }
 });
 
-// Data
-const tools = ref([]);
+// Data — duże tablice obiektów: shallowRef żeby uniknąć kosztownej deep-reactivity
+const tools = shallowRef([]);
 const kategorie = ref([]);
-const usagesInUse = ref([]);
+const usagesInUse = shallowRef([]);
 const isLoadingTools = ref(true);
 
 const selectedKategoriaId = ref(null);
 const selectedPodkategoriaId = ref(null);
 const selectedToolForDetails = ref(null);
+const searchInput = ref('');
 const searchQuery = ref('');
+let searchDebounceTimer = null;
+watch(searchInput, (val) => {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => { searchQuery.value = val; }, 250);
+});
 const activeTabIndex = ref(0);
 
 // Modal "W użyciu"
@@ -299,34 +312,27 @@ const openNarzedziaModal = () => {
     window.location.href = '/magazyn/?tryb=produkcja';
 };
 
-// Computed
+// Computed — slim model: tool.podkategoria_id / tool.podkategoria_nazwa / tool.kategoria_nazwa
 const filteredTools = computed(() => {
     let filtered = tools.value;
 
     if (selectedPodkategoriaId.value) {
-        filtered = filtered.filter(tool => tool.podkategoria && tool.podkategoria.id === selectedPodkategoriaId.value);
+        filtered = filtered.filter(tool => tool.podkategoria_id === selectedPodkategoriaId.value);
     } else if (selectedKategoriaId.value) {
         const kategoria = kategorie.value.find(k => k.id === selectedKategoriaId.value);
         if (kategoria) {
-            filtered = filtered.filter(tool => {
-                if (!tool.podkategoria) return false;
-                return kategoria.podkategorie.some(p => p.id === tool.podkategoria.id);
-            });
+            const validIds = new Set((kategoria.podkategorie || []).map(p => p.id));
+            filtered = filtered.filter(tool => validIds.has(tool.podkategoria_id));
         }
     }
 
-    if (searchQuery.value.trim() !== '') {
-        const query = searchQuery.value.trim().toLowerCase();
+    const q = searchQuery.value.trim().toLowerCase();
+    if (q !== '') {
         filtered = filtered.filter(tool => {
-            const catalogNumber = (tool.numer_katalogowy || '').toLowerCase();
-            const kategoriaNazwa = tool.podkategoria?.kategoria_nazwa?.toLowerCase() || '';
-            const podkategoriaNazwa = tool.podkategoria?.nazwa?.toLowerCase() || '';
-            const opisNazwa = tool.opis.toLowerCase();
-
-            return kategoriaNazwa.includes(query) ||
-                   podkategoriaNazwa.includes(query) ||
-                   opisNazwa.includes(query) ||
-                   catalogNumber.includes(query);
+            return (tool.kategoria_nazwa || '').toLowerCase().includes(q) ||
+                   (tool.podkategoria_nazwa || '').toLowerCase().includes(q) ||
+                   (tool.opis || '').toLowerCase().includes(q) ||
+                   (tool.numer_katalogowy || '').toLowerCase().includes(q);
         });
     }
 
@@ -342,15 +348,11 @@ const filteredPodkategorie = computed(() => {
 });
 
 // Narzędzia w użyciu tylko przez zalogowanego użytkownika
+// Dopasowanie po user.id (odporne na puste imie/nazwisko w Pracownik)
 const myUsagesInUse = computed(() => {
-    const firstName = props.auth.user.first_name?.toLowerCase() || '';
-    const lastName = props.auth.user.last_name?.toLowerCase() || '';
-    if (!firstName && !lastName) return [];
-    return usagesInUse.value.filter(usage => {
-        const pracownikImie = (usage.pracownik?.imie || '').toLowerCase();
-        const pracownikNazwisko = (usage.pracownik?.nazwisko || '').toLowerCase();
-        return pracownikImie === firstName && pracownikNazwisko === lastName;
-    });
+    const myId = props.auth?.user?.id;
+    if (!myId) return [];
+    return usagesInUse.value.filter(usage => usage.pracownik?.user?.id === myId);
 });
 
 // Narzędzia w użyciu dla wybranego typu narzędzia (modal)
@@ -394,22 +396,22 @@ const openUsageModal = (tool) => {
     }
 };
 
-const fetchInitialData = async () => {
-    try {
-        const [toolsRes, categoriesRes, usagesRes] = await Promise.all([
-            axios.get(`${API_URL}/narzedzia/`),
-            axios.get(`${API_URL}/kategorie/`),
-            axios.get(`${API_URL}/historia/?w_uzyciu=true`)
-        ]);
+const fetchInitialData = () => {
+    // Niezależne równoległe zapytania — każda część renderuje się gdy tylko jej dane dotrą
+    // (priorytet: kategorie + "Moje narzędzia w użyciu" przed pełną listą narzędzi)
+    axios.get(`${API_URL}/kategorie/`)
+        .then(res => { kategorie.value = res.data; })
+        .catch(err => console.error('kategorie:', err.response?.data || err.message));
 
-        tools.value = toolsRes.data.results || toolsRes.data;
-        kategorie.value = categoriesRes.data;
-        usagesInUse.value = usagesRes.data.results || usagesRes.data;
-    } catch (error) {
-        console.error("Błąd ładowania danych:", error.response?.data || error.message);
-    } finally {
-        isLoadingTools.value = false;
-    }
+    axios.get(`${API_URL}/historia/?w_uzyciu=true`)
+        .then(res => { usagesInUse.value = res.data.results || res.data; })
+        .catch(err => console.error('historia:', err.response?.data || err.message));
+
+    // Endpoint slim — bez paginacji, ~10 pól zamiast pełnego serializera (~3x mniej JSON)
+    axios.get(`${API_URL}/narzedzia-prod/`)
+        .then(res => { tools.value = res.data.results || res.data; })
+        .catch(err => console.error('narzedzia-prod:', err.response?.data || err.message))
+        .finally(() => { isLoadingTools.value = false; });
 };
 
 onMounted(() => {
@@ -902,6 +904,11 @@ onUnmounted(() => {
 /* === WARTOŚĆ ZEROWA W TABELI === */
 .zero-value {
     color: #6c757d !important;
+}
+
+/* === KOLUMNA "RAZEM" — żółto gdy narzędzie ma podgląd === */
+.has-image {
+    color: #ffc107 !important;
 }
 
 /* === MINIATUROWY BUTTON W KOLUMNIE "W UŻYCIU" === */

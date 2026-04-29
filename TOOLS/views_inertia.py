@@ -1,13 +1,15 @@
 import json
+from collections import defaultdict
 from inertia import render
 from django.contrib.auth import authenticate, login, logout as auth_logout
+from django.db import transaction
 from django.shortcuts import redirect
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from .models import Pracownik
+from .models import Pracownik, HistoriaUzyciaNarzedzia, Uszkodzenie
 from .logging_service import app_logger, get_user_display_name
 
 
@@ -372,3 +374,141 @@ def login_by_card(request):
             'last_name': pracownik.nazwisko
         }
     })
+
+
+def _scal_duplikaty_pracownikow(execute=False):
+    """Idempotentne scalanie duplikatów Pracownik (po nazwisko+imie).
+
+    Strategia:
+      - Grupuje Pracowników po (nazwisko, imie) gdzie oba pola są niepuste
+      - W grupach z >1 elementem wybiera 'real' (z user_id; jeśli ambiwalentne, min(id))
+      - Migruje FK z duplikatów (HistoriaUzyciaNarzedzia.pracownik / pracownik_zwracajacy,
+        Uszkodzenie.pracownik) do reala
+      - Usuwa duplikaty bez user_id
+
+    Args:
+        execute: gdy False — tylko raport (dry-run). True — wykonuje zmiany w transakcji.
+
+    Returns:
+        dict z polami: dry_run, grupy, naprawione_imie_nazwisko, polaczenia, usunieci, bledy
+    """
+    raport = {
+        'dry_run': not execute,
+        'naprawione_imie_nazwisko': [],
+        'grupy': [],
+        'polaczenia': [],
+        'usunieci': [],
+        'bledy': [],
+    }
+
+    def _wykonaj():
+        # Krok 1: uzupełnij imie/nazwisko z User dla rekordów z pustymi polami
+        for p in Pracownik.objects.filter(user__isnull=False).select_related('user'):
+            zmieniono = False
+            if not p.nazwisko and p.user.last_name:
+                p.nazwisko = p.user.last_name
+                zmieniono = True
+            if not p.imie and p.user.first_name:
+                p.imie = p.user.first_name
+                zmieniono = True
+            if zmieniono:
+                raport['naprawione_imie_nazwisko'].append({
+                    'id': p.id, 'user': p.user.username,
+                    'nazwisko': p.nazwisko, 'imie': p.imie,
+                })
+                if execute:
+                    p.save()
+
+        # Krok 2: grupowanie po (nazwisko, imie) — tylko niepuste
+        grupy = defaultdict(list)
+        for p in Pracownik.objects.exclude(nazwisko='').exclude(imie='').order_by('id'):
+            grupy[(p.nazwisko.strip().lower(), p.imie.strip().lower())].append(p)
+
+        # Krok 3: dla każdej grupy z >1 → wybierz reala, zmigruj FK, skasuj duplikaty
+        for klucz, pracownicy in grupy.items():
+            if len(pracownicy) < 2:
+                continue
+
+            z_user = [p for p in pracownicy if p.user_id]
+            if len(z_user) == 1:
+                real = z_user[0]
+            elif len(z_user) > 1:
+                raport['bledy'].append({
+                    'grupa': f'{pracownicy[0].nazwisko} {pracownicy[0].imie}',
+                    'powod': f'wielu pracowników z user_id ({[p.id for p in z_user]}) - pominięto',
+                })
+                continue
+            else:
+                real = pracownicy[0]  # min(id)
+
+            duplikaty = [p for p in pracownicy if p.id != real.id]
+            opis_grupy = {
+                'nazwisko': real.nazwisko, 'imie': real.imie,
+                'real_id': real.id, 'real_user': real.user.username if real.user else None,
+                'duplikaty_ids': [p.id for p in duplikaty],
+            }
+            raport['grupy'].append(opis_grupy)
+
+            for dup in duplikaty:
+                hist_pob = HistoriaUzyciaNarzedzia.objects.filter(pracownik_id=dup.id)
+                hist_zwr = HistoriaUzyciaNarzedzia.objects.filter(pracownik_zwracajacy_id=dup.id)
+                uszk = Uszkodzenie.objects.filter(pracownik_id=dup.id)
+
+                liczby = {
+                    'duplikat_id': dup.id, 'real_id': real.id,
+                    'historia_pobran': hist_pob.count(),
+                    'historia_zwrotow': hist_zwr.count(),
+                    'uszkodzenia': uszk.count(),
+                }
+                raport['polaczenia'].append(liczby)
+
+                if execute:
+                    hist_pob.update(pracownik_id=real.id)
+                    hist_zwr.update(pracownik_zwracajacy_id=real.id)
+                    uszk.update(pracownik_id=real.id)
+
+                if not dup.user_id:
+                    raport['usunieci'].append({'id': dup.id, 'karta': dup.karta})
+                    if execute:
+                        dup.delete()
+                else:
+                    raport['bledy'].append({
+                        'grupa': opis_grupy['nazwisko'] + ' ' + opis_grupy['imie'],
+                        'powod': f'duplikat id={dup.id} ma user_id={dup.user_id} - nie usunięto',
+                    })
+
+    if execute:
+        with transaction.atomic():
+            _wykonaj()
+    else:
+        _wykonaj()
+
+    return raport
+
+
+@login_required
+def magazyn_update_view(request):
+    """Jednorazowy skrypt naprawczy bazy danych — deduplikacja pracowników.
+
+    GET /magazyn/update          — dry-run (raport bez zmian)
+    GET /magazyn/update?execute=1 — wykonuje migrację
+
+    Wymaga uprawnień superuser.
+    """
+    if not request.user.is_superuser:
+        return JsonResponse({'error': 'Wymagane uprawnienia superuser'}, status=403)
+
+    execute = request.GET.get('execute') == '1'
+    try:
+        raport = _scal_duplikaty_pracownikow(execute=execute)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+    if execute:
+        opis = (f"Scalono {len(raport['polaczenia'])} duplikatów, "
+                f"usunięto {len(raport['usunieci'])}, "
+                f"uzupełniono imie/nazwisko: {len(raport['naprawione_imie_nazwisko'])}")
+        app_logger.success(get_user_display_name(request.user),
+                           f"Skrypt /magazyn/update: {opis}")
+
+    return JsonResponse(raport, json_dumps_params={'indent': 2, 'ensure_ascii': False})

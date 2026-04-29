@@ -123,7 +123,11 @@
                         <Column field="opis" header="Opis / Specyfikacja" />
                         <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 250px;">
                             <template #body="{ data }">
-                                <template v-if="data.numer_katalogowy">{{ data.numer_katalogowy }}</template>
+                                <span v-if="data.numer_katalogowy"
+                                      :class="{ 'duplicate-catalog': isDuplicateCatalog(data.numer_katalogowy) }"
+                                      :title="isDuplicateCatalog(data.numer_katalogowy) ? 'Numer katalogowy zduplikowany w bazie' : ''">
+                                    {{ data.numer_katalogowy }}
+                                </span>
                                 <span v-else class="text-muted">-</span>
                             </template>
                         </Column>
@@ -1180,6 +1184,27 @@ const inUseInstanceIds = computed(() => {
     return new Set(usagesInUse.value.map(usage => usage.egzemplarz.id));
 });
 
+// Kontrola duplikatów numerów katalogowych — set kluczy (trim+lowercase) występujących >1 raz w tools.
+// Why: numer katalogowy powinien być unikalny dla typu narzędzia; duplikat sygnalizuje błąd danych do ręcznej weryfikacji.
+const duplicateCatalogNumbers = computed(() => {
+    const counts = new Map();
+    for (const t of tools.value) {
+        const n = (t.numer_katalogowy || '').trim().toLowerCase();
+        if (!n) continue;
+        counts.set(n, (counts.get(n) || 0) + 1);
+    }
+    const dups = new Set();
+    for (const [n, c] of counts) {
+        if (c > 1) dups.add(n);
+    }
+    return dups;
+});
+
+const isDuplicateCatalog = (val) => {
+    if (!val) return false;
+    return duplicateCatalogNumbers.value.has(val.trim().toLowerCase());
+};
+
 const filteredPodkategorieOptions = computed(() => {
     if (!selectedKategoriaId.value) return [];
     const kategoria = kategorie.value.find(k => k.id === selectedKategoriaId.value);
@@ -1446,7 +1471,15 @@ const getToolHistory = async (tool) => {
 const showIssueModal = (instance) => {
     issueData.value.instance = instance;
     issueData.value.machine_id = machines.value.length > 0 ? machines.value[0].id : null;
-    issueData.value.pracownik_id = null;
+
+    // Tryb produkcja: auto-wybór zalogowanego pracownika (lista jest już filtrowana po pobieranie_narzedzi=True)
+    let domyslnyPracownikId = null;
+    if (props.trybProdukcja && props.auth?.user?.id) {
+        const zalogowany = pracownicy.value.find(p => p.user?.id === props.auth.user.id);
+        if (zalogowany) domyslnyPracownikId = zalogowany.id;
+    }
+    issueData.value.pracownik_id = domyslnyPracownikId;
+
     issueData.value.typWydania = 'sztuki';
     issueData.value.iloscSztuk = 1;
     issueError.value = '';
@@ -1739,9 +1772,8 @@ const saveTool = async () => {
         formData.append('podkategoria_id', currentTool.value.podkategoria_id);
     }
 
-    if (currentTool.value.numer_katalogowy) {
-        formData.append('numer_katalogowy', currentTool.value.numer_katalogowy);
-    }
+    // Wysyłamy zawsze (nawet pusty string), żeby PATCH skasował poprzednią wartość gdy użytkownik wyczyści pole.
+    formData.append('numer_katalogowy', currentTool.value.numer_katalogowy || '');
 
     if (currentTool.value.domyslna_lokalizacja_id) {
         formData.append('domyslna_lokalizacja_id', currentTool.value.domyslna_lokalizacja_id);
@@ -2049,13 +2081,18 @@ const fetchInitialData = async () => {
 
         // Dodaj fullName do pracowników dla dropdown
         // (...) = tylko karta (stara tabela, brak konta użytkownika)
+        // Fallback: jeśli Pracownik.nazwisko/imie puste, użyj danych z User
         const pracownicyData = pracownicyRes.data.results || pracownicyRes.data;
-        pracownicy.value = pracownicyData.map(p => ({
-            ...p,
-            fullName: p.user
-                ? `${p.nazwisko} ${p.imie}`
-                : `${p.nazwisko} ${p.imie} ...`
-        }));
+        pracownicy.value = pracownicyData.map(p => {
+            const nazwisko = p.nazwisko || p.user?.last_name || '';
+            const imie = p.imie || p.user?.first_name || '';
+            return {
+                ...p,
+                fullName: p.user
+                    ? `${nazwisko} ${imie}`.trim() || p.user.username
+                    : `${nazwisko} ${imie} ...`.trim()
+            };
+        });
 
         faktury.value = fakturyRes.data.results || fakturyRes.data;
         zamowienia.value = zamowieniaRes.data.results || zamowieniaRes.data;
@@ -2935,6 +2972,12 @@ onUnmounted(() => {
 /* === WARTOŚĆ ZEROWA W TABELI === */
 .zero-value {
     color: #6c757d !important;
+}
+
+/* === DUPLIKAT NUMERU KATALOGOWEGO — kontrola integralności danych === */
+.duplicate-catalog {
+    color: #dc3545 !important;
+    font-weight: bold;
 }
 
 /* === KARTA USZKODZENIA === */

@@ -135,6 +135,31 @@ class NarzedzieMagazynoweSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class NarzedzieMagazynoweProdSerializer(serializers.ModelSerializer):
+    """Lekki serializer dla widoku Produkcja — tylko pola potrzebne w tabeli."""
+    podkategoria_nazwa = serializers.CharField(source='podkategoria.nazwa', read_only=True, default='')
+    kategoria_nazwa = serializers.CharField(source='podkategoria.kategoria.nazwa', read_only=True, default='')
+    podkategoria_id = serializers.IntegerField(source='podkategoria.id', read_only=True, default=None)
+    ma_obraz = serializers.SerializerMethodField()
+    obraz = serializers.ImageField(read_only=True)
+    ilosc_nowych = serializers.IntegerField(read_only=True)
+    ilosc_uzywanych_dostepnych = serializers.IntegerField(read_only=True)
+    ilosc_w_uzyciu = serializers.IntegerField(read_only=True)
+    calkowita_ilosc = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = NarzedzieMagazynowe
+        fields = [
+            'id', 'opis', 'numer_katalogowy',
+            'podkategoria_id', 'podkategoria_nazwa', 'kategoria_nazwa',
+            'ma_obraz', 'obraz',
+            'ilosc_nowych', 'ilosc_uzywanych_dostepnych', 'ilosc_w_uzyciu', 'calkowita_ilosc',
+        ]
+
+    def get_ma_obraz(self, obj):
+        return bool(obj.obraz)
+
+
 class EgzemplarzNarzedziaSerializer(serializers.ModelSerializer):
     narzedzie_typ = NarzedzieMagazynoweSerializer(read_only=True)
     narzedzie_typ_id = serializers.PrimaryKeyRelatedField(

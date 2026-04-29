@@ -107,6 +107,15 @@ class Pracownik(models.Model):
             return f"{self.nazwisko} {self.imie} ({self.karta})"
         return f"{self.nazwisko} {self.imie}"
 
+    def save(self, *args, **kwargs):
+        # Auto-uzupełnienie imie/nazwisko z powiązanego User, gdy puste
+        if self.user_id and (not self.nazwisko or not self.imie):
+            if not self.nazwisko and self.user.last_name:
+                self.nazwisko = self.user.last_name
+            if not self.imie and self.user.first_name:
+                self.imie = self.user.first_name
+        super().save(*args, **kwargs)
+
 
 class FakturaZakupu(models.Model):
     numer_faktury = models.CharField(max_length=100, unique=True)

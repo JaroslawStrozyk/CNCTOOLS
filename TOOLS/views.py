@@ -1531,6 +1531,49 @@ class NarzedzieMagazynoweViewSet(LoggingMixin, viewsets.ModelViewSet):
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
 
+class NarzedzieMagazynoweProdViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lekki, niepaginowany endpoint dla widoku Produkcja — minimum pól, brak pagination."""
+    pagination_class = None
+
+    def get_serializer_class(self):
+        from .serializers import NarzedzieMagazynoweProdSerializer
+        return NarzedzieMagazynoweProdSerializer
+
+    def get_queryset(self):
+        from django.db.models import Value, Subquery, OuterRef
+        from django.db.models.functions import Coalesce
+
+        egzemplarze_w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).values('egzemplarz_id')
+
+        nowe_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'), stan='nowe'
+        ).exclude(id__in=Subquery(egzemplarze_w_uzyciu)) \
+         .values('narzedzie_typ').annotate(total=Sum('ilosc_w_komplecie')).values('total')
+
+        uzywane_subquery = EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef('pk'), stan='uzywane'
+        ).exclude(id__in=Subquery(egzemplarze_w_uzyciu)) \
+         .values('narzedzie_typ').annotate(total=Sum('ilosc_w_komplecie')).values('total')
+
+        w_uzyciu_subquery = HistoriaUzyciaNarzedzia.objects.filter(
+            egzemplarz__narzedzie_typ=OuterRef('pk'),
+            data_zwrotu__isnull=True
+        ).values('egzemplarz__narzedzie_typ') \
+         .annotate(total=Sum('egzemplarz__ilosc_w_komplecie')).values('total')
+
+        return NarzedzieMagazynowe.objects.select_related(
+            'podkategoria__kategoria'
+        ).annotate(
+            ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
+            ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
+            ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
+        ).annotate(
+            calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
+        ).order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
+
+
 class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NarzedzieMagazynoweSerializer
 
@@ -1684,7 +1727,8 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
     queryset = HistoriaUzyciaNarzedzia.objects.select_related(
         'egzemplarz__narzedzie_typ__podkategoria__kategoria',
         'maszyna',
-        'pracownik'
+        'pracownik__user',
+        'pracownik_zwracajacy__user'
     ).all()
     serializer_class = HistoriaUzyciaNarzedziaSerializer
 
