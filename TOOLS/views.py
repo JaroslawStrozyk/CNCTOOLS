@@ -30,8 +30,12 @@ from .serializers import (
     DostawcaSerializer, PracownikSerializer, UszkodzenieSerializer,
     ZamowienieSerializer, PozycjaZamowieniaSerializer,
     RealizacjaZamowieniaSerializer, PozycjaRealizacjiSerializer,
-    ZapotrzebowanieTechnologaSerializer, PozycjaZapotrzebowaniaSerializer
+    ZapotrzebowanieTechnologaSerializer, PozycjaZapotrzebowaniaSerializer,
+    GrupaSerializer, ZespolSerializer
 )
+from django.contrib.auth.models import Group
+from rest_framework.permissions import BasePermission
+from .views_inertia import get_user_grupa_stanowiska
 from .services import EgzemplarzService, LokalizacjaService
 from .logging_service import app_logger, get_user_display_name
 
@@ -1528,6 +1532,14 @@ class NarzedzieMagazynoweViewSet(LoggingMixin, viewsets.ModelViewSet):
         ).annotate(
             calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
         )
+
+        # Filtr stanowiskowy: tokarz/frezer/ślusarz widzą wyłącznie kategorie z ich grupą.
+        # Pozostałe role widzą wszystko. Kategorie bez grupy_stanowiska są niewidoczne
+        # dla tych 3 stanowisk (wariant b: jawnie przypisane → widoczne).
+        grupa_stanowiska = get_user_grupa_stanowiska(self.request.user)
+        if grupa_stanowiska:
+            queryset = queryset.filter(podkategoria__kategoria__grupa_stanowiska=grupa_stanowiska)
+
         return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
 
@@ -1563,7 +1575,7 @@ class NarzedzieMagazynoweProdViewSet(viewsets.ReadOnlyModelViewSet):
         ).values('egzemplarz__narzedzie_typ') \
          .annotate(total=Sum('egzemplarz__ilosc_w_komplecie')).values('total')
 
-        return NarzedzieMagazynowe.objects.select_related(
+        queryset = NarzedzieMagazynowe.objects.select_related(
             'podkategoria__kategoria'
         ).annotate(
             ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
@@ -1571,7 +1583,14 @@ class NarzedzieMagazynoweProdViewSet(viewsets.ReadOnlyModelViewSet):
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
         ).annotate(
             calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
-        ).order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
+        )
+
+        # Filtr stanowiskowy: tokarz/frezer/ślusarz widzą wyłącznie kategorie z ich grupą.
+        grupa_stanowiska = get_user_grupa_stanowiska(self.request.user)
+        if grupa_stanowiska:
+            queryset = queryset.filter(podkategoria__kategoria__grupa_stanowiska=grupa_stanowiska)
+
+        return queryset.order_by('podkategoria__kategoria__nazwa', 'podkategoria__nazwa', 'opis')
 
 
 class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
@@ -1657,8 +1676,7 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
     def etykieta(self, request, pk=None):
         """Generuje etykietę DXF z oznaczeniem egzemplarza.
 
-        Format etykiety: 19 mm x 2.5 mm (ramka + tekst centrowany).
-        Jednostki rysunku: milimetry.
+        Tylko tekst (bez ramki), wysokość 1.6 mm. Jednostki: milimetry.
         """
         import ezdxf
         import io
@@ -1671,30 +1689,20 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
                 status=400
             )
 
-        # Wymiary etykiety w milimetrach
-        LABEL_W = 19.0
-        LABEL_H = 2.5
-        TEXT_HEIGHT = 1.6  # mm — mieści się w 2.5 mm wysokości z marginesem
+        TEXT_HEIGHT = 1.6  # mm
 
         doc = ezdxf.new('R2010')
         doc.units = 4  # 4 = millimeters (INSUNITS)
         msp = doc.modelspace()
 
-        # Ramka etykiety 19 x 2.5 mm
-        msp.add_lwpolyline(
-            [(0, 0), (LABEL_W, 0), (LABEL_W, LABEL_H), (0, LABEL_H)],
-            close=True,
-        )
-
-        # Tekst centrowany w środku etykiety
         msp.add_text(
             egzemplarz.oznaczenie,
             dxfattribs={
                 'height': TEXT_HEIGHT,
                 'halign': ezdxf.enums.TextHAlign.CENTER,
                 'valign': ezdxf.enums.TextVAlign.MIDDLE,
-                'insert': (LABEL_W / 2, LABEL_H / 2),
-                'align_point': (LABEL_W / 2, LABEL_H / 2),
+                'insert': (0, 0),
+                'align_point': (0, 0),
             }
         )
 
@@ -3604,3 +3612,55 @@ def inwentura_xls_view(request):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     wb.save(response)
     return response
+
+# ============================================================================
+# Zarządzanie użytkownikami (zakładka "Użytkownicy" w Ustawieniach)
+# Dostęp: administrator + logistyka. Magazyn/inni: 403.
+# ============================================================================
+
+class IsAdminOrLogistyka(BasePermission):
+    """Tylko grupa administrator lub logistyka (lub superuser)."""
+
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.is_superuser:
+            return True
+        return request.user.groups.filter(name__in=["administrator", "logistyka"]).exists()
+
+
+class GrupaViewSet(viewsets.ReadOnlyModelViewSet):
+    """Lista grup Django dla dropdownu w modalu Użytkownicy."""
+    queryset = Group.objects.all().order_by("name")
+    serializer_class = GrupaSerializer
+    permission_classes = [IsAdminOrLogistyka]
+    pagination_class = None
+
+
+class ZespolViewSet(LoggingMixin, viewsets.ModelViewSet):
+    """CRUD na User + Pracownik. Tylko is_staff=False (admini niewidoczni)."""
+    serializer_class = ZespolSerializer
+    permission_classes = [IsAdminOrLogistyka]
+    pagination_class = None
+    log_name = "użytkownika"
+
+    def get_log_description(self, instance):
+        full = f"{instance.first_name} {instance.last_name}".strip()
+        return full or instance.username
+
+    def get_queryset(self):
+        return (
+            User.objects.filter(is_staff=False)
+            .select_related("pracownik")
+            .prefetch_related("groups")
+            .order_by("last_name", "first_name", "username")
+        )
+
+    def perform_destroy(self, instance):
+        # OneToOne Pracownik.user = SET_NULL → kasujemy Pracownika ręcznie
+        # (FK z HistoriaUzyciaNarzedzia/Uszkodzenie na Pracownika mogą zablokować — wtedy 500)
+        with transaction.atomic():
+            pracownik = getattr(instance, "pracownik", None)
+            if pracownik is not None:
+                pracownik.delete()
+            instance.delete()

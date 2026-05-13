@@ -309,8 +309,17 @@
                         <input type="text" v-model="kartaForm.nr_klienta" class="form-control" placeholder="Np. K-001" />
                     </div>
                     <div class="form-group">
-                        <label>Nr zlecenia</label>
-                        <input type="text" v-model="kartaForm.nr_zlecenia" class="form-control" placeholder="Np. ZL-123" />
+                        <label>Nr zlecenia <span class="required">*</span></label>
+                        <input
+                            type="text"
+                            v-model="kartaForm.nr_zlecenia"
+                            class="form-control"
+                            :class="{ 'is-invalid': nrZleceniaError }"
+                            placeholder="Np. 26-0396 lub 26-004M"
+                            maxlength="7"
+                            required
+                        />
+                        <small v-if="nrZleceniaError" class="invalid-feedback">{{ nrZleceniaError }}</small>
                     </div>
                 </div>
 
@@ -322,8 +331,7 @@
                             :options="kartaKategorieOptions"
                             optionLabel="label"
                             optionValue="value"
-                            placeholder="Brak"
-                            :showClear="true"
+                            placeholder="Wybierz kategorię"
                             :disabled="kartaForm.narzedzie_typ_id !== null"
                             @change="onKartaKategoriaChange"
                             class="karta-dropdown"
@@ -337,8 +345,7 @@
                             :options="kartaPodkategorieOptions"
                             optionLabel="label"
                             optionValue="value"
-                            placeholder="Brak"
-                            :showClear="true"
+                            placeholder="Wybierz podkategorię"
                             :disabled="kartaForm.narzedzie_typ_id !== null || !kartaForm.kategoria_id"
                             class="karta-dropdown"
                             :class="{ 'disabled-field': kartaForm.narzedzie_typ_id !== null || !kartaForm.kategoria_id }"
@@ -385,7 +392,7 @@
                     :label="kartaMode === 'add' ? 'Dodaj do zamówienia' : 'Zapisz zmiany'"
                     class="btn-modal-primary"
                     @click="saveKartaForm"
-                    :disabled="!kartaForm.ilosc || kartaForm.ilosc < 1"
+                    :disabled="!kartaForm.ilosc || kartaForm.ilosc < 1 || !!nrZleceniaError"
                 />
             </template>
         </Dialog>
@@ -651,6 +658,16 @@ const kartaMode = ref('add');
 const editingPozycjaId = ref(null);
 const returnToKoszyk = ref(false);
 
+// Walidacja "Nr zlecenia" — format: 2 cyfry + "-" + 3 cyfry + 1 znak alfanumeryczny
+// Przykłady poprawne: "26-0396", "26-004M"
+const NR_ZLECENIA_REGEX = /^\d{2}-\d{3}[A-Za-z0-9]$/;
+const nrZleceniaError = computed(() => {
+    const v = (kartaForm.value.nr_zlecenia || '').trim();
+    if (!v) return 'Nr zlecenia jest wymagany.';
+    if (!NR_ZLECENIA_REGEX.test(v)) return 'Format: 2 cyfry, "-", 3 cyfry, 1 znak (np. 26-0396 lub 26-004M).';
+    return '';
+});
+
 // Modal potwierdzenia usunięcia
 const confirmDeleteVisible = ref(false);
 const pozycjaToDelete = ref(null);
@@ -793,9 +810,10 @@ const resetKartaForm = () => {
     returnToKoszyk.value = false;
 };
 
-const kartaKategorieOptions = computed(() =>
-    kategorie.value.map(k => ({ label: k.nazwa, value: k.id }))
-);
+const kartaKategorieOptions = computed(() => [
+    { label: 'Brak', value: null },
+    ...kategorie.value.map(k => ({ label: k.nazwa, value: k.id })),
+]);
 
 const kartaPodkategorieOptions = computed(() => {
     if (!kartaForm.value.kategoria_id) return [];
@@ -846,6 +864,10 @@ const closeKartaModal = () => {
 const saveKartaForm = async () => {
     if (!koszyk.value) {
         alert('Błąd: Brak aktywnego koszyka');
+        return;
+    }
+    if (nrZleceniaError.value) {
+        alert(nrZleceniaError.value);
         return;
     }
 
@@ -1727,6 +1749,19 @@ onMounted(() => {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #4d555d;
+}
+
+/* Walidacja Nr zlecenia */
+.required { color: #dc3545; font-weight: bold; }
+.form-control.is-invalid {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.15rem rgba(220, 53, 69, 0.18);
+}
+.invalid-feedback {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: #f87171;
 }
 </style>
 

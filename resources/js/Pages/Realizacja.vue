@@ -223,7 +223,7 @@ const backUrl = computed(() => {
   const grupa = props.auth?.user?.grupa || '';
   if (grupa === 'logistyka') return props.urls?.zakupy || '/zakupy/';
   if (grupa === 'kierownik') return props.urls?.kierownik || '/kierownik/';
-  // magazyn, produkcja-magazyn, administrator, brak grupy → magazyn
+  // magazyn, brygadzista/tokarz (produkcja-magazyn legacy), administrator, brak grupy → magazyn
   return props.urls?.magazyn || '/magazyn/';
 });
 

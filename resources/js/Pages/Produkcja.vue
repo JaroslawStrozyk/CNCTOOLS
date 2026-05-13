@@ -307,7 +307,7 @@ const stopIdleWatch = () => {
     idleEvents.forEach(ev => window.removeEventListener(ev, resetIdleTimer));
 };
 
-// Narzędzia (dla grupy produkcja-magazyn) - przekierowanie do magazynu w trybie ograniczonym
+// Narzędzia (dla brygadzista/tokarz, czyli auth.isProdukcjaMagazyn) — przekierowanie do magazynu w trybie ograniczonym
 const openNarzedziaModal = () => {
     window.location.href = '/magazyn/?tryb=produkcja';
 };

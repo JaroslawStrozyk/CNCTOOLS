@@ -7,20 +7,18 @@
                 <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
                     <i class="pi pi-question-circle"></i> Pomoc
                 </button>
-                <div v-if="dzialaniaMenuItems.length > 0" class="dropdown-wrapper">
-                    <button class="btn btn-success" @click="toggleDzialaniaMenu">
-                        <i class="pi pi-th-large"></i> Działania
-                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                    </button>
-                    <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
-                </div>
-                <div class="dropdown-wrapper">
-                    <button class="btn btn-primary" @click="toggleMiejscaMenu">
-                        <i class="pi pi-building"></i> Miejsca
-                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                    </button>
-                    <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
-                </div>
+                <button v-if="canGenerateOrders" class="btn btn-success" @click="generujAutomatyczne">
+                    <i class="pi pi-sparkles"></i> Generuj nowe
+                </button>
+                <button v-if="draftZamowienia.length > 0" class="btn btn-success" @click="openApprovalModal">
+                    <i class="pi pi-send"></i> Wyślij do zatwierdzenia
+                </button>
+                <button class="btn btn-primary" @click="goToMagazyn">
+                    <i class="pi pi-building"></i> Magazyn
+                </button>
+                <button v-if="auth?.isLogistyka" class="btn btn-primary" @click="goToZakupy">
+                    <i class="pi pi-truck"></i> Zakupy
+                </button>
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
                         <i class="pi pi-user"></i>
@@ -597,35 +595,12 @@ const openHelp = () => {
     window.open(url, 'pomoc-zamowienia', features);
 };
 
-// Menu Działania
-const dzialaniaMenu = ref(null);
-const dzialaniaMenuItems = computed(() => {
-    const items = [];
-    if (props.canGenerateOrders) {
-        items.push({ label: 'Generuj nowe', icon: 'pi pi-sparkles', command: () => generujAutomatyczne() });
-    }
-    if (draftZamowienia.value.length > 0) {
-        items.push({ label: 'Wyślij do zatwierdzenia', icon: 'pi pi-send', command: () => openApprovalModal() });
-    }
-    return items;
-});
-const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
-
 // Wyszukiwanie
 const searchQuery = ref('');
 
-// Menu Miejsca
-const miejscaMenu = ref(null);
-const miejscaMenuItems = computed(() => {
-    const items = [
-        { label: 'Magazyn', icon: 'pi pi-building', command: () => { window.location.href = props.urls.magazyn; } }
-    ];
-    if (props.auth?.isLogistyka) {
-        items.push({ label: 'Zakupy', icon: 'pi pi-truck', command: () => { window.location.href = props.urls.zakupy; } });
-    }
-    return items;
-});
-const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
+// Nawigacja
+const goToMagazyn = () => { window.location.href = props.urls.magazyn; };
+const goToZakupy = () => { window.location.href = props.urls.zakupy; };
 
 // Computed
 const dostawcyOptions = computed(() => [

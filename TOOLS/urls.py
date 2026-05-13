@@ -54,6 +54,10 @@ router.register(r'pozycje-realizacji', views.PozycjaRealizacjiViewSet, basename=
 router.register(r'zapotrzebowania', views.ZapotrzebowanieTechnologaViewSet, basename='zapotrzebowanie')
 router.register(r'pozycje-zapotrzebowan', views.PozycjaZapotrzebowaniaViewSet, basename='pozycja-zapotrzebowania')
 
+# Zarządzanie użytkownikami (zakładka Użytkownicy w Ustawieniach)
+router.register(r'zespol', views.ZespolViewSet, basename='zespol')
+router.register(r'grupy', views.GrupaViewSet, basename='grupa')
+
 urlpatterns = [
     # ===== NOWY SYSTEM INERTIA (Vue SPA) =====
     path('', login_inertia_view, name='login'),

@@ -23,14 +23,18 @@
                             <div class="categories-left">
                                 <div class="section-header">
                                     <h5>Kategorie Główne</h5>
-                                    <button class="btn btn-primary btn-sm" @click="openModal('kategoria', 'add')">
+                                    <button class="btn btn-primary" @click="openModal('kategoria', 'add')">
                                         <i class="pi pi-plus"></i> Dodaj
                                     </button>
                                 </div>
                                 <Listbox v-model="selectedKategoriaId" :options="kategorieOptions" optionLabel="label" optionValue="value" class="categories-list" @change="onKategoriaSelect">
                                     <template #option="{ option }">
                                         <div class="category-item">
-                                            <span>{{ option.label }} <Badge :value="option.count" severity="secondary" /></span>
+                                            <span>
+                                                {{ option.label }}
+                                                <Badge :value="option.count" severity="secondary" />
+                                                <span v-if="option.item.grupa_stanowiska" class="grupa-stanowiska-badge" :title="`Widoczna tylko dla stanowiska: ${option.item.grupa_stanowiska}`">{{ option.item.grupa_stanowiska }}</span>
+                                            </span>
                                             <div class="category-actions" @click.stop>
                                                 <button class="btn btn-secondary btn-icon" @click="openModal('kategoria', 'edit', option.item)" title="Edycja">
                                                     <i class="pi pi-pencil"></i>
@@ -49,8 +53,8 @@
                                 </div>
                                 <div v-else>
                                     <div class="section-header">
-                                        <h5>Podkategorie dla: <strong>{{ selectedKategoriaNazwa }}</strong></h5>
-                                        <button class="btn btn-primary btn-sm" @click="openModal('podkategoria', 'add')">
+                                        <h5>Podkategorie dla: <strong class="kategoria-nazwa-bright">{{ selectedKategoriaNazwa }}</strong></h5>
+                                        <button class="btn btn-primary" @click="openModal('podkategoria', 'add')">
                                             <i class="pi pi-plus"></i> Dodaj
                                         </button>
                                     </div>
@@ -340,6 +344,63 @@
                     </div>
                 </TabPanel>
 
+                <!-- Użytkownicy (tylko administrator + logistyka) -->
+                <TabPanel header="Użytkownicy" v-if="canManageUsers">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Zarządzaj Użytkownikami</h3>
+                            <button class="btn btn-primary" @click="openUserModal()">
+                                <i class="pi pi-plus"></i> Dodaj użytkownika
+                            </button>
+                        </div>
+                        <div class="panel-body">
+                            <DataTable :value="users" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="users.length > 25" :rows="25">
+                                <Column field="username" header="Login" style="width: 160px;" />
+                                <Column header="Imię i nazwisko" style="width: 220px;">
+                                    <template #body="{ data }">
+                                        {{ data.first_name }} {{ data.last_name }}
+                                    </template>
+                                </Column>
+                                <Column field="email" header="Email" style="width: 220px;" />
+                                <Column header="Karta" style="width: 140px;">
+                                    <template #body="{ data }">
+                                        <span v-if="data.karta">{{ data.karta }}</span>
+                                        <span v-else class="text-muted">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Grupy" style="min-width: 220px;">
+                                    <template #body="{ data }">
+                                        <Tag v-for="g in data.groups" :key="g.id" :value="g.name" class="group-tag" />
+                                        <span v-if="!data.groups || !data.groups.length" class="text-muted">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Pobieranie narzędzi" style="width: 130px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Tag v-if="data.pobieranie_narzedzi" value="Tak" severity="success" />
+                                        <Tag v-else value="Nie" severity="secondary" />
+                                    </template>
+                                </Column>
+                                <Column header="Aktywny" style="width: 90px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Tag v-if="data.is_active" value="Tak" severity="success" />
+                                        <Tag v-else value="Nie" severity="danger" />
+                                    </template>
+                                </Column>
+                                <Column header="Akcje" style="width: 130px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <button class="btn btn-secondary btn-icon mr-1" @click="openUserModal(data)" title="Edytuj">
+                                            <i class="pi pi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-danger btn-icon" @click="confirmDeleteUser(data)" title="Usuń">
+                                            <i class="pi pi-trash"></i>
+                                        </button>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
+                    </div>
+                </TabPanel>
+
                 <!-- Eksporty -->
                 <TabPanel header="Eksporty">
                     <div class="settings-panel">
@@ -402,6 +463,19 @@
                         <label>Nazwa Kategorii Głównej</label>
                         <InputText v-model="modal.currentItem.nazwa" />
                     </div>
+                    <div class="field">
+                        <label>
+                            Grupa stanowiska
+                            <small class="text-muted"> (opcjonalne — ogranicza widoczność dla tokarza/frezera/ślusarza)</small>
+                        </label>
+                        <Dropdown
+                            v-model="modal.currentItem.grupa_stanowiska"
+                            :options="grupyStanowiskOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            placeholder="Wybierz grupę"
+                        />
+                    </div>
                 </template>
 
                 <!-- Podkategoria -->
@@ -459,6 +533,79 @@
         </Dialog>
 
         <!-- Modal: Dodaj seryjnie -->
+        <!-- Modal: Dodaj/Edytuj użytkownika -->
+        <Dialog v-model:visible="userModalVisible" :header="isEditUserMode ? 'Edytuj użytkownika' : 'Dodaj użytkownika'" :modal="true" :style="{ width: '520px' }">
+            <div class="p-fluid">
+                <Message v-if="userModalError" severity="error" :closable="false">{{ userModalError }}</Message>
+                <div class="field">
+                    <label>Login <span class="required">*</span></label>
+                    <InputText v-model="currentUser.username" :disabled="isEditUserMode" autocomplete="off" />
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label>Imię</label>
+                        <InputText v-model="currentUser.first_name" autocomplete="off" />
+                    </div>
+                    <div class="field">
+                        <label>Nazwisko</label>
+                        <InputText v-model="currentUser.last_name" autocomplete="off" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Email</label>
+                    <InputText v-model="currentUser.email" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label>
+                        Hasło
+                        <span v-if="!isEditUserMode" class="required">*</span>
+                        <small v-else class="text-muted"> (puste = bez zmiany)</small>
+                    </label>
+                    <InputText v-model="currentUser.password" type="password" autocomplete="new-password" />
+                </div>
+                <div class="field">
+                    <label>Grupa</label>
+                    <Dropdown v-model="currentUser.group_id" :options="grupyDoWyboru" optionLabel="name" optionValue="id" placeholder="Wybierz grupę" class="user-group-dropdown" />
+                </div>
+                <div class="field">
+                    <label>Karta RFID (opcjonalnie)</label>
+                    <InputText v-model="currentUser.karta" placeholder="np. 1234567890" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <div class="checkbox-row">
+                        <Checkbox v-model="currentUser.pobieranie_narzedzi" :binary="true" inputId="pobieranie_narzedzi" />
+                        <label for="pobieranie_narzedzi" class="checkbox-label">Pobieranie narzędzi (widoczny na listach wyboru pracownika)</label>
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="checkbox-row">
+                        <Checkbox v-model="currentUser.is_active" :binary="true" inputId="is_active" />
+                        <label for="is_active" class="checkbox-label">Aktywny (może się zalogować)</label>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="userModalVisible = false" />
+                <Button :label="isEditUserMode ? 'Zapisz zmiany' : 'Dodaj'" icon="pi pi-check" @click="saveUser" :loading="isSavingUser" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Potwierdź usunięcie użytkownika -->
+        <Dialog v-model:visible="deleteUserModalVisible" header="Potwierdź usunięcie" :modal="true" :style="{ width: '460px' }">
+            <p v-if="userToDelete">
+                Usunąć użytkownika
+                <strong>{{ userToDelete.username }}</strong>
+                ({{ userToDelete.first_name }} {{ userToDelete.last_name }})?
+            </p>
+            <p class="text-muted" style="font-size: 0.85rem;">
+                Konto + powiązany rekord pracownika zostaną skasowane. Historia operacji zostaje (pracownik w niej jako "brak").
+            </p>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="deleteUserModalVisible = false" />
+                <Button label="Usuń" icon="pi pi-trash" severity="danger" @click="deleteUserConfirmed" :loading="isDeletingUser" />
+            </template>
+        </Dialog>
+
         <Dialog v-model:visible="bulkAddModalVisible" header="Dodaj lokalizacje seryjnie" :modal="true" :style="{ width: '400px' }">
             <div class="p-fluid">
                 <div class="field"><label>Nazwa/Numer szafy</label><InputText v-model="bulkAddData.szafa" placeholder="np. SZAFA-01" /></div>
@@ -495,13 +642,17 @@ import Tag from 'primevue/tag';
 import Message from 'primevue/message';
 import Divider from 'primevue/divider';
 import ProgressSpinner from 'primevue/progressspinner';
+import Checkbox from 'primevue/checkbox';
 
 const API_URL = '/api';
 
 const props = defineProps({
     urls: { type: Object, default: () => ({ magazyn: '/magazyn-inertia/', zakupy: '/zakupy-inertia/' }) },
-    infoProgram: { type: Object, default: () => ({}) }
+    infoProgram: { type: Object, default: () => ({}) },
+    auth: { type: Object, default: () => ({ isAdministrator: false, isLogistyka: false, user: {} }) }
 });
+
+const canManageUsers = computed(() => !!(props.auth?.isAdministrator || props.auth?.isLogistyka));
 
 // Oblicz URL powrotu na podstawie referrer lub parametru URL
 const backUrl = computed(() => {
@@ -591,10 +742,17 @@ const onKategoriaSelect = (event) => {
 const getInitialItem = (type) => {
     if (type === 'location') return { szafa: '', kolumna: '', polka: '' };
     if (type === 'supplier') return { kod_dostawcy: '', nazwa_firmy: '', nip: '', adres: '', telefon: '', email: '' };
-    if (type === 'kategoria') return { nazwa: '' };
+    if (type === 'kategoria') return { nazwa: '', grupa_stanowiska: null };
     if (type === 'podkategoria') return { nazwa: '', kategoria: selectedKategoriaId.value };
     return { nazwa: '' };
 };
+
+const grupyStanowiskOptions = [
+    { label: 'Brak', value: null },
+    { label: 'tokarz', value: 'tokarz' },
+    { label: 'frezer', value: 'frezer' },
+    { label: 'ślusarz', value: 'ślusarz' },
+];
 
 const modalTitles = {
     kategoria: { add: 'Dodaj kategorię', edit: 'Edytuj kategorię' },
@@ -870,9 +1028,149 @@ const downloadInwenturaXls = async () => {
     }
 };
 
+// ============================================================================
+// Użytkownicy — zakładka widoczna tylko dla administrator + logistyka
+// ============================================================================
+const users = ref([]);
+const grupy = ref([]);
+const isLoadingUsers = ref(false);
+const userModalVisible = ref(false);
+const isEditUserMode = ref(false);
+const isSavingUser = ref(false);
+const userModalError = ref('');
+const currentUser = ref({});
+const deleteUserModalVisible = ref(false);
+const userToDelete = ref(null);
+const isDeletingUser = ref(false);
+
+const blankUser = () => ({
+    id: null,
+    username: '',
+    first_name: '',
+    last_name: '',
+    email: '',
+    password: '',
+    group_id: null,
+    karta: '',
+    pobieranie_narzedzi: true,
+    is_active: true,
+});
+
+// Dropdown w modalu — bez grupy administrator (zarządzana tylko z /admin/)
+const grupyDoWyboru = computed(() => grupy.value.filter(g => g.name !== 'administrator'));
+
+const fetchUsersAndGroups = async () => {
+    if (!canManageUsers.value) return;
+    isLoadingUsers.value = true;
+    try {
+        const [usersRes, grupyRes] = await Promise.all([
+            axios.get(`${API_URL}/zespol/`),
+            axios.get(`${API_URL}/grupy/`),
+        ]);
+        users.value = usersRes.data.results || usersRes.data;
+        grupy.value = grupyRes.data.results || grupyRes.data;
+    } catch (error) {
+        console.error('Błąd ładowania użytkowników:', error.response?.data || error.message);
+    } finally {
+        isLoadingUsers.value = false;
+    }
+};
+
+const openUserModal = (user = null) => {
+    userModalError.value = '';
+    if (user) {
+        isEditUserMode.value = true;
+        // Jeśli user jest w wielu grupach (z legacy DB), bierzemy pierwszą non-administrator
+        const firstNonAdmin = (user.groups || []).find(g => g.name !== 'administrator');
+        currentUser.value = {
+            id: user.id,
+            username: user.username,
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            email: user.email || '',
+            password: '',
+            group_id: firstNonAdmin ? firstNonAdmin.id : null,
+            karta: user.karta || '',
+            pobieranie_narzedzi: user.pobieranie_narzedzi ?? true,
+            is_active: user.is_active ?? true,
+        };
+    } else {
+        isEditUserMode.value = false;
+        currentUser.value = blankUser();
+    }
+    userModalVisible.value = true;
+};
+
+const saveUser = async () => {
+    userModalError.value = '';
+    const u = currentUser.value;
+    if (!u.username || !u.username.trim()) {
+        userModalError.value = 'Login jest wymagany.';
+        return;
+    }
+    if (!isEditUserMode.value && (!u.password || u.password.length < 4)) {
+        userModalError.value = 'Hasło wymagane przy tworzeniu konta (min. 4 znaki).';
+        return;
+    }
+    isSavingUser.value = true;
+    try {
+        const payload = {
+            username: u.username.trim(),
+            first_name: u.first_name || '',
+            last_name: u.last_name || '',
+            email: u.email || '',
+            is_active: !!u.is_active,
+            group_ids: u.group_id ? [u.group_id] : [],
+            karta: (u.karta || '').trim() || null,
+            pobieranie_narzedzi: !!u.pobieranie_narzedzi,
+        };
+        if (u.password) payload.password = u.password;
+
+        if (isEditUserMode.value) {
+            await axios.patch(`${API_URL}/zespol/${u.id}/`, payload);
+        } else {
+            await axios.post(`${API_URL}/zespol/`, payload);
+        }
+        userModalVisible.value = false;
+        await fetchUsersAndGroups();
+    } catch (error) {
+        const data = error.response?.data;
+        if (data && typeof data === 'object') {
+            userModalError.value = Object.entries(data)
+                .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+                .join(' • ');
+        } else {
+            userModalError.value = error.message || 'Błąd zapisu.';
+        }
+    } finally {
+        isSavingUser.value = false;
+    }
+};
+
+const confirmDeleteUser = (user) => {
+    userToDelete.value = user;
+    deleteUserModalVisible.value = true;
+};
+
+const deleteUserConfirmed = async () => {
+    if (!userToDelete.value) return;
+    isDeletingUser.value = true;
+    try {
+        await axios.delete(`${API_URL}/zespol/${userToDelete.value.id}/`);
+        deleteUserModalVisible.value = false;
+        userToDelete.value = null;
+        await fetchUsersAndGroups();
+    } catch (error) {
+        alert('Błąd usunięcia: ' + (error.response?.data?.detail || error.message));
+    } finally {
+        isDeletingUser.value = false;
+    }
+};
+
 onMounted(async () => {
     await fetchAllData();
     await fetchEmailConfig();
+    await fetchUsersAndGroups();
 });
 </script>
 
@@ -1144,5 +1442,44 @@ code {
 
 .document-actions .p-button {
     flex: 1;
+}
+
+/* Użytkownicy — modal */
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+.required { color: #dc3545; font-weight: bold; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; }
+.checkbox-label { margin: 0; cursor: pointer; font-weight: normal; }
+
+/* Użytkownicy — tabela */
+.group-tag :deep(.p-tag-value),
+.group-tag.p-tag {
+    background-color: var(--dark-bg-hover, #3d444d) !important;
+    color: var(--dark-text-primary, #dee2e6) !important;
+    border: 1px solid var(--dark-border, #495057);
+    margin-right: 4px;
+    font-weight: 500;
+}
+
+/* Dropdown "Grupa" w modalu Użytkownika — szerokość pełna, spójność z resztą inputów */
+.user-group-dropdown { width: 100%; }
+
+/* Nazwa wybranej kategorii w nagłówku podkategorii — o 30% jaśniejsza */
+.kategoria-nazwa-bright {
+    filter: brightness(1.3);
+}
+
+/* Dyskretny badge "grupa_stanowiska" przy nazwie kategorii (tylko gdy ustawione) */
+.grupa-stanowiska-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    color: var(--dark-text-muted, #adb5bd);
+    background-color: transparent;
+    border: 1px solid var(--dark-border, #495057);
+    font-style: italic;
+    vertical-align: middle;
 }
 </style>

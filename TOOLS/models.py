@@ -6,7 +6,25 @@ from django.utils import timezone
 
 
 class Kategoria(models.Model):
+    # Grupy stanowiskowe widzące tylko narzędzia z przypisanych kategorii.
+    # Wartość null = kategoria niedostępna dla stanowisk tokarz/frezer/ślusarz
+    # (widzą ją wyłącznie pozostałe role: admin/logistyka/magazyn/kierownik/
+    # technologia/brygadzista/produkcja).
+    GRUPA_STANOWISKA_CHOICES = [
+        ('tokarz', 'tokarz'),
+        ('frezer', 'frezer'),
+        ('ślusarz', 'ślusarz'),
+    ]
+
     nazwa = models.CharField(max_length=100, unique=True)
+    grupa_stanowiska = models.CharField(
+        max_length=20,
+        choices=GRUPA_STANOWISKA_CHOICES,
+        null=True,
+        blank=True,
+        verbose_name='Grupa stanowiska',
+        help_text='Jeśli ustawione, tylko userzy z tej grupy stanowiska zobaczą narzędzia z tej kategorii w widoku Produkcja/Magazyn.',
+    )
 
     class Meta:
         verbose_name_plural = "Kategorie"
@@ -196,6 +214,16 @@ class NarzedzieMagazynowe(models.Model):
         default=False,
         verbose_name='Możliwość wydawania pojedynczych sztuk',
         help_text='Jeśli zaznaczone, można wydawać pojedyncze sztuki z kompletu. Jeśli nie, tylko całe komplety.'
+    )
+    # Ostatnia cena jednostkowa — ustawiana ręcznie w modalu Zakupy lub automatycznie
+    # propagowana z PozycjaZamowienia.save() (przyciski "Zmień cenę" / "Zapisz" w Zamowienia.vue).
+    cena_jednostkowa = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='Cena jednostkowa',
+        help_text='Ostatnia użyta lub ręcznie ustawiona cena jednostkowa.'
     )
     # Narzędzie utworzone w generatorze wraz z zamówieniem — kasowane razem z zamówieniem
     # (tylko jeśli nie ma jeszcze egzemplarzy). Kategorie/podkategorie zostają.
@@ -518,6 +546,13 @@ class PozycjaZamowienia(models.Model):
 
     def __str__(self):
         return f"{self.zamowienie.numer} - {self.narzedzie_opis} x{self.ilosc_zamowiona}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.cena_jednostkowa is not None and self.narzedzie_typ_id:
+            NarzedzieMagazynowe.objects.filter(pk=self.narzedzie_typ_id).update(
+                cena_jednostkowa=self.cena_jednostkowa
+            )
 
 
 class RealizacjaZamowienia(models.Model):

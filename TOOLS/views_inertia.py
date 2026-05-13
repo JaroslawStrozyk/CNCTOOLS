@@ -13,6 +13,48 @@ from .models import Pracownik, HistoriaUzyciaNarzedzia, Uszkodzenie
 from .logging_service import app_logger, get_user_display_name
 
 
+# ============================================================================
+# Role produkcyjne — mapowanie stanowisk na poziom uprawnień
+# ----------------------------------------------------------------------------
+# "produkcja"          → tylko podgląd /produkcja/, brak dostępu do magazynu
+# "produkcja-magazyn"  → podgląd + przycisk "Narzędzia" (magazyn w trybie produkcja)
+#
+# Nowe stanowiska (sesja 2026-05-13): brygadzista/tokarz mają poziom
+# 'produkcja-magazyn', frezer/ślusarz — 'produkcja'. Stara grupa 'produkcja-magazyn'
+# znika po data migration 0049.
+# ============================================================================
+PRODUKCJA_GROUPS = {'produkcja', 'frezer', 'ślusarz'}
+PRODUKCJA_MAGAZYN_GROUPS = {'brygadzista', 'tokarz'}
+
+# Grupy stanowiskowe, które filtrują listę narzędzi do Kategoria.grupa_stanowiska.
+# Brygadzista i produkcja widzą wszystko — tylko poniższe trzy ograniczają zakres.
+GRUPY_FILTRUJACE_NARZEDZIA = {'tokarz', 'frezer', 'ślusarz'}
+
+
+def has_produkcja_perms(user):
+    """User ma poziom uprawnień 'produkcja' (podgląd /produkcja/, auto-logout)."""
+    return user.groups.filter(name__in=PRODUKCJA_GROUPS).exists()
+
+
+def has_produkcja_magazyn_perms(user):
+    """User ma poziom 'produkcja-magazyn' (podgląd + magazyn w trybie produkcja)."""
+    return user.groups.filter(name__in=PRODUKCJA_MAGAZYN_GROUPS).exists()
+
+
+def get_user_grupa_stanowiska(user):
+    """Zwraca nazwę grupy stanowiska usera ('tokarz'/'frezer'/'ślusarz') lub None.
+
+    Używane do filtrowania queryset narzędzi: tylko te 3 grupy widzą zawężoną
+    listę narzędzi (po Kategoria.grupa_stanowiska). Pozostałe role widzą wszystko.
+    """
+    return (
+        user.groups
+        .filter(name__in=GRUPY_FILTRUJACE_NARZEDZIA)
+        .values_list('name', flat=True)
+        .first()
+    )
+
+
 def get_info_program():
     """Pobiera informacje o programie z settings, włącznie z ustawieniami PDF"""
     info = {}
@@ -61,9 +103,7 @@ def get_redirect_url_for_user(user):
     """Zwraca URL przekierowania na podstawie grupy użytkownika"""
     if user.groups.filter(name='logistyka').exists():
         return 'zakupy'
-    elif user.groups.filter(name='produkcja-magazyn').exists():
-        return 'produkcja'
-    elif user.groups.filter(name='produkcja').exists():
+    elif has_produkcja_magazyn_perms(user) or has_produkcja_perms(user):
         return 'produkcja'
     elif user.groups.filter(name='kierownik').exists():
         return 'kierownik'
@@ -79,7 +119,9 @@ def get_redirect_url_for_user(user):
 def get_auth_data(request):
     """Zwraca wspólne dane auth dla wszystkich widoków"""
     is_logistyka = request.user.groups.filter(name='logistyka').exists()
-    is_produkcja_magazyn = request.user.groups.filter(name='produkcja-magazyn').exists()
+    # isProdukcjaMagazyn = poziom uprawnień (nie literalna nazwa grupy) — pokrywa
+    # nowe stanowiska brygadzista/tokarz oraz legacy produkcja-magazyn.
+    is_produkcja_magazyn = has_produkcja_magazyn_perms(request.user)
     is_administrator = request.user.groups.filter(name='administrator').exists()
     # Pobierz pierwszą grupę użytkownika jako "dział"
     user_groups = list(request.user.groups.values_list('name', flat=True))
@@ -128,7 +170,7 @@ def magazyn_view(request):
     }
 
     # Auto-wylogowanie dla grup produkcyjnych
-    if request.user.groups.filter(name__in=['produkcja', 'produkcja-magazyn']).exists():
+    if has_produkcja_perms(request.user) or has_produkcja_magazyn_perms(request.user):
         data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
 
     return render(request, 'Magazyn', data)
@@ -230,7 +272,7 @@ def produkcja_view(request):
     }
 
     # Auto-wylogowanie dla grup produkcyjnych
-    if request.user.groups.filter(name__in=['produkcja', 'produkcja-magazyn']).exists():
+    if has_produkcja_perms(request.user) or has_produkcja_magazyn_perms(request.user):
         data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
 
     return render(request, 'Produkcja', data)

@@ -330,10 +330,10 @@ def send_zamowienie_email(zamowienie, override_email=None):
         suma_ilosc += poz.ilosc_zamowiona
         jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
 
+        narzedzie_full = f"{poz.kategoria_nazwa} {poz.podkategoria_nazwa}".strip()
         pozycje_html += f"""
         <tr>
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.kategoria_nazwa}</td>
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.podkategoria_nazwa}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{narzedzie_full}</td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
@@ -440,9 +440,8 @@ def send_zamowienie_email(zamowienie, override_email=None):
             <table>
                 <thead>
                     <tr>
-                        <th>Kategoria</th>
-                        <th>Podkategoria</th>
                         <th>Narzędzie</th>
+                        <th>Opis</th>
                         <th>Nr katalogowy</th>
                         <th style="text-align: center;">Ilość</th>
                         <th style="text-align: center;">Jednostka</th>
@@ -451,7 +450,7 @@ def send_zamowienie_email(zamowienie, override_email=None):
                 <tbody>
                     {pozycje_html}
                     <tr class="total-row">
-                        <td colspan="4" style="padding: 15px; text-align: right;">RAZEM POZYCJI:</td>
+                        <td colspan="3" style="padding: 15px; text-align: right;">RAZEM POZYCJI:</td>
                         <td style="padding: 15px; text-align: center;"><strong style="font-size: 1.2em;">{suma_ilosc}</strong></td>
                         <td></td>
                     </tr>
@@ -583,14 +582,17 @@ def send_approval_email(zamowienia, override_email=None):
                 background-color: #f4f4f4;
                 padding: 20px;
                 margin: 0;
+                text-align: center; /* centruje inline-block .email-container */
             }}
             .email-container {{
                 background-color: white;
                 padding: 30px;
                 border-radius: 10px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                max-width: 900px;
-                margin: 0 auto;
+                display: inline-block;       /* panel rośnie do zawartości tabeli */
+                min-width: 600px;            /* sensowne minimum przy krótkich treściach */
+                text-align: left;            /* przywróć po body text-align: center */
+                box-sizing: border-box;
             }}
             .header {{
                 background: linear-gradient(to bottom, #FF0000, #8B0000);
@@ -617,6 +619,10 @@ def send_approval_email(zamowienia, override_email=None):
                 width: 100%;
                 border-collapse: collapse;
                 margin: 20px 0;
+            }}
+            td, th {{
+                word-wrap: break-word;
+                overflow-wrap: anywhere;
             }}
             th {{
                 background-color: #ADADAD;

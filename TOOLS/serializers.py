@@ -50,7 +50,7 @@ class KategoriaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Kategoria
-        fields = ['id', 'nazwa', 'podkategorie']
+        fields = ['id', 'nazwa', 'grupa_stanowiska', 'podkategorie']
 
 
 class DostawcaSerializer(serializers.ModelSerializer):
@@ -518,3 +518,110 @@ class ZapotrzebowanieTechnologaSerializer(serializers.ModelSerializer):
 
     def get_pozycje_count(self, obj):
         return obj.pozycje.count()
+
+
+# ============================================================================
+# Zespół — zarządzanie użytkownikami (is_staff=False) z poziomu Ustawień
+# ============================================================================
+from django.contrib.auth.models import Group
+
+
+class GrupaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['id', 'name']
+
+
+class ZespolSerializer(serializers.ModelSerializer):
+    """User + powiązany Pracownik w jednym widoku. Filtr: is_staff=False."""
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, min_length=4)
+    groups = GrupaSerializer(many=True, read_only=True)
+    group_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Group.objects.all(),
+        many=True,
+        write_only=True,
+        required=False,
+    )
+    karta = serializers.CharField(
+        source='pracownik.karta',
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=50,
+    )
+    pobieranie_narzedzi = serializers.BooleanField(
+        source='pracownik.pobieranie_narzedzi',
+        required=False,
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 'email',
+            'is_active', 'password',
+            'groups', 'group_ids',
+            'karta', 'pobieranie_narzedzi',
+        ]
+        extra_kwargs = {
+            'username': {'required': True},
+            'email': {'required': False, 'allow_blank': True},
+            'first_name': {'required': False, 'allow_blank': True},
+            'last_name': {'required': False, 'allow_blank': True},
+        }
+
+    @transaction.atomic
+    def create(self, validated_data):
+        pracownik_data = validated_data.pop('pracownik', {})
+        group_ids = validated_data.pop('group_ids', [])
+        password = validated_data.pop('password', None)
+        if not password:
+            raise serializers.ValidationError({'password': 'Hasło jest wymagane przy tworzeniu użytkownika.'})
+
+        # is_staff zawsze False — admin/superuser zarządzany wyłącznie z /admin/
+        user = User(is_staff=False, **validated_data)
+        user.set_password(password)
+        user.save()
+        if group_ids:
+            user.groups.set(group_ids)
+
+        Pracownik.objects.create(
+            user=user,
+            imie=user.first_name or '',
+            nazwisko=user.last_name or '',
+            karta=pracownik_data.get('karta') or None,
+            pobieranie_narzedzi=pracownik_data.get('pobieranie_narzedzi', True),
+        )
+        return user
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        pracownik_data = validated_data.pop('pracownik', {})
+        group_ids = validated_data.pop('group_ids', None)
+        password = validated_data.pop('password', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
+        instance.save()
+
+        if group_ids is not None:
+            instance.groups.set(group_ids)
+
+        pracownik = getattr(instance, 'pracownik', None)
+        if pracownik is None:
+            pracownik = Pracownik.objects.create(
+                user=instance,
+                imie=instance.first_name or '',
+                nazwisko=instance.last_name or '',
+            )
+        if 'karta' in pracownik_data:
+            pracownik.karta = pracownik_data.get('karta') or None
+        if 'pobieranie_narzedzi' in pracownik_data:
+            pracownik.pobieranie_narzedzi = pracownik_data['pobieranie_narzedzi']
+        # Imię/nazwisko Pracownika sync z User (Pracownik.save() i tak to robi gdy puste)
+        pracownik.imie = instance.first_name or pracownik.imie
+        pracownik.nazwisko = instance.last_name or pracownik.nazwisko
+        pracownik.save()
+
+        return instance

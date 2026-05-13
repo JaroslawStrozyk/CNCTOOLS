@@ -7,20 +7,15 @@
                 <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
                     <i class="pi pi-question-circle"></i> Pomoc
                 </button>
-                <div class="dropdown-wrapper">
-                    <button class="btn btn-success" @click="toggleDzialaniaMenu">
-                        <i class="pi pi-th-large"></i> Działania
-                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                    </button>
-                    <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
-                </div>
-                <div class="dropdown-wrapper">
-                    <button class="btn btn-primary" @click="toggleMiejscaMenu">
-                        <i class="pi pi-building"></i> Miejsca
-                        <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                    </button>
-                    <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
-                </div>
+                <button class="btn btn-success" @click="goToZapotrzebowania">
+                    <i class="pi pi-inbox"></i> Zapotrzebowania
+                </button>
+                <button class="btn btn-success" @click="goToZamowienia">
+                    <i class="pi pi-file"></i> Zamówienia
+                </button>
+                <button class="btn btn-primary" @click="goToMagazyn">
+                    <i class="pi pi-building"></i> Magazyn
+                </button>
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
                         <i class="pi pi-user"></i>
@@ -92,6 +87,13 @@
                         </Column>
                         <Column field="opis" header="Opis" />
                         <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 200px;" />
+                        <Column header="Cena jednostkowa" style="width: 130px; text-align: right;">
+                            <template #body="{ data }">
+                                <span :class="{ 'zero-value': isCenaZero(data.cena_jednostkowa) }">
+                                    {{ formatCenaPLN(data.cena_jednostkowa) }}
+                                </span>
+                            </template>
+                        </Column>
                         <Column header="Ilość całkowita" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
                                 <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
@@ -209,6 +211,17 @@
                 <div class="field">
                     <label>Numer katalogowy (opcjonalnie)</label>
                     <InputText v-model="currentTool.numer_katalogowy" />
+                </div>
+                <div class="field">
+                    <label>Cena jednostkowa</label>
+                    <InputNumber
+                        v-model="currentTool.cena_jednostkowa"
+                        mode="decimal"
+                        :minFractionDigits="2"
+                        :maxFractionDigits="2"
+                        :min="0"
+                        suffix=" zł"
+                    />
                 </div>
                 <div class="field">
                     <label>Limit minimalny</label>
@@ -364,28 +377,16 @@ const currentTool = ref({});
 const toolImagePreview = ref(null);
 const toolImageFile = ref(null);
 
-// Menu Działania
-const dzialaniaMenu = ref(null);
-const dzialaniaMenuItems = ref([
-    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania + '?from=zakupy'; } },
-    { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
-    { label: 'Realizacje', icon: 'pi pi-box', visible: false, command: () => { window.location.href = props.urls.realizacja; } }
-]);
-
 // Pomoc — otwiera w nowym oknie typu popup (działa też w trybie PWA)
 const openHelp = () => {
     const url = props.urls.pomoc_zakupy || '/pomoc/zakupy/';
     const features = 'noopener,noreferrer,width=1100,height=860,resizable=yes,scrollbars=yes';
     window.open(url, 'pomoc-zakupy', features);
 };
-const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
 
-// Menu Miejsca
-const miejscaMenu = ref(null);
-const miejscaMenuItems = ref([
-    { label: 'Magazyn', icon: 'pi pi-building', command: () => { window.location.href = props.urls.magazyn; } }
-]);
-const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
+const goToZapotrzebowania = () => { window.location.href = props.urls.zapotrzebowania + '?from=zakupy'; };
+const goToZamowienia = () => { window.location.href = props.urls.zamowienia; };
+const goToMagazyn = () => { window.location.href = props.urls.magazyn; };
 
 // User menu
 const userMenu = ref(null);
@@ -601,6 +602,7 @@ const openToolModal = (tool = null) => {
             podkategoria_id: null,
             opis: '',
             numer_katalogowy: '',
+            cena_jednostkowa: null,
             stan_minimalny: 0,
             stan_maksymalny: 10,
             reczna_kontrola: false,
@@ -637,6 +639,13 @@ const saveTool = async () => {
     if (currentTool.value.numer_katalogowy) {
         formData.append('numer_katalogowy', currentTool.value.numer_katalogowy);
     }
+    // cena_jednostkowa zawsze wysyłana — pusty string → DRF interpretuje jako None (DecimalField null=True)
+    formData.append(
+        'cena_jednostkowa',
+        currentTool.value.cena_jednostkowa != null && currentTool.value.cena_jednostkowa !== ''
+            ? currentTool.value.cena_jednostkowa
+            : ''
+    );
     if (toolImageFile.value) {
         formData.append('obraz', toolImageFile.value);
     }
@@ -747,63 +756,3 @@ onMounted(() => {
 .about-footer .copyright { color: #6c757d !important; font-size: 0.85rem; }
 </style>
 
-<style>
-/* Menu Działania / Miejsca — globalny styl (nie scoped) */
-#dzialania_menu,
-#miejsca_menu {
-    min-width: 180px !important;
-    background: #2d3238 !important;
-    border: 1px solid #495057 !important;
-    border-radius: 6px !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
-    padding: 6px 0 !important;
-}
-#dzialania_menu_list,
-#miejsca_menu_list {
-    padding: 0 !important;
-    margin: 0 !important;
-    list-style: none !important;
-}
-#dzialania_menu_list li,
-#miejsca_menu_list li {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-#dzialania_menu_list li > div,
-#miejsca_menu_list li > div {
-    padding: 0 !important;
-    margin: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    transition: background-color 0.15s !important;
-}
-#dzialania_menu_list li > div:hover,
-#miejsca_menu_list li > div:hover {
-    background-color: #3d444d !important;
-}
-#dzialania_menu_list li > div > a,
-#dzialania_menu_list li > div > div,
-#miejsca_menu_list li > div > a,
-#miejsca_menu_list li > div > div {
-    display: flex !important;
-    align-items: center !important;
-    padding: 10px 16px !important;
-    gap: 10px !important;
-    text-decoration: none !important;
-    cursor: pointer !important;
-}
-#dzialania_menu_list li > div span[class*="icon"],
-#dzialania_menu_list li > div i,
-#dzialania_menu_list li > div .pi,
-#miejsca_menu_list li > div span[class*="icon"],
-#miejsca_menu_list li > div i,
-#miejsca_menu_list li > div .pi {
-    color: #adb5bd !important;
-    font-size: 1rem !important;
-}
-#dzialania_menu_list li > div span:not([class*="icon"]):not(.pi),
-#miejsca_menu_list li > div span:not([class*="icon"]):not(.pi) {
-    color: #dee2e6 !important;
-    font-size: 14px !important;
-}
-</style>
