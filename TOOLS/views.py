@@ -20,7 +20,8 @@ from .models import (
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
     RealizacjaZamowienia, PozycjaRealizacji,
-    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania
+    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania,
+    NumerKatalogowyDostawcy,
 )
 from django.contrib.auth.models import User
 from .serializers import (
@@ -31,7 +32,8 @@ from .serializers import (
     ZamowienieSerializer, PozycjaZamowieniaSerializer,
     RealizacjaZamowieniaSerializer, PozycjaRealizacjiSerializer,
     ZapotrzebowanieTechnologaSerializer, PozycjaZapotrzebowaniaSerializer,
-    GrupaSerializer, ZespolSerializer
+    GrupaSerializer, ZespolSerializer,
+    NumerKatalogowyDostawcySerializer,
 )
 from django.contrib.auth.models import Group
 from rest_framework.permissions import BasePermission
@@ -1390,6 +1392,21 @@ class DostawcaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def get_log_description(self, instance):
         return instance.nazwa_firmy or instance.kod_dostawcy
+
+
+class NumerKatalogowyDostawcyViewSet(LoggingMixin, viewsets.ModelViewSet):
+    serializer_class = NumerKatalogowyDostawcySerializer
+    log_name = 'mapowanie nr katalogowego'
+
+    def get_queryset(self):
+        qs = NumerKatalogowyDostawcy.objects.select_related('narzedzie', 'dostawca')
+        dostawca_id = self.request.query_params.get('dostawca')
+        if dostawca_id:
+            qs = qs.filter(dostawca_id=dostawca_id)
+        return qs
+
+    def get_log_description(self, instance):
+        return f"{instance.dostawca.nazwa_firmy}: {instance.narzedzie.numer_katalogowy or instance.narzedzie_id} → {instance.nr_katalogowy_dostawcy}"
 
 
 class LokalizacjaViewSet(LoggingMixin, viewsets.ModelViewSet):

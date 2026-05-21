@@ -7,7 +7,8 @@ from .models import (
     Lokalizacja, Maszyna, HistoriaUzyciaNarzedzia, FakturaZakupu,
     Dostawca, Pracownik, Uszkodzenie, Zamowienie, PozycjaZamowienia,
     RealizacjaZamowienia, PozycjaRealizacji,
-    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania
+    ZapotrzebowanieTechnologa, PozycjaZapotrzebowania,
+    NumerKatalogowyDostawcy,
 )
 
 
@@ -57,6 +58,32 @@ class DostawcaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dostawca
         fields = '__all__'
+
+
+class NumerKatalogowyDostawcySerializer(serializers.ModelSerializer):
+    # Snapshot pól narzędzia dla wygodnego renderowania w tabeli mapowań (read-only).
+    narzedzie_numer_katalogowy = serializers.CharField(source='narzedzie.numer_katalogowy', read_only=True)
+    narzedzie_opis = serializers.CharField(source='narzedzie.opis', read_only=True)
+    narzedzie_id = serializers.PrimaryKeyRelatedField(
+        queryset=NarzedzieMagazynowe.objects.all(),
+        source='narzedzie',
+        write_only=True
+    )
+    dostawca_id = serializers.PrimaryKeyRelatedField(
+        queryset=Dostawca.objects.all(),
+        source='dostawca',
+        write_only=True
+    )
+
+    class Meta:
+        model = NumerKatalogowyDostawcy
+        fields = [
+            'id', 'narzedzie_id', 'dostawca_id',
+            'narzedzie_numer_katalogowy', 'narzedzie_opis',
+            'nr_katalogowy_dostawcy',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class LokalizacjaSerializer(serializers.ModelSerializer):

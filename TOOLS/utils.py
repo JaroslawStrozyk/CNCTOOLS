@@ -5,7 +5,10 @@ Narzędzia pomocnicze dla aplikacji TOOLS
 
 from django.core.mail import EmailMessage
 from django.conf import settings
+import csv
 import imaplib
+import io
+import re
 import time
 import logging
 
@@ -308,13 +311,27 @@ def send_zamowienie_email(zamowienie, override_email=None):
         dict: {'success': bool, 'message': str}
     """
     from django.utils import timezone
+    from .models import NumerKatalogowyDostawcy
 
     # Pobierz email DW z settings
     cc_email = getattr(settings, 'EMAIL_DW', None)
 
     # Przygotuj dane
     dostawca = zamowienie.dostawca
-    pozycje = zamowienie.pozycje.all()
+    pozycje = list(zamowienie.pozycje.all())
+
+    # Mapowanie naszego nr katalogowego → nr katalogowy u dostawcy
+    # (lookup po pk narzędzia, jedno zapytanie na całe zamówienie)
+    narzedzie_ids = [p.narzedzie_typ_id for p in pozycje if p.narzedzie_typ_id]
+    mapping = {}
+    if dostawca and narzedzie_ids:
+        mapping = {
+            m.narzedzie_id: m.nr_katalogowy_dostawcy
+            for m in NumerKatalogowyDostawcy.objects.filter(
+                dostawca=dostawca, narzedzie_id__in=narzedzie_ids
+            )
+        }
+    has_supplier_numbers = bool(mapping)
 
     # Data wysłania
     now = timezone.now()
@@ -331,11 +348,15 @@ def send_zamowienie_email(zamowienie, override_email=None):
         jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
 
         narzedzie_full = f"{poz.kategoria_nazwa} {poz.podkategoria_nazwa}".strip()
+        nr_dostawcy_cell = ''
+        if has_supplier_numbers:
+            nr_dostawcy_cell = f'<td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{mapping.get(poz.narzedzie_typ_id, "")}</td>'
         pozycje_html += f"""
         <tr>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{narzedzie_full}</td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
+            {nr_dostawcy_cell}
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{jednostka_display}</td>
         </tr>
@@ -443,6 +464,7 @@ def send_zamowienie_email(zamowienie, override_email=None):
                         <th>Narzędzie</th>
                         <th>Opis</th>
                         <th>Nr katalogowy</th>
+                        {'<th>Nr u dostawcy</th>' if has_supplier_numbers else ''}
                         <th style="text-align: center;">Ilość</th>
                         <th style="text-align: center;">Jednostka</th>
                     </tr>
@@ -450,7 +472,7 @@ def send_zamowienie_email(zamowienie, override_email=None):
                 <tbody>
                     {pozycje_html}
                     <tr class="total-row">
-                        <td colspan="3" style="padding: 15px; text-align: right;">RAZEM POZYCJI:</td>
+                        <td colspan="{4 if has_supplier_numbers else 3}" style="padding: 15px; text-align: right;">RAZEM POZYCJI:</td>
                         <td style="padding: 15px; text-align: center;"><strong style="font-size: 1.2em;">{suma_ilosc}</strong></td>
                         <td></td>
                     </tr>
@@ -507,12 +529,40 @@ def send_zamowienie_email(zamowienie, override_email=None):
     </html>
     """
 
+    # Załącznik CSV (gdy dostawca ma włączoną flagę generuj_csv)
+    attachments = None
+    if dostawca and getattr(dostawca, 'generuj_csv', False):
+        csv_bytes = _build_zamowienie_csv(pozycje, mapping)
+        # Nazwa pliku z numeru zamówienia (np. "2026/05/12" → "2026_05_12")
+        safe_numer = re.sub(r'[^A-Za-z0-9._-]+', '_', zamowienie.numer or f'zam_{zamowienie.id}')
+        attachments = [(f'zamowienie_{safe_numer}.csv', csv_bytes, 'text/csv')]
+
     return send_html_email(
         recipient_email=override_email or zamowienie.email_docelowy,
         subject=subject,
         html_content=html_content,
+        attachments=attachments,
         cc_email=cc_email
     )
+
+
+def _build_zamowienie_csv(pozycje, mapping):
+    """
+    Buduje plik CSV z pozycjami zamówienia (separator '|', UTF-8, z nagłówkiem).
+    Dla każdej pozycji:
+      - nr_katalogowy: numer dostawcy (jeśli mapowanie istnieje) lub nasz numer
+      - nazwa: opis narzędzia
+      - ilosc: ilość zamówiona
+
+    Returns: bytes (UTF-8 bez BOM)
+    """
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter='|', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
+    writer.writerow(['nr_katalogowy', 'nazwa', 'ilosc'])
+    for poz in pozycje:
+        nr = mapping.get(poz.narzedzie_typ_id) or poz.numer_katalogowy or ''
+        writer.writerow([nr, poz.narzedzie_opis or '', poz.ilosc_zamowiona])
+    return output.getvalue().encode('utf-8')
 
 
 def send_approval_email(zamowienia, override_email=None):

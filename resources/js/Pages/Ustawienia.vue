@@ -156,6 +156,11 @@
                                 <Column field="adres" header="Adres" />
                                 <Column field="telefon" header="Telefon" />
                                 <Column field="email" header="Email" />
+                                <Column header="CSV" style="width: 90px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Tag :severity="data.generuj_csv ? 'success' : 'secondary'" :value="data.generuj_csv ? 'TAK' : 'NIE'" />
+                                    </template>
+                                </Column>
                                 <Column header="Akcje" style="width: 120px; text-align: center;">
                                     <template #body="{ data }">
                                         <button class="btn btn-secondary btn-icon mr-1" @click="openModal('supplier', 'edit', data)" title="Edycja">
@@ -167,6 +172,69 @@
                                     </template>
                                 </Column>
                             </DataTable>
+                        </div>
+                    </div>
+                </TabPanel>
+
+                <!-- Dostawcy — tabele (mapowania nr katalogowych) -->
+                <TabPanel header="Dostawcy — tabele">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Mapowania numerów katalogowych</h3>
+                            <button
+                                class="btn btn-primary"
+                                :disabled="!selectedMappingDostawca"
+                                @click="openMappingModal('add')"
+                            >
+                                <i class="pi pi-plus"></i> Dodaj mapowanie
+                            </button>
+                        </div>
+                        <div class="panel-body mappings-layout">
+                            <div class="mappings-master">
+                                <DataTable
+                                    :value="suppliers"
+                                    :scrollable="true"
+                                    scrollHeight="flex"
+                                    selectionMode="single"
+                                    v-model:selection="selectedMappingDostawca"
+                                    dataKey="id"
+                                    @row-select="onSelectMappingDostawca"
+                                >
+                                    <Column field="kod_dostawcy" header="Kod" style="width: 80px;" />
+                                    <Column field="nazwa_firmy" header="Nazwa firmy" />
+                                </DataTable>
+                            </div>
+                            <div class="mappings-detail">
+                                <div v-if="!selectedMappingDostawca" class="mappings-empty">
+                                    Wybierz dostawcę z listy po lewej, aby zobaczyć tabelę mapowań.
+                                </div>
+                                <DataTable
+                                    v-else
+                                    :value="mappings"
+                                    :scrollable="true"
+                                    scrollHeight="flex"
+                                    :loading="mappingsLoading"
+                                >
+                                    <template #empty>
+                                        <div style="padding: 20px; text-align: center; color: #999;">
+                                            Brak mapowań dla wybranego dostawcy.
+                                        </div>
+                                    </template>
+                                    <Column field="narzedzie_numer_katalogowy" header="Nasz nr katalogowy" />
+                                    <Column field="narzedzie_opis" header="Opis narzędzia" />
+                                    <Column field="nr_katalogowy_dostawcy" header="Nr u dostawcy" />
+                                    <Column header="Akcje" style="width: 120px; text-align: center;">
+                                        <template #body="{ data }">
+                                            <button class="btn btn-secondary btn-icon mr-1" @click="openMappingModal('edit', data)" title="Edytuj">
+                                                <i class="pi pi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-danger btn-icon" @click="showDeleteMapping(data)" title="Usuń">
+                                                <i class="pi pi-trash"></i>
+                                            </button>
+                                        </template>
+                                    </Column>
+                                </DataTable>
+                            </div>
                         </div>
                     </div>
                 </TabPanel>
@@ -513,6 +581,12 @@
                     <div class="field"><label>Adres</label><Textarea v-model="modal.currentItem.adres" rows="2" /></div>
                     <div class="field"><label>Telefon</label><InputText v-model="modal.currentItem.telefon" /></div>
                     <div class="field"><label>Email</label><InputText v-model="modal.currentItem.email" /></div>
+                    <div class="field">
+                        <div class="checkbox-row">
+                            <InputSwitch v-model="modal.currentItem.generuj_csv" inputId="supplier_generuj_csv" />
+                            <label for="supplier_generuj_csv" class="checkbox-label">Generuj plik CSV (załącznik do emaila zamówienia)</label>
+                        </div>
+                    </div>
                 </template>
 
             </div>
@@ -606,6 +680,90 @@
             </template>
         </Dialog>
 
+        <!-- Modal: Dodaj/Edytuj mapowanie nr katalogowego dostawcy -->
+        <Dialog v-model:visible="mappingModalVisible" :header="mappingModal.mode === 'add' ? 'Dodaj mapowanie' : 'Edytuj mapowanie'" :modal="true" :style="{ width: '600px' }">
+            <div class="p-fluid">
+                <Message v-if="mappingModal.errorMessage" severity="error" :closable="false">{{ mappingModal.errorMessage }}</Message>
+                <div class="field">
+                    <label>Dostawca</label>
+                    <InputText :modelValue="selectedMappingDostawca?.nazwa_firmy || ''" disabled />
+                </div>
+
+                <template v-if="mappingModal.mode === 'add'">
+                    <div class="field">
+                        <label>Kategoria <span class="required">*</span></label>
+                        <Dropdown
+                            v-model="mappingModal.kategoriaId"
+                            :options="kategorie"
+                            optionLabel="nazwa"
+                            optionValue="id"
+                            placeholder="Wybierz kategorię"
+                            :filter="true"
+                            filterPlaceholder="Wpisz aby filtrować..."
+                            @change="onMappingKategoriaChange"
+                        />
+                    </div>
+                    <div class="field">
+                        <label>Podkategoria <span class="required">*</span></label>
+                        <Dropdown
+                            v-model="mappingModal.podkategoriaId"
+                            :options="mappingPodkategorieOpts"
+                            optionLabel="nazwa"
+                            optionValue="id"
+                            placeholder="Najpierw wybierz kategorię"
+                            :filter="true"
+                            filterPlaceholder="Wpisz aby filtrować..."
+                            :disabled="!mappingModal.kategoriaId"
+                            @change="onMappingPodkategoriaChange"
+                        />
+                    </div>
+                    <div class="field">
+                        <label>Narzędzie <span class="required">*</span></label>
+                        <Dropdown
+                            v-model="mappingModal.narzedzieId"
+                            :options="mappingNarzedziaOpts"
+                            optionLabel="display"
+                            optionValue="id"
+                            placeholder="Najpierw wybierz podkategorię"
+                            :filter="true"
+                            filterPlaceholder="Wpisz numer katalogowy lub opis..."
+                            :disabled="!mappingModal.podkategoriaId"
+                            :emptyMessage="mappingModal.podkategoriaId ? 'Brak narzędzi w tej podkategorii' : ''"
+                        />
+                    </div>
+                </template>
+
+                <div v-else class="field">
+                    <label>Narzędzie</label>
+                    <InputText :modelValue="mappingModal.narzedzieDisplay" disabled />
+                </div>
+
+                <div class="field">
+                    <label>Nr katalogowy u dostawcy <span class="required">*</span></label>
+                    <InputText v-model="mappingModal.nr_katalogowy_dostawcy" maxlength="100" placeholder="np. R390-12T308M" />
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="mappingModalVisible = false" />
+                <Button label="Zapisz" icon="pi pi-check" @click="saveMapping" :loading="mappingSaving" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Potwierdź usunięcie mapowania -->
+        <Dialog v-model:visible="mappingDeleteVisible" header="Potwierdź usunięcie" :modal="true" :style="{ width: '460px' }">
+            <p v-if="mappingToDelete">
+                Usunąć mapowanie
+                <strong>{{ mappingToDelete.narzedzie_numer_katalogowy }}</strong>
+                →
+                <strong>{{ mappingToDelete.nr_katalogowy_dostawcy }}</strong>?
+            </p>
+            <p class="text-danger">Tej operacji nie można cofnąć.</p>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="mappingDeleteVisible = false" />
+                <Button label="Usuń" icon="pi pi-trash" severity="danger" @click="confirmDeleteMapping" />
+            </template>
+        </Dialog>
+
         <Dialog v-model:visible="bulkAddModalVisible" header="Dodaj lokalizacje seryjnie" :modal="true" :style="{ width: '400px' }">
             <div class="p-fluid">
                 <div class="field"><label>Nazwa/Numer szafy</label><InputText v-model="bulkAddData.szafa" placeholder="np. SZAFA-01" /></div>
@@ -643,6 +801,7 @@ import Message from 'primevue/message';
 import Divider from 'primevue/divider';
 import ProgressSpinner from 'primevue/progressspinner';
 import Checkbox from 'primevue/checkbox';
+import InputSwitch from 'primevue/inputswitch';
 
 const API_URL = '/api';
 
@@ -741,7 +900,7 @@ const onKategoriaSelect = (event) => {
 
 const getInitialItem = (type) => {
     if (type === 'location') return { szafa: '', kolumna: '', polka: '' };
-    if (type === 'supplier') return { kod_dostawcy: '', nazwa_firmy: '', nip: '', adres: '', telefon: '', email: '' };
+    if (type === 'supplier') return { kod_dostawcy: '', nazwa_firmy: '', nip: '', adres: '', telefon: '', email: '', generuj_csv: false };
     if (type === 'kategoria') return { nazwa: '', grupa_stanowiska: null };
     if (type === 'podkategoria') return { nazwa: '', kategoria: selectedKategoriaId.value };
     return { nazwa: '' };
@@ -920,6 +1079,175 @@ const fetchAllData = async () => {
         suppliers.value = (supRes.data || []).filter(item => item != null);
     } catch (error) {
         console.error("Błąd ładowania danych:", error);
+    }
+};
+
+// ===== Mapowania nr katalogowych dostawcy =====
+const selectedMappingDostawca = ref(null);
+const mappings = ref([]);
+const mappingsLoading = ref(false);
+const mappingModalVisible = ref(false);
+const mappingDeleteVisible = ref(false);
+const mappingToDelete = ref(null);
+const mappingSaving = ref(false);
+const mappingModal = ref({
+    mode: 'add',
+    id: null,
+    kategoriaId: null,
+    podkategoriaId: null,
+    narzedzieId: null,
+    narzedzieDisplay: '',
+    nr_katalogowy_dostawcy: '',
+    errorMessage: '',
+});
+
+// Cache narzędzi dla kaskadowego wyboru (jednorazowy fetch — id, numery, opis, podkategoria_id)
+const narzedziaCache = ref([]);
+
+const ensureNarzedziaCache = async () => {
+    if (narzedziaCache.value.length > 0) return;
+    try {
+        const res = await axios.get(`${API_URL}/narzedzia/`);
+        narzedziaCache.value = (res.data || []).map(n => {
+            const opis = n.opis || '';
+            const nr = n.numer_katalogowy || '';
+            return {
+                id: n.id,
+                numer_katalogowy: nr,
+                opis,
+                podkategoria_id: n.podkategoria?.id || null,
+                display: nr ? `${opis} — ${nr}`.trim() : opis.trim(),
+            };
+        });
+    } catch (error) {
+        console.error('Błąd pobierania narzędzi:', error);
+    }
+};
+
+// Computed listy do kaskadowych Dropdownów
+const mappingPodkategorieOpts = computed(() => {
+    if (!mappingModal.value.kategoriaId) return [];
+    const kat = kategorie.value.find(k => k.id === mappingModal.value.kategoriaId);
+    return kat?.podkategorie || [];
+});
+
+const mappingNarzedziaOpts = computed(() => {
+    if (!mappingModal.value.podkategoriaId) return [];
+    return narzedziaCache.value.filter(n => n.podkategoria_id === mappingModal.value.podkategoriaId);
+});
+
+const onMappingKategoriaChange = () => {
+    mappingModal.value.podkategoriaId = null;
+    mappingModal.value.narzedzieId = null;
+};
+
+const onMappingPodkategoriaChange = () => {
+    mappingModal.value.narzedzieId = null;
+};
+
+const onSelectMappingDostawca = () => {
+    fetchMappings();
+};
+
+const fetchMappings = async () => {
+    if (!selectedMappingDostawca.value) {
+        mappings.value = [];
+        return;
+    }
+    mappingsLoading.value = true;
+    try {
+        const res = await axios.get(`${API_URL}/numery-katalogowe-dostawcow/`, {
+            params: { dostawca: selectedMappingDostawca.value.id }
+        });
+        mappings.value = res.data || [];
+    } catch (error) {
+        console.error('Błąd pobierania mapowań:', error);
+        mappings.value = [];
+    } finally {
+        mappingsLoading.value = false;
+    }
+};
+
+const openMappingModal = async (mode, item = null) => {
+    await ensureNarzedziaCache();
+    mappingModal.value.mode = mode;
+    mappingModal.value.errorMessage = '';
+    if (mode === 'add') {
+        mappingModal.value.id = null;
+        mappingModal.value.kategoriaId = null;
+        mappingModal.value.podkategoriaId = null;
+        mappingModal.value.narzedzieId = null;
+        mappingModal.value.narzedzieDisplay = '';
+        mappingModal.value.nr_katalogowy_dostawcy = '';
+    } else {
+        mappingModal.value.id = item.id;
+        mappingModal.value.kategoriaId = null;
+        mappingModal.value.podkategoriaId = null;
+        mappingModal.value.narzedzieId = null;
+        mappingModal.value.narzedzieDisplay = item.narzedzie_numer_katalogowy
+            ? `${item.narzedzie_opis || ''} — ${item.narzedzie_numer_katalogowy}`.trim()
+            : (item.narzedzie_opis || '').trim();
+        mappingModal.value.nr_katalogowy_dostawcy = item.nr_katalogowy_dostawcy;
+    }
+    mappingModalVisible.value = true;
+};
+
+const saveMapping = async () => {
+    if (!selectedMappingDostawca.value) return;
+    if (mappingModal.value.mode === 'add' && !mappingModal.value.narzedzieId) {
+        mappingModal.value.errorMessage = 'Wybierz kategorię, podkategorię i narzędzie.';
+        return;
+    }
+    if (!mappingModal.value.nr_katalogowy_dostawcy?.trim()) {
+        mappingModal.value.errorMessage = 'Numer katalogowy u dostawcy jest wymagany.';
+        return;
+    }
+    mappingSaving.value = true;
+    try {
+        if (mappingModal.value.mode === 'add') {
+            await axios.post(`${API_URL}/numery-katalogowe-dostawcow/`, {
+                narzedzie_id: mappingModal.value.narzedzieId,
+                dostawca_id: selectedMappingDostawca.value.id,
+                nr_katalogowy_dostawcy: mappingModal.value.nr_katalogowy_dostawcy.trim(),
+            });
+        } else {
+            await axios.patch(`${API_URL}/numery-katalogowe-dostawcow/${mappingModal.value.id}/`, {
+                nr_katalogowy_dostawcy: mappingModal.value.nr_katalogowy_dostawcy.trim(),
+            });
+        }
+        mappingModalVisible.value = false;
+        await fetchMappings();
+    } catch (error) {
+        console.error('Błąd zapisu mapowania:', error.response?.data);
+        const data = error.response?.data;
+        if (data && typeof data === 'object') {
+            const messages = [];
+            for (const [field, val] of Object.entries(data)) {
+                messages.push(`${field}: ${Array.isArray(val) ? val.join(' ') : val}`);
+            }
+            mappingModal.value.errorMessage = messages.join('; ') || 'Błąd zapisu.';
+        } else {
+            mappingModal.value.errorMessage = 'Wystąpił błąd zapisu.';
+        }
+    } finally {
+        mappingSaving.value = false;
+    }
+};
+
+const showDeleteMapping = (item) => {
+    mappingToDelete.value = item;
+    mappingDeleteVisible.value = true;
+};
+
+const confirmDeleteMapping = async () => {
+    if (!mappingToDelete.value) return;
+    try {
+        await axios.delete(`${API_URL}/numery-katalogowe-dostawcow/${mappingToDelete.value.id}/`);
+        mappingDeleteVisible.value = false;
+        mappingToDelete.value = null;
+        await fetchMappings();
+    } catch (error) {
+        console.error('Błąd usuwania mapowania:', error);
     }
 };
 
@@ -1233,6 +1561,37 @@ onMounted(async () => {
     min-height: 0;
 }
 
+/* Layout master-detail dla taba "Dostawcy — tabele" */
+.mappings-layout {
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+}
+
+.mappings-master {
+    flex: 0 0 32%;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mappings-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mappings-empty {
+    padding: 30px;
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+}
+
 /* DataTable scrollHeight auto */
 :deep(.p-datatable-wrapper) {
     flex: 1;
@@ -1481,5 +1840,14 @@ code {
     border: 1px solid var(--dark-border, #495057);
     font-style: italic;
     vertical-align: middle;
+}
+</style>
+
+<style>
+/* Wyśrodkowanie ikony lupki w polu filtra Dropdownu (panel renderowany przez portal — wymaga niezscope'owanego stylu) */
+.p-dropdown-panel .p-dropdown-header .p-dropdown-filter-icon {
+    top: 50%;
+    margin-top: 0;
+    transform: translateY(-50%);
 }
 </style>

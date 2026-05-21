@@ -58,6 +58,11 @@ class Dostawca(models.Model):
     adres = models.TextField(blank=True, null=True)
     telefon = models.CharField(max_length=20, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    generuj_csv = models.BooleanField(
+        default=False,
+        verbose_name='Generuj plik CSV',
+        help_text='Jeśli zaznaczone, do emaila z zamówieniem dla tego dostawcy dołączany jest plik CSV (separator "|").'
+    )
 
     class Meta:
         verbose_name_plural = "Dostawcy"
@@ -65,6 +70,36 @@ class Dostawca(models.Model):
 
     def __str__(self):
         return f"{self.kod_dostawcy} - {self.nazwa_firmy}"
+
+
+class NumerKatalogowyDostawcy(models.Model):
+    # Mapowanie nasz numer katalogowy ↔ numer katalogowy dostawcy (per dostawca).
+    # Wykorzystywane w ostatniej fazie wysyłki zamówienia: tabela HTML + ewentualny załącznik CSV.
+    narzedzie = models.ForeignKey(
+        'NarzedzieMagazynowe',
+        on_delete=models.CASCADE,
+        related_name='numery_dostawcow'
+    )
+    dostawca = models.ForeignKey(
+        Dostawca,
+        on_delete=models.CASCADE,
+        related_name='numery_katalogowe_narzedzi'
+    )
+    nr_katalogowy_dostawcy = models.CharField(
+        max_length=100,
+        verbose_name='Nr katalogowy u dostawcy'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Numer katalogowy dostawcy"
+        verbose_name_plural = "Numery katalogowe dostawców"
+        unique_together = [('narzedzie', 'dostawca')]
+        ordering = ['dostawca__nazwa_firmy', 'narzedzie__numer_katalogowy']
+
+    def __str__(self):
+        return f"{self.dostawca.nazwa_firmy} → {self.nr_katalogowy_dostawcy}"
 
 
 class Lokalizacja(models.Model):
