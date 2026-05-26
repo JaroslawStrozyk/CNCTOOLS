@@ -1436,6 +1436,14 @@ const saveUser = async () => {
         userModalError.value = 'Login jest wymagany.';
         return;
     }
+    if (!u.first_name || !u.first_name.trim()) {
+        userModalError.value = 'Imię jest wymagane.';
+        return;
+    }
+    if (!u.last_name || !u.last_name.trim()) {
+        userModalError.value = 'Nazwisko jest wymagane.';
+        return;
+    }
     if (!isEditUserMode.value && (!u.password || u.password.length < 4)) {
         userModalError.value = 'Hasło wymagane przy tworzeniu konta (min. 4 znaki).';
         return;

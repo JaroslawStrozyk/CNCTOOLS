@@ -10,7 +10,7 @@
                 <button v-if="canGenerateOrders" class="btn btn-success" @click="generujAutomatyczne">
                     <i class="pi pi-sparkles"></i> Generuj nowe
                 </button>
-                <button v-if="draftZamowienia.length > 0" class="btn btn-success" @click="openApprovalModal">
+                <button v-if="!auth?.isMagazyn && draftZamowienia.length > 0" class="btn btn-success" @click="openApprovalModal">
                     <i class="pi pi-send"></i> Wyślij do zatwierdzenia
                 </button>
                 <button class="btn btn-primary" @click="goToMagazyn">
@@ -51,6 +51,7 @@
                                 <a href="#" @click.prevent="selectZamowienie(data)" class="order-link">
                                     <strong>{{ data.numer }}</strong>
                                 </a>
+                                <Tag v-if="auth?.isLogistyka && data.nr_oferty_dostawcy" :value="data.nr_oferty_dostawcy" severity="info" class="ml-2" />
                             </template>
                         </Column>
                         <Column header="Dostawca">
@@ -119,6 +120,15 @@
                         <p><strong>Status:</strong> <Tag :severity="getStatusSeverity(selectedZamowienie.status)" :value="getStatusLabel(selectedZamowienie.status)" :class="getStatusTagClass(selectedZamowienie.status)" /></p>
                         <p><strong>Wartość:</strong> {{ obliczonaWartoscZamowienia }} zł</p>
                         <p><strong>Email:</strong> {{ selectedZamowienie.email_docelowy || 'brak' }}</p>
+                        <p v-if="auth?.isLogistyka" style="margin-top: 5px;">
+                            <strong>Nr oferty dostawcy:</strong>
+                            <InputText
+                                v-if="canEditPozycje"
+                                v-model="selectedZamowienie.nr_oferty_dostawcy"
+                                style="width: 240px; margin-left: 8px;"
+                            />
+                            <span v-else>{{ selectedZamowienie.nr_oferty_dostawcy || 'brak' }}</span>
+                        </p>
                     </div>
                 </div>
 
@@ -208,6 +218,10 @@
                         optionValue="value"
                         placeholder="-- Wybierz dostawcę --"
                     />
+                </div>
+                <div v-if="auth?.isLogistyka" class="field">
+                    <label>Nr oferty dostawcy</label>
+                    <InputText v-model="zamowienieModal.currentItem.nr_oferty_dostawcy" />
                 </div>
                 <div class="field">
                     <label>Uwagi</label>
@@ -702,7 +716,7 @@ const openZamowienieModal = (mode, zamowienie = null) => {
     zamowienieModal.value.errorMessage = '';
     if (mode === 'add') {
         zamowienieModal.value.title = 'Nowe zamówienie';
-        zamowienieModal.value.currentItem = { numer: generateZamowienieNumer(), dostawca_id: null, uwagi: '' };
+        zamowienieModal.value.currentItem = { numer: generateZamowienieNumer(), dostawca_id: null, nr_oferty_dostawcy: '', uwagi: '' };
     } else {
         zamowienieModal.value.title = 'Edytuj zamówienie';
         zamowienieModal.value.currentItem = { ...zamowienie, dostawca_id: zamowienie.dostawca?.id };
@@ -744,9 +758,13 @@ const saveZamowienie = async () => {
 
 // Computed — filtrowanie po wyszukiwarce (Numer, Dostawca, Data utworzenia, Data wysłania)
 const filteredZamowienia = computed(() => {
+    // Magazynier widzi wyłącznie zamówienia 'sent' (do realizacji) i 'completed' (historia)
+    const base = props.auth?.isMagazyn && !props.auth?.isLogistyka
+        ? zamowienia.value.filter(z => z.status === 'sent' || z.status === 'completed')
+        : zamowienia.value;
     const q = searchQuery.value.trim().toLowerCase();
-    if (!q) return zamowienia.value;
-    return zamowienia.value.filter(z => {
+    if (!q) return base;
+    return base.filter(z => {
         const numer = (z.numer || '').toLowerCase();
         const dostawca = (z.dostawca?.nazwa_firmy || '').toLowerCase();
         const dataUtw = z.data_utworzenia ? formatDate(z.data_utworzenia).toLowerCase() : '';
@@ -924,6 +942,11 @@ const saveAllPozycje = async () => {
             const payload = { cena_jednostkowa: poz.cena_jednostkowa || 0 };
             if (editIlosc) payload.ilosc_zamowiona = poz.ilosc_zamowiona;
             await axios.patch(`${API_URL}/pozycje-zamowien/${poz.id}/`, payload);
+        }
+        if (props.auth?.isLogistyka && editIlosc) {
+            await axios.patch(`${API_URL}/zamowienia/${selectedZamowienie.value.id}/`, {
+                nr_oferty_dostawcy: selectedZamowienie.value.nr_oferty_dostawcy || ''
+            });
         }
         await fetchInitialData();
         closeDetails();

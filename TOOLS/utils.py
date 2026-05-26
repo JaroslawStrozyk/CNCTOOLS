@@ -452,6 +452,7 @@ def send_zamowienie_email(zamowienie, override_email=None):
                 <p><strong>Dostawca:</strong> {dostawca.nazwa_firmy}</p>
                 <p><strong>NIP:</strong> {dostawca.nip or '-'}</p>
                 <p><strong>Email:</strong> {zamowienie.email_docelowy}</p>
+                {f'<p><strong>Nr oferty dostawcy:</strong> {zamowienie.nr_oferty_dostawcy}</p>' if zamowienie.nr_oferty_dostawcy else ''}
             </div>
 
             {uwagi_html}

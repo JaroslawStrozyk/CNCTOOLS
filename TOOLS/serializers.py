@@ -592,9 +592,26 @@ class ZespolSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'username': {'required': True},
             'email': {'required': False, 'allow_blank': True},
-            'first_name': {'required': False, 'allow_blank': True},
-            'last_name': {'required': False, 'allow_blank': True},
+            'first_name': {'required': True, 'allow_blank': False, 'error_messages': {'blank': 'Imię jest wymagane.', 'required': 'Imię jest wymagane.'}},
+            'last_name': {'required': True, 'allow_blank': False, 'error_messages': {'blank': 'Nazwisko jest wymagane.', 'required': 'Nazwisko jest wymagane.'}},
         }
+
+    def validate_karta(self, value):
+        # Pusta karta → OK (model dopuszcza NULL; '' i whitespace DRF stripuje wcześniej)
+        if not value:
+            return value
+        qs = Pracownik.objects.filter(karta=value)
+        if self.instance is not None:
+            pracownik = getattr(self.instance, 'pracownik', None)
+            if pracownik is not None:
+                qs = qs.exclude(pk=pracownik.pk)
+        existing = qs.first()
+        if existing is not None:
+            full = f"{existing.imie} {existing.nazwisko}".strip() or '(bez nazwiska)'
+            raise serializers.ValidationError(
+                f"Karta '{value}' jest już przypisana do: {full}."
+            )
+        return value
 
     @transaction.atomic
     def create(self, validated_data):

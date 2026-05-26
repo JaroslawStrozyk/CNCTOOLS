@@ -21,20 +21,18 @@
                     <button class="btn btn-info" @click="openHelp" title="Pomoc — przewodnik po module">
                         <i class="pi pi-question-circle"></i> Pomoc
                     </button>
-                    <div class="dropdown-wrapper">
-                        <button class="btn btn-success" @click="toggleDzialaniaMenu">
-                            <i class="pi pi-th-large"></i> Działania
-                            <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                        </button>
-                        <Menu ref="dzialaniaMenu" id="dzialania_menu" :model="dzialaniaMenuItems" :popup="true" />
-                    </div>
-                    <div class="dropdown-wrapper">
-                        <button class="btn btn-primary" @click="toggleMiejscaMenu">
-                            <i class="pi pi-building"></i> Miejsca
-                            <i class="pi pi-chevron-down" style="margin-left: 4px; font-size: 0.75rem;"></i>
-                        </button>
-                        <Menu ref="miejscaMenu" id="miejsca_menu" :model="miejscaMenuItems" :popup="true" />
-                    </div>
+                    <button class="btn btn-success" @click="goToZapotrzebowania">
+                        <i class="pi pi-inbox"></i> Zapotrzebowania
+                    </button>
+                    <button class="btn btn-success" @click="goToZamowienia">
+                        <i class="pi pi-file"></i> Zamówienia
+                    </button>
+                    <button class="btn btn-primary" @click="goToZwroty">
+                        <i class="pi pi-undo"></i> Zwroty
+                    </button>
+                    <button v-if="auth?.isLogistyka || auth?.isAdministrator" class="btn btn-primary" @click="goToZakupy">
+                        <i class="pi pi-truck"></i> Zakupy
+                    </button>
                     <div class="dropdown-wrapper">
                         <button class="user-dropdown-btn" @click="toggleUserMenu">
                             <i class="pi pi-user"></i>
@@ -1100,23 +1098,10 @@ const openHelp = () => {
     window.open(url, 'pomoc-magazyn', features);
 };
 
-// Menu Działania
-const dzialaniaMenu = ref(null);
-const dzialaniaMenuItems = ref([
-    { label: 'Zapotrzebowania', icon: 'pi pi-inbox', command: () => { window.location.href = props.urls.zapotrzebowania + '?from=magazyn'; } },
-    { label: 'Zamówienia', icon: 'pi pi-file', command: () => { window.location.href = props.urls.zamowienia; } },
-    { label: 'Realizacje', icon: 'pi pi-box', visible: false, command: () => { window.location.href = props.urls.realizacja; } }
-]);
-const toggleDzialaniaMenu = (event) => { dzialaniaMenu.value.toggle(event); };
-
-// Menu Miejsca — "Zakupy" tylko dla administrator/logistyka
-const miejscaMenu = ref(null);
-const canSeeZakupy = computed(() => props.auth.isAdministrator || props.auth.isLogistyka);
-const miejscaMenuItems = computed(() => [
-    { label: 'Zakupy', icon: 'pi pi-truck', visible: canSeeZakupy.value, command: () => { window.location.href = props.urls.zakupy; } },
-    { label: 'Zwroty', icon: 'pi pi-undo', command: () => { window.location.href = props.urls.zwroty; } }
-]);
-const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
+const goToZapotrzebowania = () => { window.location.href = props.urls.zapotrzebowania + '?from=magazyn'; };
+const goToZamowienia = () => { window.location.href = props.urls.zamowienia; };
+const goToZwroty = () => { window.location.href = props.urls.zwroty; };
+const goToZakupy = () => { window.location.href = props.urls.zakupy; };
 
 // Logout (tryb produkcja)
 const logout = () => {

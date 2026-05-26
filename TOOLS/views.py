@@ -2138,6 +2138,20 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(id__in=zamowienie_ids)
         return queryset.order_by('-data_utworzenia')
 
+    def _strip_logistyka_only_fields(self, serializer):
+        # Pole nr_oferty_dostawcy może edytować tylko grupa 'logistyka'.
+        user = self.request.user
+        if not user.groups.filter(name='logistyka').exists():
+            serializer.validated_data.pop('nr_oferty_dostawcy', None)
+
+    def perform_create(self, serializer):
+        self._strip_logistyka_only_fields(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._strip_logistyka_only_fields(serializer)
+        super().perform_update(serializer)
+
     def perform_destroy(self, instance):
         """
         Przy kasowaniu zamówienia usuń również narzędzia utworzone ręcznie razem z tym

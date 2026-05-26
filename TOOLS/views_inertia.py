@@ -119,6 +119,7 @@ def get_redirect_url_for_user(user):
 def get_auth_data(request):
     """Zwraca wspólne dane auth dla wszystkich widoków"""
     is_logistyka = request.user.groups.filter(name='logistyka').exists()
+    is_magazyn = request.user.groups.filter(name='magazyn').exists()
     # isProdukcjaMagazyn = poziom uprawnień (nie literalna nazwa grupy) — pokrywa
     # nowe stanowiska brygadzista/tokarz oraz legacy produkcja-magazyn.
     is_produkcja_magazyn = has_produkcja_magazyn_perms(request.user)
@@ -136,6 +137,7 @@ def get_auth_data(request):
             'grupa': grupa,
         },
         'isLogistyka': is_logistyka,
+        'isMagazyn': is_magazyn,
         'isProdukcjaMagazyn': is_produkcja_magazyn,
         'isAdministrator': is_administrator,
     }
@@ -191,7 +193,7 @@ def zamowienia_view(request):
     """Panel zamówień - Inertia"""
     can_generate = (
         request.user.is_superuser
-        or request.user.groups.filter(name__in=['logistyka', 'administrator', 'magazyn']).exists()
+        or request.user.groups.filter(name__in=['logistyka', 'administrator']).exists()
     )
 
     return render(request, 'Zamowienia', {

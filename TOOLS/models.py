@@ -520,6 +520,12 @@ class Zamowienie(models.Model):
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     uwagi = models.TextField(blank=True)
+    nr_oferty_dostawcy = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Nr oferty dostawcy, na podstawie której składane jest zamówienie (widoczny tylko dla logistyki)"
+    )
     zrodlowe_zapotrzebowania = models.ManyToManyField(
         'ZapotrzebowanieTechnologa',
         blank=True,
