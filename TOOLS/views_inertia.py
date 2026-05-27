@@ -384,24 +384,20 @@ def login_by_card(request):
     if not card_number.isdigit() or len(card_number) != 10:
         return JsonResponse({'error': 'Nieprawidłowy format karty'}, status=400)
 
-    # Szukaj pracownika z tą kartą
+    # Szukaj aktywnego pracownika z tą kartą (nieaktywni i bez konta zwalniają kartę do reuse)
     try:
-        pracownik = Pracownik.objects.select_related('user').get(karta=card_number)
+        pracownik = Pracownik.objects.select_related('user').get(
+            karta=card_number, user__isnull=False, user__is_active=True
+        )
     except Pracownik.DoesNotExist:
         app_logger.warning('-', f"Nieudane logowanie kartą - karta niezarejestrowana ({card_number})")
         return JsonResponse({'error': 'Karta nie jest zarejestrowana w systemie'}, status=404)
-
-    # Sprawdź czy ma powiązane konto użytkownika
-    if not pracownik.user:
-        app_logger.warning('-', f"Nieudane logowanie kartą - brak konta ({pracownik.nazwisko} {pracownik.imie})")
-        return JsonResponse({
-            'error': f'Pracownik {pracownik.nazwisko} {pracownik.imie} nie ma przypisanego konta'
-        }, status=403)
-
-    # Sprawdź czy konto jest aktywne
-    if not pracownik.user.is_active:
-        app_logger.warning('-', f"Nieudane logowanie kartą - konto nieaktywne ({pracownik.nazwisko} {pracownik.imie})")
-        return JsonResponse({'error': 'Konto użytkownika jest nieaktywne'}, status=403)
+    except Pracownik.MultipleObjectsReturned:
+        app_logger.error('-', f"Konflikt kart - karta '{card_number}' przypisana do wielu aktywnych kont")
+        return JsonResponse(
+            {'error': 'Konflikt konfiguracji: karta przypisana do wielu aktywnych kont. Skontaktuj się z administratorem.'},
+            status=500,
+        )
 
     # Zaloguj użytkownika
     login(request, pracownik.user)

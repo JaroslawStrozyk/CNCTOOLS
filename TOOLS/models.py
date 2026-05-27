@@ -130,7 +130,6 @@ class Maszyna(models.Model):
 class Pracownik(models.Model):
     karta = models.CharField(
         max_length=50,
-        unique=True,
         blank=True,
         null=True,
         verbose_name='Nr karty'

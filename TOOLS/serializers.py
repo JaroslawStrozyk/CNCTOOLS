@@ -600,7 +600,9 @@ class ZespolSerializer(serializers.ModelSerializer):
         # Pusta karta → OK (model dopuszcza NULL; '' i whitespace DRF stripuje wcześniej)
         if not value:
             return value
-        qs = Pracownik.objects.filter(karta=value)
+        # Unikalność tylko wśród aktywnych kont — nieaktywni (is_active=False)
+        # i pracownicy bez konta zwalniają kartę do ponownego użycia
+        qs = Pracownik.objects.filter(karta=value, user__isnull=False, user__is_active=True)
         if self.instance is not None:
             pracownik = getattr(self.instance, 'pracownik', None)
             if pracownik is not None:

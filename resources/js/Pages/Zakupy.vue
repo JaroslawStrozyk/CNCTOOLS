@@ -141,7 +141,7 @@
                     <TabPanel>
                         <template #header>
                             <span>Zamówienia</span>
-                            <Badge v-if="selectedTool" :value="selectedTool.opis" severity="secondary" class="ml-2" />
+                            <Badge v-if="selectedTool" :value="`  ${selectedTool.opis}  `" severity="secondary" class="ml-2" />
                         </template>
                         <div class="tab-content-wrapper">
                             <div v-if="isLoadingOrders" class="loading-spinner">
@@ -513,10 +513,11 @@ const formatDateOnly = (dateString) => {
 
 const getStatusLabel = (status) => {
     const labels = {
-        'draft': 'Szkic',
-        'verified': 'Zweryfikowane',
+        'draft': 'Wersja robocza',
+        'pending_approval': 'Oczekuje na zatwierdzenie',
+        'verified': 'Zatwierdzone',
         'sent': 'Wysłane',
-        'partially_received': 'Częściowo zrealizowane',
+        'partially_received': 'Częściowo odebrane',
         'completed': 'Zrealizowane'
     };
     return labels[status] || status;
@@ -525,6 +526,7 @@ const getStatusLabel = (status) => {
 const getOrderStatusSeverity = (status) => {
     const map = {
         'draft': 'secondary',
+        'pending_approval': 'warning',
         'verified': 'info',
         'sent': 'primary',
         'partially_received': 'warning',

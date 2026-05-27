@@ -1466,7 +1466,9 @@ class PracownikViewSet(LoggingMixin, viewsets.ModelViewSet):
         # Użyj ?all=true aby pobrać wszystkich (np. dla panelu admina)
         show_all = self.request.query_params.get('all', 'false').lower() == 'true'
         if not show_all:
-            queryset = queryset.filter(pobieranie_narzedzi=True)
+            queryset = queryset.filter(pobieranie_narzedzi=True).filter(
+                Q(user__is_active=True) | Q(user__isnull=True)
+            )
         return queryset
 
 

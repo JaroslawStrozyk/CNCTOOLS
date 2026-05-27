@@ -216,12 +216,83 @@ class UstawieniaTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Pracownik.objects.count(), 1)
 
-    def test_pracownik_unique_karta(self):
-        """Test unikalności karty pracownika"""
+    def test_pracownik_karta_reuse_dla_legacy_bez_konta(self):
+        """Karta zwolniona do reuse gdy istniejący pracownik nie ma konta usera.
+
+        Unikalność karty wymuszana jest tylko wśród aktywnych kont (user.is_active=True)
+        w ZespolSerializer — pracownicy legacy bez user-a nie blokują reuse karty.
+        """
         Pracownik.objects.create(karta='12345', nazwisko='Kowalski', imie='Jan')
         data = {'karta': '12345', 'nazwisko': 'Nowak', 'imie': 'Anna'}
         response = self.client.post('/api/pracownicy/', data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Pracownik.objects.filter(karta='12345').count(), 2)
+
+
+class ZespolKartaTestCase(APITestCase):
+    """Testy logiki is_active + reuse karty (ZespolSerializer + login_by_card)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', 'a@a.pl', 'admin123')
+        self.client.force_authenticate(user=self.admin)
+
+    def _create_user_with_karta(self, username, karta, is_active=True):
+        """Helper: tworzy User + Pracownika z kartą bezpośrednio (omijając ACL)."""
+        user = User.objects.create_user(
+            username=username, password='pass1234', first_name='Test', last_name=username,
+            is_active=is_active,
+        )
+        Pracownik.objects.create(user=user, imie='Test', nazwisko=username, karta=karta)
+        return user
+
+    # ========== ZespolSerializer ==========
+
+    def test_zespol_duplikat_karty_aktywnych_blokowany(self):
+        """Próba przypisania karty zajętej przez AKTYWNEGO usera → 400."""
+        self._create_user_with_karta('jan', '1111111111', is_active=True)
+        payload = {
+            'username': 'anna', 'first_name': 'Anna', 'last_name': 'Nowak',
+            'password': 'pass1234', 'karta': '1111111111',
+            'group_ids': [], 'is_active': True,
+        }
+        response = self.client.post('/api/zespol/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('karta', response.data)
+
+    def test_zespol_duplikat_karty_gdy_stary_nieaktywny_dozwolony(self):
+        """Karta zajęta przez NIEAKTYWNEGO usera → nowy aktywny może ją przejąć (201)."""
+        self._create_user_with_karta('jan_stary', '2222222222', is_active=False)
+        payload = {
+            'username': 'jan_nowy', 'first_name': 'Jan', 'last_name': 'Nowy',
+            'password': 'pass1234', 'karta': '2222222222',
+            'group_ids': [], 'is_active': True,
+        }
+        response = self.client.post('/api/zespol/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Pracownik.objects.filter(karta='2222222222').count(), 2)
+
+    # ========== login_by_card ==========
+
+    def test_login_by_card_nieaktywny_user_404(self):
+        """Logowanie kartą przypisaną tylko do nieaktywnego usera → 404."""
+        self._create_user_with_karta('zwolniony', '3333333333', is_active=False)
+        self.client.logout()
+        response = self.client.post(
+            '/api/login-card/', {'card_number': '3333333333'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_login_by_card_aktywny_wygrywa_z_nieaktywnym(self):
+        """Stary nieaktywny + nowy aktywny z tą samą kartą → loguje aktywnego (200)."""
+        self._create_user_with_karta('stary', '4444444444', is_active=False)
+        nowy = self._create_user_with_karta('nowy', '4444444444', is_active=True)
+        self.client.logout()
+        response = self.client.post(
+            '/api/login-card/', {'card_number': '4444444444'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.json().get('success'))
+        self.assertEqual(response.json()['user']['username'], nowy.username)
 
 
 class UstawieniaViewTestCase(TestCase):
