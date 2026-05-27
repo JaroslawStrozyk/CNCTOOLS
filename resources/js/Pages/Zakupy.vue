@@ -1,5 +1,5 @@
 <template>
-    <div class="zakupy-app">
+    <div class="zakupy-app" :class="{ 'light-theme': isLightTheme }">
         <!-- Nagłówek -->
         <header class="app-header">
             <h2 class="header-title">ZAKUPY</h2>
@@ -15,6 +15,11 @@
                 </button>
                 <button class="btn btn-primary" @click="goToMagazyn">
                     <i class="pi pi-building"></i> Magazyn
+                </button>
+                <!-- Toggle motywu jasnego — ukryty, kod zachowany na przyszłość.
+                     Aby aktywować: zmień v-if="false" na v-if="true" + przywróć odczyt z localStorage w onMounted. -->
+                <button v-if="false" class="btn-theme-toggle" @click="toggleTheme" :title="isLightTheme ? 'Przełącz na motyw ciemny' : 'Przełącz na motyw jasny'">
+                    <i :class="isLightTheme ? 'pi pi-moon' : 'pi pi-sun'"></i>
                 </button>
                 <div class="dropdown-wrapper">
                     <button class="user-dropdown-btn" @click="toggleUserMenu">
@@ -304,7 +309,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
 
@@ -680,8 +685,33 @@ const fetchInitialData = async () => {
     }
 };
 
+// === Light/dark theme toggle (eksperyment ZACHOWANY na przyszłość, obecnie WYŁĄCZONY) ===
+// Aby aktywować: (a) zmień v-if="false" na v-if="true" w buttonie .btn-theme-toggle (template),
+// (b) w onMounted przywróć odczyt z localStorage (zakomentowana linia poniżej).
+// Style light theme zostają w drugim <style> bloku na końcu pliku.
+const THEME_STORAGE_KEY = 'zakupy-theme';
+const isLightTheme = ref(false);
+
+const toggleTheme = () => { isLightTheme.value = !isLightTheme.value; };
+
+watch(isLightTheme, (val) => {
+    localStorage.setItem(THEME_STORAGE_KEY, val ? 'light' : 'dark');
+    document.body.classList.toggle('zakupy-light-active', val);
+});
+
 onMounted(() => {
     fetchInitialData();
+    // Eksperyment wyłączony — jednorazowe wyczyszczenie zapamiętanej preferencji usera,
+    // by powrót do dark był wymuszony nawet jeśli wcześniej miał ustawiony light.
+    localStorage.removeItem(THEME_STORAGE_KEY);
+    document.body.classList.remove('zakupy-light-active');
+    // Aby przywrócić eksperyment — odkomentuj poniższe i zakomentuj 2 linie wyżej:
+    // isLightTheme.value = localStorage.getItem(THEME_STORAGE_KEY) === 'light';
+    // document.body.classList.toggle('zakupy-light-active', isLightTheme.value);
+});
+
+onBeforeUnmount(() => {
+    document.body.classList.remove('zakupy-light-active');
 });
 </script>
 
@@ -756,5 +786,608 @@ onMounted(() => {
 
 .about-footer { display: flex; justify-content: space-between; align-items: center; width: 100%; }
 .about-footer .copyright { color: #6c757d !important; font-size: 0.85rem; }
+
+/* === Theme toggle button (działa w obu motywach) === */
+.btn-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-right: 4px;
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    color: #ffc107;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.15s ease-in-out;
+}
+.btn-theme-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+</style>
+
+<!-- ============================================
+     MOTYW JASNY DLA ZAKUPY.VUE — gotowy, OBECNIE WYŁĄCZONY (zatwierdzony 2026-05-27)
+     ============================================
+     Status: kompletny, przetestowany, do aktywacji w przyszłości.
+
+     Mechanizm: klasa .light-theme na .zakupy-app + body.zakupy-light-active (dla
+     portali PrimeVue: Dialog, Dropdown panel, Menu popup). Wszystkie reguły mają
+     !important — bije globalny dark-theme.css i primevue-theme-dark.css.
+
+     Aby aktywować (3 zmiany w tym pliku):
+       1. <template> — button .btn-theme-toggle: v-if="false" → v-if="true"
+       2. <script>  — onMounted: zakomentuj 2 linie removeItem+remove,
+                      odkomentuj 2 linie isLightTheme=... i classList.toggle
+       3. (opcjonalnie) usuń ten komentarz i przywróć poprzedni "EKSPERYMENTALNY"
+
+     Pokrycie: header, panele (Lista narzędzi + Zamówienia), DataTable (incl. virtual
+     scroller wrappers), TabView, Dropdown trigger + panel (z grupami), Tag, Badge,
+     Modal Dialog (labels, inputs, checkbox, file input), scrollbary (bez czarnego
+     obrysu Chromium), ikony przycisków PrimeVue.
+
+     Paleta: tło aplikacji #f6f8fa, panele #ffffff, akcent #0d6efd (Bootstrap primary),
+     tekst #212529, border #dee2e6. Cienie multi-layer Material-style.
+     ============================================ -->
+<style>
+/* === CSS variables override === */
+.zakupy-app.light-theme {
+    --dark-bg-primary: #f6f8fa;
+    --dark-bg-secondary: #ffffff;
+    --dark-bg-tertiary: #f1f3f5;
+    --dark-bg-card: #ffffff;
+    --dark-bg-hover: #eef1f4;
+    --dark-border: #dee2e6;
+    --dark-text-primary: #212529;
+    --dark-text-secondary: #495057;
+    --dark-text-muted: #6c757d;
+    background-color: #f6f8fa;
+    color: #212529;
+}
+
+/* === Nagłówek strony === */
+.zakupy-app.light-theme .app-header {
+    background: linear-gradient(to bottom, #ffffff, #e9ecef) !important;
+    color: #212529 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(0, 0, 0, 0.08) !important;
+}
+.zakupy-app.light-theme .header-title {
+    color: #0d6efd !important;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Theme toggle w trybie jasnym */
+.zakupy-app.light-theme .btn-theme-toggle {
+    border-color: #ced4da;
+    color: #495057;
+}
+.zakupy-app.light-theme .btn-theme-toggle:hover {
+    background-color: #f1f3f5;
+    border-color: #adb5bd;
+}
+
+/* === Panele (główne karty) — wyraźny cień dla głębi === */
+.zakupy-app.light-theme .tools-panel,
+.zakupy-app.light-theme .orders-panel {
+    background: #ffffff !important;
+    border: 1px solid #e5e9ed !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+}
+.zakupy-app.light-theme .panel-header {
+    background: #f8f9fa;
+    box-shadow: inset 0 -1px 0 #dee2e6;
+}
+.zakupy-app.light-theme .panel-title {
+    color: #0d6efd;
+}
+.zakupy-app.light-theme .panel-body {
+    background: #ffffff;
+}
+
+/* === Inputs / Forms (z !important — dark-theme.css:214 ma !important) === */
+.zakupy-app.light-theme .form-control,
+.zakupy-app.light-theme .search-input {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+    border: 1px solid #ced4da !important;
+}
+.zakupy-app.light-theme .form-control:focus,
+.zakupy-app.light-theme .search-input:focus {
+    background-color: #ffffff !important;
+    color: #212529 !important;
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2) !important;
+}
+.zakupy-app.light-theme .form-control::placeholder,
+.zakupy-app.light-theme .search-input::placeholder {
+    color: #6c757d !important;
+}
+
+/* === Przyciski .btn — zachowują kolory, mocniejszy cień dla widoczności na białym === */
+.zakupy-app.light-theme .btn {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12) !important;
+}
+.zakupy-app.light-theme .btn:hover {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22), 0 2px 4px rgba(0, 0, 0, 0.14) !important;
+}
+.zakupy-app.light-theme .btn:active {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
+}
+.zakupy-app.light-theme .user-dropdown-btn {
+    box-shadow: 0 1px 3px rgba(220, 53, 69, 0.35), 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+.zakupy-app.light-theme .user-dropdown-btn:hover {
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.4), 0 2px 4px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* === Status indicator i etykiety pomocnicze === */
+.zakupy-app.light-theme .zero-value { color: #adb5bd !important; }
+.zakupy-app.light-theme .control-auto {
+    color: #6c757d;
+    border-color: #dee2e6;
+    background-color: #f8f9fa;
+}
+
+/* === PrimeVue DataTable — pokrycie wszystkich wrapperów + wierszy === */
+.zakupy-app.light-theme .p-datatable,
+.zakupy-app.light-theme .p-datatable-wrapper,
+.zakupy-app.light-theme .p-virtualscroller,
+.zakupy-app.light-theme .p-virtualscroller-content,
+.zakupy-app.light-theme .p-datatable-table {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #212529 !important;
+}
+.zakupy-app.light-theme .p-datatable .p-datatable-thead > tr > th {
+    background: linear-gradient(to bottom, #ffffff, #f1f3f5) !important;
+    color: #212529 !important;
+    border-bottom: 1px solid #dee2e6 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+/* Wiersze tabeli — super-specyficzność (html body) + tło na tr ORAZ td (td może maskować tr) */
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr,
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr > td {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
+    color: #212529 !important;
+}
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr:nth-child(even),
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr:nth-child(even) > td {
+    background: #fafbfc !important;
+    background-color: #fafbfc !important;
+}
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr > td {
+    border-bottom: 1px solid #eef1f4 !important;
+}
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr:hover,
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr:hover > td {
+    background: #eef5ff !important;
+    background-color: #eef5ff !important;
+}
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr.p-highlight,
+html body.zakupy-light-active .p-datatable .p-datatable-tbody > tr.p-highlight > td {
+    background: #cfe2ff !important;
+    background-color: #cfe2ff !important;
+    color: #084298 !important;
+}
+.zakupy-app.light-theme .p-datatable .p-sortable-column:hover {
+    background: #eef1f4 !important;
+    color: #212529 !important;
+}
+.zakupy-app.light-theme .p-datatable .p-sortable-column.p-highlight {
+    background: linear-gradient(to bottom, #ffffff, #e7f1ff) !important;
+    color: #0d6efd !important;
+}
+.zakupy-app.light-theme .p-datatable .p-sortable-column .p-sortable-column-icon {
+    color: #6c757d !important;
+}
+.zakupy-app.light-theme .p-datatable-loading-overlay {
+    background: rgba(255, 255, 255, 0.7) !important;
+}
+.zakupy-app.light-theme .p-datatable-loading-icon,
+.zakupy-app.light-theme .p-datatable-loading-icon svg {
+    color: #0d6efd !important;
+    fill: #0d6efd !important;
+}
+
+/* === PrimeVue Tag (severity badges) === */
+.zakupy-app.light-theme .p-tag.p-tag-secondary { background: #e9ecef; color: #495057; }
+.zakupy-app.light-theme .p-tag.p-tag-info { background: #cff4fc; color: #055160; }
+.zakupy-app.light-theme .p-tag.p-tag-primary { background: #cfe2ff; color: #084298; }
+.zakupy-app.light-theme .p-tag.p-tag-success { background: #d1e7dd; color: #0a3622; }
+.zakupy-app.light-theme .p-tag.p-tag-warning { background: #fff3cd; color: #664d03; }
+.zakupy-app.light-theme .p-tag.p-tag-danger { background: #f8d7da; color: #58151c; }
+
+/* === PrimeVue Badge (opis wybranego narzędzia w nagłówku tabu) ===
+   Flex-center bije line-height:1.5rem z PrimeVue (wcześniej tekst spadał na baseline) */
+.zakupy-app.light-theme .p-badge.p-badge-secondary {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    height: auto !important;
+    background: #fff3cd !important;
+    color: #664d03 !important;
+    border: 1px solid #ffe69c !important;
+    font-weight: 600 !important;
+    padding: 6px 14px !important;
+    border-radius: 4px !important;
+}
+
+/* === Ikony przycisków PrimeVue (success/secondary/primary/danger) — białe === */
+.zakupy-app.light-theme .p-button.p-button-success,
+.zakupy-app.light-theme .p-button.p-button-secondary,
+.zakupy-app.light-theme .p-button.p-button-primary,
+.zakupy-app.light-theme .p-button.p-button-danger,
+.zakupy-app.light-theme .p-button.p-button-help {
+    color: #ffffff !important;
+}
+.zakupy-app.light-theme .p-button.p-button-success .p-button-icon,
+.zakupy-app.light-theme .p-button.p-button-secondary .p-button-icon,
+.zakupy-app.light-theme .p-button.p-button-primary .p-button-icon,
+.zakupy-app.light-theme .p-button.p-button-danger .p-button-icon,
+.zakupy-app.light-theme .p-button.p-button-help .p-button-icon {
+    color: #ffffff !important;
+}
+
+/* === PrimeVue TabView (z !important — wrapper .p-tabview-nav-container ma gradient) === */
+.zakupy-app.light-theme .p-tabview {
+    background: transparent !important;
+}
+.zakupy-app.light-theme .p-tabview-nav-container {
+    background: linear-gradient(to bottom, #ffffff, #f1f3f5) !important;
+    box-shadow: inset 0 -1px 0 #dee2e6, 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.zakupy-app.light-theme .p-tabview-nav {
+    background: transparent !important;
+    border: none !important;
+}
+.zakupy-app.light-theme .p-tabview-nav li .p-tabview-nav-link {
+    background: transparent !important;
+    color: #495057 !important;
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+}
+.zakupy-app.light-theme .p-tabview-nav li .p-tabview-nav-link:hover {
+    background: rgba(13, 110, 253, 0.06) !important;
+    color: #0d6efd !important;
+}
+.zakupy-app.light-theme .p-tabview-nav li.p-highlight .p-tabview-nav-link {
+    background: rgba(13, 110, 253, 0.08) !important;
+    color: #0d6efd !important;
+    border-bottom-color: #0d6efd !important;
+}
+.zakupy-app.light-theme .p-tabview-panels {
+    background: #ffffff !important;
+    color: #212529 !important;
+}
+
+/* === PrimeVue Dropdown trigger (z !important — dark-theme.css:559 ma !important) === */
+.zakupy-app.light-theme .p-dropdown {
+    background: #ffffff !important;
+    border: 1px solid #ced4da !important;
+    color: #212529 !important;
+}
+.zakupy-app.light-theme .p-dropdown:not(.p-disabled):hover {
+    border-color: #86b7fe !important;
+}
+.zakupy-app.light-theme .p-dropdown:not(.p-disabled).p-focus {
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2) !important;
+}
+.zakupy-app.light-theme .p-dropdown .p-dropdown-label {
+    color: #212529 !important;
+}
+.zakupy-app.light-theme .p-dropdown .p-dropdown-label.p-placeholder {
+    color: #6c757d !important;
+}
+.zakupy-app.light-theme .p-dropdown .p-dropdown-trigger {
+    color: #6c757d !important;
+}
+.zakupy-app.light-theme .p-dropdown.p-disabled {
+    background: #e9ecef !important;
+    color: #adb5bd !important;
+}
+
+/* === PrimeVue InputText (wewnętrzny span Dropdownu też ma .p-inputtext) === */
+.zakupy-app.light-theme .p-inputtext,
+.zakupy-app.light-theme .p-dropdown-label.p-inputtext {
+    background: #ffffff !important;
+    border-color: #ced4da !important;
+    color: #212529 !important;
+}
+.zakupy-app.light-theme .p-inputtext:focus {
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2) !important;
+}
+.zakupy-app.light-theme .p-inputtext.p-placeholder,
+.zakupy-app.light-theme .p-dropdown-label.p-placeholder {
+    color: #6c757d !important;
+    background: #ffffff !important;
+}
+/* W disabled dropdownie label trzyma się dropdownu (.p-dropdown.p-disabled .p-dropdown-label) */
+.zakupy-app.light-theme .p-dropdown.p-disabled .p-dropdown-label {
+    background: #e9ecef !important;
+    color: #adb5bd !important;
+}
+
+/* === PrimeVue InputNumber / Checkbox === */
+.zakupy-app.light-theme .p-inputnumber-input {
+    background: #ffffff;
+    color: #212529;
+    border: 1px solid #ced4da;
+}
+.zakupy-app.light-theme .p-checkbox .p-checkbox-box {
+    background: #ffffff;
+    border: 1px solid #ced4da;
+}
+.zakupy-app.light-theme .p-checkbox .p-checkbox-box.p-highlight {
+    background: #0d6efd;
+    border-color: #0d6efd;
+}
+
+/* ============================================
+   PORTALE PrimeVue (renderowane do <body>)
+   Wymagają body.zakupy-light-active
+   ============================================ */
+
+/* Dropdown panel (lista wyboru) — pełen zestaw wrapperów */
+body.zakupy-light-active .p-dropdown-panel,
+body.zakupy-light-active .p-dropdown-items-wrapper,
+body.zakupy-light-active .p-dropdown-items {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dropdown-panel {
+    border: 1px solid #dee2e6 !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12) !important;
+}
+body.zakupy-light-active .p-dropdown-panel .p-dropdown-item {
+    color: #212529 !important;
+    background: transparent !important;
+}
+body.zakupy-light-active .p-dropdown-panel .p-dropdown-item:hover {
+    background: #eef5ff !important;
+    color: #084298 !important;
+}
+body.zakupy-light-active .p-dropdown-panel .p-dropdown-item.p-highlight {
+    background: #cfe2ff !important;
+    color: #084298 !important;
+}
+/* Nagłówek grupy (np. "ĆWIERĆ FREZY") — jasnoszare tło, niebieski font */
+body.zakupy-light-active .p-dropdown-item-group {
+    background: #f1f3f5 !important;
+    color: #0d6efd !important;
+    font-weight: 700 !important;
+    border-top: 1px solid #dee2e6 !important;
+    border-bottom: 1px solid #dee2e6 !important;
+}
+body.zakupy-light-active .p-dropdown-header {
+    background: #f8f9fa !important;
+    border-bottom: 1px solid #dee2e6 !important;
+}
+body.zakupy-light-active .p-dropdown-header .p-dropdown-filter {
+    background: #ffffff !important;
+    border: 1px solid #ced4da !important;
+    color: #212529 !important;
+}
+
+/* === SCROLLBARY (light) — bez czarnego obrysu z Chromium ===
+   background-clip: padding-box + border transparent = thumb bez ramki
+   border: 0 / box-shadow: none na thumb usuwa inset shadow przeglądarki
+   scrollbar-corner: jednolite jasne tło zamiast domyślnego ciemnego */
+
+/* Scrollbar w portalach (Dropdown panel, Menu popup, Dialog content) */
+body.zakupy-light-active .p-dropdown-items-wrapper::-webkit-scrollbar,
+body.zakupy-light-active .p-menu::-webkit-scrollbar,
+body.zakupy-light-active .p-dialog-content::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: #f1f3f5;
+}
+body.zakupy-light-active .p-dropdown-items-wrapper::-webkit-scrollbar-track,
+body.zakupy-light-active .p-menu::-webkit-scrollbar-track,
+body.zakupy-light-active .p-dialog-content::-webkit-scrollbar-track {
+    background: #f1f3f5;
+    border: 0;
+    box-shadow: none;
+}
+body.zakupy-light-active .p-dropdown-items-wrapper::-webkit-scrollbar-thumb,
+body.zakupy-light-active .p-menu::-webkit-scrollbar-thumb,
+body.zakupy-light-active .p-dialog-content::-webkit-scrollbar-thumb {
+    background-color: #ced4da;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    box-shadow: none;
+    outline: none;
+}
+body.zakupy-light-active .p-dropdown-items-wrapper::-webkit-scrollbar-thumb:hover,
+body.zakupy-light-active .p-menu::-webkit-scrollbar-thumb:hover,
+body.zakupy-light-active .p-dialog-content::-webkit-scrollbar-thumb:hover {
+    background-color: #adb5bd;
+}
+body.zakupy-light-active .p-dropdown-items-wrapper::-webkit-scrollbar-corner,
+body.zakupy-light-active .p-menu::-webkit-scrollbar-corner,
+body.zakupy-light-active .p-dialog-content::-webkit-scrollbar-corner {
+    background: #f1f3f5;
+}
+
+/* Scrollbar wewnątrz .zakupy-app (DataTable, panele) */
+.zakupy-app.light-theme ::-webkit-scrollbar {
+    background: #f1f3f5;
+}
+.zakupy-app.light-theme ::-webkit-scrollbar-track {
+    background: #f1f3f5;
+    border: 0;
+    box-shadow: none;
+}
+.zakupy-app.light-theme ::-webkit-scrollbar-thumb {
+    background-color: #ced4da;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 7px;
+    box-shadow: none;
+    outline: none;
+}
+.zakupy-app.light-theme ::-webkit-scrollbar-thumb:hover {
+    background-color: #adb5bd;
+}
+.zakupy-app.light-theme ::-webkit-scrollbar-corner {
+    background: #f1f3f5;
+}
+
+/* Dialog (modale Edytuj/Dodaj + about) */
+body.zakupy-light-active .p-dialog-mask {
+    background: rgba(0, 0, 0, 0.4);
+}
+body.zakupy-light-active .p-dialog {
+    background: #ffffff !important;
+    color: #212529 !important;
+    border: 1px solid #dee2e6 !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+}
+body.zakupy-light-active .p-dialog .p-dialog-header {
+    background: #f8f9fa !important;
+    color: #212529 !important;
+    border-bottom: 1px solid #dee2e6 !important;
+}
+body.zakupy-light-active .p-dialog .p-dialog-content {
+    background: #ffffff !important;
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dialog .p-dialog-footer {
+    background: #ffffff !important;
+    border-top: 1px solid #dee2e6 !important;
+}
+body.zakupy-light-active .p-dialog .p-dialog-header-icon {
+    color: #495057 !important;
+}
+body.zakupy-light-active .p-dialog .p-dialog-header-icon:hover {
+    background: #e9ecef !important;
+}
+
+/* === Wnętrze modalu Dialog — labels, inputs, dropdowns ===
+   Dialog jest portalem (poza .zakupy-app), więc light variables tam nie sięgają.
+   Reguły muszą startować od body.zakupy-light-active. */
+
+/* Etykiety pól (.field label używa var(--dark-text-primary) → globalne ciemne tło + jasny font = nieczytelne na białym) */
+body.zakupy-light-active .p-dialog .field label,
+body.zakupy-light-active .p-dialog label,
+body.zakupy-light-active .p-dialog .checkbox-label {
+    color: #212529 !important;
+    font-weight: 500 !important;
+}
+
+/* Pola tekstowe i numeryczne w modalu */
+body.zakupy-light-active .p-dialog .p-inputtext,
+body.zakupy-light-active .p-dialog .p-inputnumber-input,
+body.zakupy-light-active .p-dialog .p-inputtextarea,
+body.zakupy-light-active .p-dialog .form-control {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #ced4da !important;
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dialog .p-inputtext:focus,
+body.zakupy-light-active .p-dialog .p-inputnumber-input:focus,
+body.zakupy-light-active .p-dialog .p-inputtextarea:focus,
+body.zakupy-light-active .p-dialog .form-control:focus {
+    border-color: #86b7fe !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2) !important;
+}
+body.zakupy-light-active .p-dialog .p-inputtext::placeholder,
+body.zakupy-light-active .p-dialog .form-control::placeholder {
+    color: #6c757d !important;
+}
+
+/* Native button "Wybierz plik" w <input type="file"> — pseudo-element przeglądarki */
+body.zakupy-light-active .p-dialog input[type="file"]::file-selector-button {
+    background: #e9ecef !important;
+    color: #0d6efd !important;
+    border: 1px solid #ced4da !important;
+    border-radius: 4px !important;
+    padding: 4px 12px !important;
+    margin-right: 10px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: background 0.15s ease !important;
+}
+body.zakupy-light-active .p-dialog input[type="file"]::file-selector-button:hover {
+    background: #dee2e6 !important;
+    color: #0a58ca !important;
+}
+
+/* Dropdown trigger wewnątrz modalu (np. wybór podkategorii) */
+body.zakupy-light-active .p-dialog .p-dropdown {
+    background: #ffffff !important;
+    border: 1px solid #ced4da !important;
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dialog .p-dropdown .p-dropdown-label {
+    background: #ffffff !important;
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dialog .p-dropdown .p-dropdown-label.p-placeholder {
+    color: #6c757d !important;
+}
+body.zakupy-light-active .p-dialog .p-dropdown .p-dropdown-trigger {
+    color: #6c757d !important;
+}
+body.zakupy-light-active .p-dialog .p-dropdown.p-disabled,
+body.zakupy-light-active .p-dialog .p-dropdown.p-disabled .p-dropdown-label {
+    background: #e9ecef !important;
+    color: #adb5bd !important;
+}
+
+/* Checkbox w modalu */
+body.zakupy-light-active .p-dialog .p-checkbox .p-checkbox-box {
+    background: #ffffff !important;
+    border: 1px solid #ced4da !important;
+}
+body.zakupy-light-active .p-dialog .p-checkbox .p-checkbox-box.p-highlight {
+    background: #0d6efd !important;
+    border-color: #0d6efd !important;
+}
+body.zakupy-light-active .p-dialog .p-checkbox .p-checkbox-box .p-checkbox-icon {
+    color: #ffffff !important;
+}
+
+/* About modal — pola w tabeli (label / value) */
+body.zakupy-light-active .p-dialog .about-table td {
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-dialog .about-table .label {
+    color: #6c757d !important;
+}
+body.zakupy-light-active .p-dialog .about-footer .copyright {
+    color: #6c757d !important;
+}
+
+/* User menu popup */
+body.zakupy-light-active .p-menu.p-menu-overlay {
+    background: #ffffff !important;
+    border: 1px solid #dee2e6 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+}
+body.zakupy-light-active .p-menu .p-menuitem-link {
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-menu .p-menuitem-link:hover {
+    background: #f1f3f5 !important;
+}
+body.zakupy-light-active .p-menu .p-menuitem-link .p-menuitem-icon,
+body.zakupy-light-active .p-menu .p-menuitem-link .p-menuitem-text {
+    color: #212529 !important;
+}
+body.zakupy-light-active .p-menu .p-menu-separator {
+    border-color: #dee2e6 !important;
+}
 </style>
 
