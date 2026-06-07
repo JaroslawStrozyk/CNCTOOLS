@@ -62,6 +62,8 @@ MagazynTestCase:
 
 ================================================================================
 """
+from unittest import mock
+
 from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
@@ -632,6 +634,12 @@ class GeneratorZamowienTestCase(APITestCase):
         self.user = User.objects.create_user('logistyk', 'log@test.pl', 'haslo123')
         self.client.force_authenticate(user=self.user)
 
+        # Pin trybu liczenia: testy tej klasy zakładają tryb standardowy — uniezależnienie
+        # od wartości 'sposob_liczenia_zamowien' w app_settings.json maszyny deweloperskiej
+        patcher = mock.patch('TOOLS.views.get_sposob_liczenia_zamowien', return_value='standardowa')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         self.kategoria = Kategoria.objects.create(nazwa="Frezy")
         self.podkategoria = Podkategoria.objects.create(
             nazwa="VHM", kategoria=self.kategoria
@@ -977,6 +985,523 @@ class GeneratorZamowienTestCase(APITestCase):
 
         zap.refresh_from_db()
         self.assertEqual(zap.status, 'ordered')
+
+
+class GeneratorWedlugNowychTestCase(APITestCase):
+    """
+    Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).
+
+    Reguła AUTO w tym trybie:
+        brakuje = stan_minimalny − ilość_nowych (nowe, nieuszkodzone, niewydane)
+        brakuje > 0  → pozycja na 'brakuje'
+        brakuje <= 0 → stan wystarczający, pomiń
+    Wiersze z ręczną kontrolą liczą się jak dotychczas.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('logistyk2', 'log2@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+
+        # Wymuszenie trybu "według nowych elementów" niezależnie od app_settings.json
+        patcher = mock.patch(
+            'TOOLS.views.get_sposob_liczenia_zamowien',
+            return_value='wedlug_nowych_elementow'
+        )
+        self.mock_sposob = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Wiertła")
+        self.podkategoria = Podkategoria.objects.create(nazwa="HSS", kategoria=self.kategoria)
+        self.lokalizacja = Lokalizacja.objects.create(szafa="B", kolumna="02", polka="2")
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST02", nazwa_firmy="Test2 Sp. z o.o.")
+        self.pracownik = Pracownik.objects.create(karta="11111", nazwisko="Testowy", imie="Jan")
+
+        # Narzędzie AUTO: limit_min=5, limit_max=20
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Wiertło 8mm",
+            numer_katalogowy="W-8",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=5,
+            stan_maksymalny=20,
+            ostatni_dostawca=self.dostawca,
+        )
+
+    def _pozycja(self, narzedzie=None):
+        """Zwraca pozycję generatora dla narzędzia (lub None)."""
+        narzedzie = narzedzie or self.narzedzie
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pozycje = response.data.get('pozycje', [])
+        return next((p for p in pozycje if p['id'] == narzedzie.id), None)
+
+    def _dodaj_egzemplarze(self, ile, stan='nowe', ilosc_w_komplecie=1, narzedzie=None):
+        narzedzie = narzedzie or self.narzedzie
+        return [
+            EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=narzedzie,
+                stan=stan,
+                lokalizacja=self.lokalizacja,
+                ilosc_w_komplecie=ilosc_w_komplecie,
+            )
+            for _ in range(ile)
+        ]
+
+    # ========== Reguła min − nowe ==========
+
+    def test_brak_nowych_zamawia_do_limitu_minimalnego(self):
+        """0 nowych, limit_min=5 → pozycja na 5 (NIE na 20 jak w trybie standardowym)."""
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+        self.assertEqual(pozycja['zrodlo'], 'auto')
+
+    def test_czesciowy_brak_zamawia_roznice(self):
+        """2 nowe, limit_min=5 → pozycja na 3."""
+        self._dodaj_egzemplarze(2)
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 3)
+
+    def test_nowych_rowne_limitowi_nie_zamawia(self):
+        """5 nowych, limit_min=5 → różnica 0 → brak pozycji (warunek graniczny)."""
+        self._dodaj_egzemplarze(5)
+        self.assertIsNone(self._pozycja())
+
+    def test_nowych_powyzej_limitu_nie_zamawia(self):
+        """6 nowych, limit_min=5 → brak pozycji."""
+        self._dodaj_egzemplarze(6)
+        self.assertIsNone(self._pozycja())
+
+    def test_komplet_liczy_sie_jako_ilosc_w_komplecie(self):
+        """1 egzemplarz z ilosc_w_komplecie=10 = 10 nowych szt. → brak pozycji."""
+        self._dodaj_egzemplarze(1, ilosc_w_komplecie=10)
+        self.assertIsNone(self._pozycja())
+
+    # ========== Co NIE liczy się jako "nowe" ==========
+
+    def test_uzywane_nie_licza_sie_do_nowych(self):
+        """10 używanych, 0 nowych, limit_min=5 → pozycja na 5
+        (w trybie standardowym stan=10 < max=20 dałby 10 — tryby się różnią)."""
+        self._dodaj_egzemplarze(10, stan='uzywane')
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+
+    def test_wydane_nowe_nie_licza_sie(self):
+        """5 nowych, ale 3 wydane (aktywne wypożyczenie) → nowych=2 → pozycja na 3."""
+        egzemplarze = self._dodaj_egzemplarze(5)
+        for egz in egzemplarze[:3]:
+            HistoriaUzyciaNarzedzia.objects.create(
+                egzemplarz=egz, pracownik=self.pracownik, data_zwrotu=None
+            )
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 3)
+
+    def test_uszkodzone_nie_licza_sie_do_nowych(self):
+        """3 nowe + 4 uszkodzone, limit_min=5 → nowych=3 → pozycja na 2."""
+        self._dodaj_egzemplarze(3)
+        self._dodaj_egzemplarze(4, stan='uszkodzone')
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 2)
+
+    # ========== Limity zero ==========
+
+    def test_stan_minimalny_zero_nie_zamawia(self):
+        """limit_min=0 → różnica zawsze <= 0 → brak pozycji (mimo max=20 i stanu 0)."""
+        self.narzedzie.stan_minimalny = 0
+        self.narzedzie.save()
+        self.assertIsNone(self._pozycja())
+
+    def test_stan_maksymalny_zero_nie_blokuje(self):
+        """W tym trybie liczy się tylko limit minimalny — max=0 nie wyklucza narzędzia."""
+        self.narzedzie.stan_maksymalny = 0
+        self.narzedzie.save()
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+
+    # ========== Opakowania ==========
+
+    def test_komplet_zaokragla_w_gore_do_opakowan(self):
+        """opakowanie='kompl' (5 szt.), limit_min=8, 2 nowe → brakuje 6 → ceil(6/5)=2 kompl."""
+        narzedzie_kompl = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Płytki tokarskie",
+            numer_katalogowy="PT-1",
+            opakowanie="kompl",
+            ilosc_w_opakowaniu=5,
+            stan_minimalny=8,
+            stan_maksymalny=0,
+            ostatni_dostawca=self.dostawca,
+        )
+        self._dodaj_egzemplarze(2, narzedzie=narzedzie_kompl)
+        pozycja = self._pozycja(narzedzie_kompl)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 2)
+
+    # ========== Ręczna kontrola — bez zmian ==========
+
+    def test_reczna_kontrola_liczy_sie_jak_dotychczas(self):
+        """reczna_kontrola=True → generator czyta reczne_dodanie, ignoruje limity."""
+        self.narzedzie.reczna_kontrola = True
+        self.narzedzie.reczne_dodanie = 4
+        self.narzedzie.save()
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 4)
+        self.assertEqual(pozycja['zrodlo'], 'reczne')
+
+    def test_reczna_kontrola_bez_dodania_nie_zamawia(self):
+        """reczna_kontrola=True, reczne_dodanie=0 → brak pozycji mimo braku nowych."""
+        self.narzedzie.reczna_kontrola = True
+        self.narzedzie.reczne_dodanie = 0
+        self.narzedzie.save()
+        self.assertIsNone(self._pozycja())
+
+    # ========== Czyszczenie zombie ==========
+
+    def test_zombie_pozycja_znika_po_uzupelnieniu_nowych(self):
+        """Auto-pozycja utworzona przy braku nowych znika po dostawie pokrywającej limit."""
+        self.assertIsNotNone(self._pozycja())  # tworzy auto-pozycję (5 szt.)
+        self._dodaj_egzemplarze(5)             # dostawa: nowych=5 >= limit_min=5
+        self.assertIsNone(self._pozycja())
+        self.assertFalse(
+            PozycjaGeneratora.objects.filter(narzedzie_typ=self.narzedzie).exists()
+        )
+
+    # ========== Kontrola regresji trybu standardowego ==========
+
+    def test_tryb_standardowy_liczy_po_staremu(self):
+        """Po przełączeniu na 'standardowa': 2 nowe, max=20 → pozycja na 18 (max − stan)."""
+        self.mock_sposob.return_value = 'standardowa'
+        self._dodaj_egzemplarze(2)
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 18)
+
+
+class SposobLiczeniaZamowienAPITestCase(APITestCase):
+    """Testy endpointu /api/ustawienia/sposob-liczenia-zamowien/."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            'admin1', 'a@test.pl', 'haslo123', first_name='Jan', last_name='Testowy'
+        )
+        # Widok funkcyjny z @login_required (nie DRF) — wymaga logowania sesyjnego
+        self.client.login(username='admin1', password='haslo123')
+
+    def test_get_zwraca_dozwolona_wartosc(self):
+        response = self.client.get('/api/ustawienia/sposob-liczenia-zamowien/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            response.json()['sposob_liczenia_zamowien'],
+            ['standardowa', 'wedlug_nowych_elementow']
+        )
+
+    def test_post_nieprawidlowa_wartosc_400(self):
+        response = self.client.post(
+            '/api/ustawienia/sposob-liczenia-zamowien/',
+            {'sposob_liczenia_zamowien': 'bledna_wartosc'},
+            format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_zmiana_czysci_auto_pozycje_i_loguje_warning(self):
+        """Zmiana trybu usuwa auto-pozycje generatora (ręczne zostają) i loguje WARNING."""
+        import tempfile
+        from pathlib import Path
+        from .models import LogEntry
+
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        narzedzie_a = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="A", numer_katalogowy="A-1",
+            opakowanie="szt", ilosc_w_opakowaniu=1,
+        )
+        narzedzie_b = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="B", numer_katalogowy="B-1",
+            opakowanie="szt", ilosc_w_opakowaniu=1,
+        )
+        PozycjaGeneratora.objects.create(
+            narzedzie_typ=narzedzie_a, ilosc_do_zamowienia=5, zrodlo='auto'
+        )
+        PozycjaGeneratora.objects.create(
+            narzedzie_typ=narzedzie_b, ilosc_do_zamowienia=2, zrodlo='reczne'
+        )
+
+        # Tymczasowy BASE_DIR: zapis app_settings.json nie dotyka pliku deweloperskiego
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.settings(BASE_DIR=Path(tmp), SPOSOB_LICZENIA_ZAMOWIEN='standardowa'):
+                response = self.client.post(
+                    '/api/ustawienia/sposob-liczenia-zamowien/',
+                    {'sposob_liczenia_zamowien': 'wedlug_nowych_elementow'},
+                    format='json'
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.json()['sposob_liczenia_zamowien'], 'wedlug_nowych_elementow'
+                )
+
+        self.assertFalse(PozycjaGeneratora.objects.filter(zrodlo='auto').exists())
+        self.assertTrue(PozycjaGeneratora.objects.filter(zrodlo='reczne').exists())
+
+        log = LogEntry.objects.filter(operacja__icontains='sposób liczenia zamówień').latest('timestamp')
+        self.assertEqual(log.status, 'WARNING')
+        self.assertIn('według nowych elementów', log.operacja)
+
+
+class CenaJednostkowaTestCase(APITestCase):
+    """
+    Testy priorytetu ceny jednostkowej (Zakupy → modal 'Edytuj typ narzędzia'):
+    - cena wyliczona z zamówień (cena_z_zamowienia=True, > 0) — niezmienna,
+    - cena ręczna lub zerowa — edytowalna do woli,
+    - zamówienie nadpisuje cenę ręczną (priorytet wartości wyliczonej),
+    - cena ręczna jest domyślną w generatorze, gdy brak historii zamówień.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('zakupy', 'zak@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=self.kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST03", nazwa_firmy="Test3 Sp. z o.o.")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez D12",
+            numer_katalogowy="F12",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=5,
+            stan_maksymalny=20,
+            ostatni_dostawca=self.dostawca,
+        )
+
+        # Pin trybu liczenia dla wywołań generatora w tych testach
+        patcher = mock.patch('TOOLS.views.get_sposob_liczenia_zamowien', return_value='standardowa')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _pozycja_zamowienia(self, cena, status_zam='completed'):
+        zamowienie = Zamowienie.objects.create(
+            numer=f"ZAM-TEST-{Zamowienie.objects.count() + 1}",
+            dostawca=self.dostawca,
+            status=status_zam,
+        )
+        return PozycjaZamowienia.objects.create(
+            zamowienie=zamowienie,
+            narzedzie_typ=self.narzedzie,
+            narzedzie_opis=self.narzedzie.opis,
+            ilosc_zamowiona=5,
+            cena_jednostkowa=cena,
+        )
+
+    # ========== Propagacja z zamówień ==========
+
+    def test_zapis_pozycji_zamowienia_ustawia_cene_i_flage(self):
+        self._pozycja_zamowienia('12.50')
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(float(self.narzedzie.cena_jednostkowa), 12.50)
+        self.assertTrue(self.narzedzie.cena_z_zamowienia)
+
+    def test_zamowienie_nadpisuje_cene_reczna(self):
+        """Priorytet wartości wyliczonej: zamówienie nadpisuje ręczną cenę i blokuje edycję."""
+        self.narzedzie.cena_jednostkowa = 99
+        self.narzedzie.save()
+        self._pozycja_zamowienia('15.00')
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(float(self.narzedzie.cena_jednostkowa), 15.00)
+        self.assertTrue(self.narzedzie.cena_z_zamowienia)
+
+    # ========== Edycja w modalu (PATCH /api/narzedzia/) ==========
+
+    def test_edycja_zablokowana_gdy_cena_z_zamowienia(self):
+        self._pozycja_zamowienia('12.50')
+        response = self.client.patch(
+            f'/api/narzedzia/{self.narzedzie.id}/', {'cena_jednostkowa': '20.00'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(float(self.narzedzie.cena_jednostkowa), 12.50)
+
+    def test_patch_z_ta_sama_cena_przechodzi(self):
+        """Modal wysyła PATCH innych pól — niezmieniona cena nie może blokować zapisu."""
+        self._pozycja_zamowienia('12.50')
+        response = self.client.patch(
+            f'/api/narzedzia/{self.narzedzie.id}/',
+            {'cena_jednostkowa': '12.50', 'stan_minimalny': 7}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(self.narzedzie.stan_minimalny, 7)
+        self.assertTrue(self.narzedzie.cena_z_zamowienia)
+
+    def test_edycja_dozwolona_gdy_cena_reczna(self):
+        """Cena bez flagi (ręczna/brak) — edytowalna do woli."""
+        response = self.client.patch(
+            f'/api/narzedzia/{self.narzedzie.id}/', {'cena_jednostkowa': '33.00'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(float(self.narzedzie.cena_jednostkowa), 33.00)
+        self.assertFalse(self.narzedzie.cena_z_zamowienia)
+
+    def test_edycja_dozwolona_gdy_cena_z_zamowienia_zerowa(self):
+        """Zerowa cena jest edytowalna nawet z flagą — ręczna zmiana zdejmuje flagę."""
+        self._pozycja_zamowienia('0.00')
+        self.narzedzie.refresh_from_db()
+        self.assertTrue(self.narzedzie.cena_z_zamowienia)
+
+        response = self.client.patch(
+            f'/api/narzedzia/{self.narzedzie.id}/', {'cena_jednostkowa': '44.00'}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(float(self.narzedzie.cena_jednostkowa), 44.00)
+        self.assertFalse(self.narzedzie.cena_z_zamowienia)
+
+    # ========== Cena domyślna w generatorze ==========
+
+    def test_generator_uzywa_ceny_recznej_gdy_brak_historii(self):
+        """Ręcznie ustawiona cena = domyślna w pozycji generatora (brak zamówień)."""
+        self.narzedzie.cena_jednostkowa = 25
+        self.narzedzie.save()
+
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pozycja = next(
+            (p for p in response.data.get('pozycje', []) if p['id'] == self.narzedzie.id), None
+        )
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['cena_jednostkowa'], 25)
+
+    def test_generator_preferuje_cene_z_zamowien(self):
+        """Historia zamówień ma pierwszeństwo przed wartością z pola narzędzia."""
+        self._pozycja_zamowienia('18.00')  # status 'completed' — nie blokuje generatora
+        self.narzedzie.refresh_from_db()
+        # Symulacja rozjazdu: pole narzędzia zmienione wprost w DB (poza propagacją)
+        NarzedzieMagazynowe.objects.filter(pk=self.narzedzie.pk).update(cena_jednostkowa=99)
+
+        response = self.client.get('/api/generator-zamowien/')
+        pozycja = next(
+            (p for p in response.data.get('pozycje', []) if p['id'] == self.narzedzie.id), None
+        )
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['cena_jednostkowa'], 18.00)
+
+
+class EmailZamowieniaTestCase(TestCase):
+    """
+    Testy treści emaila zamówienia i załącznika CSV (TOOLS/utils.py):
+    - skonsolidowana kolumna 'Ilość' (wartość + jednostka),
+    - kolumna 'Cena' z ceną jednostkową zamiast 'Jednostka',
+    - podsumowanie 'POZYCJI: X; SUMA: Y',
+    - CSV: nr_katalogowy|nazwa|ilosc|cena_jedn|suma (kropka dziesiętna, brak ceny → 0.00).
+    """
+
+    def setUp(self):
+        self.kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=self.kategoria)
+        self.dostawca = Dostawca.objects.create(
+            kod_dostawcy="TEST04", nazwa_firmy="Test4 Sp. z o.o."
+        )
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez D10",
+            numer_katalogowy="F10",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+        )
+        self.zamowienie = Zamowienie.objects.create(
+            numer="2026/06/01",
+            dostawca=self.dostawca,
+            email_docelowy="dostawca@test.pl",
+        )
+        self.poz1 = PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie,
+            narzedzie_typ=self.narzedzie,
+            kategoria_nazwa="Frezy",
+            podkategoria_nazwa="VHM",
+            narzedzie_opis="Frez D10",
+            numer_katalogowy="F10",
+            ilosc_zamowiona=5,
+            jednostka='szt',
+            cena_jednostkowa='12.50',
+        )
+        self.poz2 = PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie,
+            narzedzie_typ=self.narzedzie,
+            kategoria_nazwa="Frezy",
+            podkategoria_nazwa="VHM",
+            narzedzie_opis="Płytki",
+            numer_katalogowy="P-1",
+            ilosc_zamowiona=2,
+            jednostka='kompl',
+            ilosc_w_komplecie=10,
+            cena_jednostkowa=None,  # brak ceny → 0.00
+        )
+
+    def _wyslij_i_przechwyc_html(self):
+        from TOOLS import utils
+        with mock.patch.object(
+            utils, 'send_html_email', return_value={'success': True, 'message': 'OK'}
+        ) as mocked:
+            utils.send_zamowienie_email(self.zamowienie)
+        return mocked.call_args.kwargs['html_content']
+
+    # ========== Email — tabela pozycji ==========
+
+    def test_email_skonsolidowana_kolumna_ilosc(self):
+        html = self._wyslij_i_przechwyc_html()
+        self.assertIn('5 szt.', html)
+        self.assertIn('2 kompl. (10 szt.)', html)
+        self.assertNotIn('<th style="text-align: center;">Jednostka</th>', html)
+
+    def test_email_kolumna_cena(self):
+        html = self._wyslij_i_przechwyc_html()
+        self.assertIn('>Cena</th>', html)
+        self.assertIn('12,50 zł', html)
+        self.assertIn('0,00 zł', html)  # pozycja bez ceny
+
+    def test_email_podsumowanie_pozycje_i_suma(self):
+        html = self._wyslij_i_przechwyc_html()
+        self.assertNotIn('RAZEM POZYCJI', html)
+        self.assertIn('POZYCJI:', html)
+        self.assertIn('SUMA:', html)
+        # 5 × 12.50 + 2 × 0.00 = 62.50; pozycji: 5 + 2 = 7
+        self.assertIn('<strong style="font-size: 1.2em;">7</strong>', html)
+        self.assertIn('62,50 zł', html)
+
+    # ========== Załącznik CSV ==========
+
+    def test_csv_naglowek_i_kolumny(self):
+        from TOOLS.utils import _build_zamowienie_csv
+        csv_text = _build_zamowienie_csv(
+            list(self.zamowienie.pozycje.all()), {}
+        ).decode('utf-8')
+        wiersze = csv_text.strip().split('\r\n')
+        self.assertEqual(wiersze[0], 'nr_katalogowy|nazwa|ilosc|cena_jedn|suma')
+        self.assertEqual(wiersze[1], 'F10|Frez D10|5|12.50|62.50')
+        self.assertEqual(wiersze[2], 'P-1|Płytki|2|0.00|0.00')
+
+    def test_csv_mapowanie_nr_dostawcy(self):
+        from TOOLS.utils import _build_zamowienie_csv
+        csv_text = _build_zamowienie_csv(
+            [self.poz1], {self.narzedzie.id: 'DOST-123'}
+        ).decode('utf-8')
+        self.assertIn('DOST-123|Frez D10|5|12.50|62.50', csv_text)
+
+    def test_format_pln(self):
+        from TOOLS.utils import _format_pln
+        from decimal import Decimal
+        self.assertEqual(_format_pln(Decimal('12.50')), '12,50 zł')
+        # Separator tysięcy: NBSP ( ) — kwota nie łamie się w HTML emaila
+        self.assertEqual(_format_pln(Decimal('1234.56')), '1 234,56 zł')
+        self.assertEqual(_format_pln(Decimal('0.00')), '0,00 zł')
 
 
 class MagazynViewTestCase(TestCase):

@@ -320,6 +320,90 @@
                     </div>
                 </TabPanel>
 
+                <!-- Użytkownicy (tylko administrator + logistyka) -->
+                <TabPanel header="Użytkownicy" v-if="canManageUsers">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Zarządzaj Użytkownikami</h3>
+                            <button class="btn btn-primary" @click="openUserModal()">
+                                <i class="pi pi-plus"></i> Dodaj użytkownika
+                            </button>
+                        </div>
+                        <div class="panel-body">
+                            <DataTable :value="users" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="users.length > 25" :rows="25">
+                                <Column field="username" header="Login" style="width: 160px;" />
+                                <Column header="Imię i nazwisko" style="width: 220px;">
+                                    <template #body="{ data }">
+                                        {{ data.first_name }} {{ data.last_name }}
+                                    </template>
+                                </Column>
+                                <Column field="email" header="Email" style="width: 220px;" />
+                                <Column header="Karta" style="width: 140px;">
+                                    <template #body="{ data }">
+                                        <span v-if="data.karta">{{ data.karta }}</span>
+                                        <span v-else class="text-muted">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Grupy" style="min-width: 220px;">
+                                    <template #body="{ data }">
+                                        <Tag v-for="g in data.groups" :key="g.id" :value="g.name" class="group-tag" />
+                                        <span v-if="!data.groups || !data.groups.length" class="text-muted">-</span>
+                                    </template>
+                                </Column>
+                                <Column header="Pobieranie narzędzi" style="width: 130px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Tag v-if="data.pobieranie_narzedzi" value="Tak" severity="success" />
+                                        <Tag v-else value="Nie" severity="secondary" />
+                                    </template>
+                                </Column>
+                                <Column header="Aktywny" style="width: 90px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Tag v-if="data.is_active" value="Tak" severity="success" />
+                                        <Tag v-else value="Nie" severity="danger" />
+                                    </template>
+                                </Column>
+                                <Column header="Akcje" style="width: 130px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <button class="btn btn-secondary btn-icon mr-1" @click="openUserModal(data)" title="Edytuj">
+                                            <i class="pi pi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-danger btn-icon" @click="confirmDeleteUser(data)" title="Usuń">
+                                            <i class="pi pi-trash"></i>
+                                        </button>
+                                    </template>
+                                </Column>
+                            </DataTable>
+                        </div>
+                    </div>
+                </TabPanel>
+
+                <!-- Inne -->
+                <TabPanel header="Inne">
+                    <div class="settings-panel">
+                        <div class="panel-header">
+                            <h3>Inne ustawienia</h3>
+                        </div>
+                        <div class="panel-body">
+                            <div class="email-config-table">
+                                <div class="config-row">
+                                    <span class="config-label">Sposób liczenia zamówień</span>
+                                    <span class="config-value-inline">
+                                        <Dropdown
+                                            v-model="sposobLiczeniaZamowien"
+                                            :options="sposobyLiczeniaOptions"
+                                            optionLabel="label"
+                                            optionValue="value"
+                                            style="width: 280px;"
+                                            @change="onSposobChange"
+                                        />
+                                        <span class="text-muted" style="margin-left: 20px; font-size: 0.85rem;">Metoda wyliczania ilości przy generowaniu zamówień. Zmiany są logowane.</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </TabPanel>
+
                 <!-- Dokumenty -->
                 <TabPanel header="Dokumenty">
                     <div class="settings-panel">
@@ -412,63 +496,6 @@
                     </div>
                 </TabPanel>
 
-                <!-- Użytkownicy (tylko administrator + logistyka) -->
-                <TabPanel header="Użytkownicy" v-if="canManageUsers">
-                    <div class="settings-panel">
-                        <div class="panel-header">
-                            <h3>Zarządzaj Użytkownikami</h3>
-                            <button class="btn btn-primary" @click="openUserModal()">
-                                <i class="pi pi-plus"></i> Dodaj użytkownika
-                            </button>
-                        </div>
-                        <div class="panel-body">
-                            <DataTable :value="users" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="users.length > 25" :rows="25">
-                                <Column field="username" header="Login" style="width: 160px;" />
-                                <Column header="Imię i nazwisko" style="width: 220px;">
-                                    <template #body="{ data }">
-                                        {{ data.first_name }} {{ data.last_name }}
-                                    </template>
-                                </Column>
-                                <Column field="email" header="Email" style="width: 220px;" />
-                                <Column header="Karta" style="width: 140px;">
-                                    <template #body="{ data }">
-                                        <span v-if="data.karta">{{ data.karta }}</span>
-                                        <span v-else class="text-muted">-</span>
-                                    </template>
-                                </Column>
-                                <Column header="Grupy" style="min-width: 220px;">
-                                    <template #body="{ data }">
-                                        <Tag v-for="g in data.groups" :key="g.id" :value="g.name" class="group-tag" />
-                                        <span v-if="!data.groups || !data.groups.length" class="text-muted">-</span>
-                                    </template>
-                                </Column>
-                                <Column header="Pobieranie narzędzi" style="width: 130px; text-align: center;">
-                                    <template #body="{ data }">
-                                        <Tag v-if="data.pobieranie_narzedzi" value="Tak" severity="success" />
-                                        <Tag v-else value="Nie" severity="secondary" />
-                                    </template>
-                                </Column>
-                                <Column header="Aktywny" style="width: 90px; text-align: center;">
-                                    <template #body="{ data }">
-                                        <Tag v-if="data.is_active" value="Tak" severity="success" />
-                                        <Tag v-else value="Nie" severity="danger" />
-                                    </template>
-                                </Column>
-                                <Column header="Akcje" style="width: 130px; text-align: center;">
-                                    <template #body="{ data }">
-                                        <button class="btn btn-secondary btn-icon mr-1" @click="openUserModal(data)" title="Edytuj">
-                                            <i class="pi pi-pencil"></i>
-                                        </button>
-                                        <button class="btn btn-danger btn-icon" @click="confirmDeleteUser(data)" title="Usuń">
-                                            <i class="pi pi-trash"></i>
-                                        </button>
-                                    </template>
-                                </Column>
-                            </DataTable>
-                        </div>
-                    </div>
-                </TabPanel>
-
                 <!-- Eksporty -->
                 <TabPanel header="Eksporty">
                     <div class="settings-panel">
@@ -514,6 +541,25 @@
             <template #footer>
                 <Button label="Zapisz" icon="pi pi-check" severity="danger" @click="saveTestoweModal" />
                 <Button label="Anuluj" icon="pi pi-times" severity="secondary" @click="testoweModalVisible = false" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Sposób liczenia zamówień -->
+        <Dialog v-model:visible="sposobModalVisible" header="Sposób liczenia zamówień" :modal="true" :style="{ width: '450px' }" @hide="revertSposobLiczenia">
+            <div class="field" style="margin-bottom: 15px;">
+                <p>
+                    Zmienić sposób liczenia zamówień z
+                    <strong>{{ sposobLabel(sposobZatwierdzony) }}</strong> na
+                    <strong>{{ sposobLabel(sposobLiczeniaZamowien) }}</strong>?
+                </p>
+                <p class="text-muted" style="margin-top: 10px; font-size: 0.85rem;">
+                    Ustawienie wpływa na wyliczanie ilości przy generowaniu zamówień.
+                    Zmiana zostanie zapisana w logu systemowym.
+                </p>
+            </div>
+            <template #footer>
+                <Button label="Zapisz" icon="pi pi-check" severity="danger" @click="saveSposobModal" />
+                <Button label="Anuluj" icon="pi pi-times" severity="secondary" @click="sposobModalVisible = false" />
             </template>
         </Dialog>
 
@@ -852,6 +898,16 @@ const zamowieniaTestowe = ref(false);
 const testoweModalVisible = ref(false);
 const testoweModalValue = ref(false);
 
+// Inne — sposób liczenia zamówień
+const sposobLiczeniaZamowien = ref('standardowa');
+const sposobZatwierdzony = ref('standardowa');
+const sposobModalVisible = ref(false);
+const sposobyLiczeniaOptions = [
+    { label: 'standardowa', value: 'standardowa' },
+    { label: 'według nowych elementów', value: 'wedlug_nowych_elementow' },
+];
+const sposobLabel = (value) => sposobyLiczeniaOptions.find(o => o.value === value)?.label || value;
+
 // Inwentura
 const inwenturaLoading = ref({ pdf: false, xls: false });
 
@@ -1049,6 +1105,39 @@ const saveTestoweModal = async () => {
         testoweModalVisible.value = false;
     } catch (error) {
         console.error('Błąd zmiany trybu testowego:', error);
+    }
+};
+
+const fetchSposobLiczenia = async () => {
+    try {
+        const response = await axios.get('/api/ustawienia/sposob-liczenia-zamowien/');
+        sposobLiczeniaZamowien.value = response.data.sposob_liczenia_zamowien || 'standardowa';
+        sposobZatwierdzony.value = sposobLiczeniaZamowien.value;
+    } catch (error) {
+        console.error('Błąd ładowania sposobu liczenia zamówień:', error);
+    }
+};
+
+const onSposobChange = (event) => {
+    if (event.value === sposobZatwierdzony.value) return;
+    sposobModalVisible.value = true;
+};
+
+// Zamknięcie modala bez zapisu (Anuluj / X / Esc) przywraca zatwierdzoną wartość
+const revertSposobLiczenia = () => {
+    sposobLiczeniaZamowien.value = sposobZatwierdzony.value;
+};
+
+const saveSposobModal = async () => {
+    try {
+        await axios.post('/api/ustawienia/sposob-liczenia-zamowien/', {
+            sposob_liczenia_zamowien: sposobLiczeniaZamowien.value
+        });
+        sposobZatwierdzony.value = sposobLiczeniaZamowien.value;
+    } catch (error) {
+        console.error('Błąd zapisu sposobu liczenia zamówień:', error);
+    } finally {
+        sposobModalVisible.value = false; // przy błędzie @hide przywróci poprzednią wartość
     }
 };
 
@@ -1507,6 +1596,7 @@ onMounted(async () => {
     await fetchAllData();
     await fetchEmailConfig();
     await fetchUsersAndGroups();
+    await fetchSposobLiczenia();
 });
 </script>
 

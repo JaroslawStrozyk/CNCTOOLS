@@ -5,6 +5,7 @@ Narzędzia pomocnicze dla aplikacji TOOLS
 
 from django.core.mail import EmailMessage
 from django.conf import settings
+from decimal import Decimal
 import csv
 import imaplib
 import io
@@ -13,6 +14,11 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _format_pln(value):
+    """Formatuje kwotę po polsku: '1 234,56 zł' (separator tysięcy: NBSP — kwota nie łamie się w HTML)."""
+    return f"{value:,.2f}".replace(',', '\u00a0').replace('.', ',') + ' zł'
 
 
 def save_to_imap_sent(email_message):
@@ -343,9 +349,15 @@ def send_zamowienie_email(zamowienie, override_email=None):
     # Generuj wiersze tabeli pozycji
     pozycje_html = ''
     suma_ilosc = 0
+    suma_wartosc = Decimal('0.00')
     for poz in pozycje:
         suma_ilosc += poz.ilosc_zamowiona
         jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
+        # Skonsolidowana kolumna "Ilość": wartość + jednostka
+        ilosc_display = f"{poz.ilosc_zamowiona} {jednostka_display}"
+        # Cena jednostkowa pozycji (brak ceny traktowany jako 0.00)
+        cena = Decimal(str(poz.cena_jednostkowa)) if poz.cena_jednostkowa is not None else Decimal('0.00')
+        suma_wartosc += cena * poz.ilosc_zamowiona
 
         narzedzie_full = f"{poz.kategoria_nazwa} {poz.podkategoria_nazwa}".strip()
         nr_dostawcy_cell = ''
@@ -357,8 +369,8 @@ def send_zamowienie_email(zamowienie, override_email=None):
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
             {nr_dostawcy_cell}
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{jednostka_display}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{ilosc_display}</strong></td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;">{_format_pln(cena)}</td>
         </tr>
         """
 
@@ -467,15 +479,16 @@ def send_zamowienie_email(zamowienie, override_email=None):
                         <th>Nr katalogowy</th>
                         {'<th>Nr u dostawcy</th>' if has_supplier_numbers else ''}
                         <th style="text-align: center;">Ilość</th>
-                        <th style="text-align: center;">Jednostka</th>
+                        <th style="text-align: right;">Cena</th>
                     </tr>
                 </thead>
                 <tbody>
                     {pozycje_html}
                     <tr class="total-row">
-                        <td colspan="{4 if has_supplier_numbers else 3}" style="padding: 15px; text-align: right;">RAZEM POZYCJI:</td>
-                        <td style="padding: 15px; text-align: center;"><strong style="font-size: 1.2em;">{suma_ilosc}</strong></td>
-                        <td></td>
+                        <td colspan="{6 if has_supplier_numbers else 5}" style="padding: 15px; text-align: right;">
+                            POZYCJI: <strong style="font-size: 1.2em;">{suma_ilosc}</strong>;&nbsp;
+                            SUMA: <strong style="font-size: 1.2em;">{_format_pln(suma_wartosc)}</strong>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -554,15 +567,21 @@ def _build_zamowienie_csv(pozycje, mapping):
       - nr_katalogowy: numer dostawcy (jeśli mapowanie istnieje) lub nasz numer
       - nazwa: opis narzędzia
       - ilosc: ilość zamówiona
+      - cena_jedn: cena jednostkowa (kropka dziesiętna, brak ceny → 0.00)
+      - suma: ilosc × cena_jedn
 
     Returns: bytes (UTF-8 bez BOM)
     """
     output = io.StringIO()
     writer = csv.writer(output, delimiter='|', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
-    writer.writerow(['nr_katalogowy', 'nazwa', 'ilosc'])
+    writer.writerow(['nr_katalogowy', 'nazwa', 'ilosc', 'cena_jedn', 'suma'])
     for poz in pozycje:
         nr = mapping.get(poz.narzedzie_typ_id) or poz.numer_katalogowy or ''
-        writer.writerow([nr, poz.narzedzie_opis or '', poz.ilosc_zamowiona])
+        cena = Decimal(str(poz.cena_jednostkowa)) if poz.cena_jednostkowa is not None else Decimal('0.00')
+        suma = cena * poz.ilosc_zamowiona
+        writer.writerow([
+            nr, poz.narzedzie_opis or '', poz.ilosc_zamowiona, f'{cena:.2f}', f'{suma:.2f}'
+        ])
     return output.getvalue().encode('utf-8')
 
 

@@ -48,13 +48,20 @@ class Command(BaseCommand):
                 continue
 
             if narzedzie.cena_jednostkowa == poz.cena_jednostkowa:
-                # Już aktualne — nie nadpisuj
-                skipped += 1
+                # Cena już aktualna — co najwyżej uzupełnij flagę pochodzenia
+                if not narzedzie.cena_z_zamowienia:
+                    if not dry_run:
+                        narzedzie.cena_z_zamowienia = True
+                        narzedzie.save(update_fields=['cena_z_zamowienia'])
+                    updated += 1
+                else:
+                    skipped += 1
                 continue
 
             if not dry_run:
                 narzedzie.cena_jednostkowa = poz.cena_jednostkowa
-                narzedzie.save(update_fields=['cena_jednostkowa'])
+                narzedzie.cena_z_zamowienia = True
+                narzedzie.save(update_fields=['cena_jednostkowa', 'cena_z_zamowienia'])
             updated += 1
 
         self.stdout.write(self.style.SUCCESS(

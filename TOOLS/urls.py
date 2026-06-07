@@ -135,6 +135,10 @@ urlpatterns = [
     # Zamówienia testowe
     path('api/email/zamowienia-testowe/', views.toggle_zamowienia_testowe, name='toggle-zamowienia-testowe'),
 
+    # Ustawienia — Inne
+    path('api/ustawienia/sposob-liczenia-zamowien/', views.sposob_liczenia_zamowien_view,
+         name='sposob-liczenia-zamowien'),
+
     # Wzory dokumentów (dla ISO)
     path('api/dokumenty/wzor/<str:typ>/', views.dokument_wzor_view, name='dokument-wzor'),
 

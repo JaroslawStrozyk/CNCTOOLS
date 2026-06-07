@@ -259,6 +259,14 @@ class NarzedzieMagazynowe(models.Model):
         verbose_name='Cena jednostkowa',
         help_text='Ostatnia użyta lub ręcznie ustawiona cena jednostkowa.'
     )
+    # True: cena propagowana z pozycji zamówienia (PozycjaZamowienia.save()) — wartość
+    # wyliczona ma priorytet i (dopóki > 0) nie podlega ręcznej edycji w modalu Zakupy.
+    # Ręczna zmiana ceny (gdy dozwolona) zdejmuje flagę w serializerze.
+    cena_z_zamowienia = models.BooleanField(
+        default=False,
+        verbose_name='Cena wyliczona z zamówień',
+        help_text='Cena nadpisana automatycznie z pozycji zamówienia.'
+    )
     # Narzędzie utworzone w generatorze wraz z zamówieniem — kasowane razem z zamówieniem
     # (tylko jeśli nie ma jeszcze egzemplarzy). Kategorie/podkategorie zostają.
     utworzone_wraz_z_zamowieniem = models.ForeignKey(
@@ -591,7 +599,8 @@ class PozycjaZamowienia(models.Model):
         super().save(*args, **kwargs)
         if self.cena_jednostkowa is not None and self.narzedzie_typ_id:
             NarzedzieMagazynowe.objects.filter(pk=self.narzedzie_typ_id).update(
-                cena_jednostkowa=self.cena_jednostkowa
+                cena_jednostkowa=self.cena_jednostkowa,
+                cena_z_zamowienia=True
             )
 
 

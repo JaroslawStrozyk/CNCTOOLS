@@ -156,10 +156,38 @@ class NarzedzieMagazynoweSerializer(serializers.ModelSerializer):
     ilosc_uzywanych_dostepnych = serializers.IntegerField(read_only=True)
     ilosc_w_uzyciu = serializers.IntegerField(read_only=True)
     calkowita_ilosc = serializers.IntegerField(read_only=True)
+    cena_z_zamowienia = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = NarzedzieMagazynowe
         fields = '__all__'
+
+    def validate_cena_jednostkowa(self, value):
+        """Cena wyliczona z zamówień (> 0) ma priorytet i nie podlega ręcznej edycji.
+
+        Edytowalna pozostaje cena ustawiona ręcznie lub zerowa/pusta.
+        """
+        instance = self.instance
+        if (
+            instance is not None
+            and instance.cena_z_zamowienia
+            and instance.cena_jednostkowa
+            and value != instance.cena_jednostkowa
+        ):
+            raise serializers.ValidationError(
+                'Cena wyliczona z zamówień — nie podlega ręcznej edycji.'
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        # Ręczna zmiana ceny (dozwolona — patrz validate_cena_jednostkowa) zdejmuje
+        # flagę "z zamówienia": wartość znów edytowalna do czasu kolejnej propagacji
+        if (
+            'cena_jednostkowa' in validated_data
+            and validated_data['cena_jednostkowa'] != instance.cena_jednostkowa
+        ):
+            validated_data['cena_z_zamowienia'] = False
+        return super().update(instance, validated_data)
 
 
 class NarzedzieMagazynoweProdSerializer(serializers.ModelSerializer):

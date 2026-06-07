@@ -242,37 +242,72 @@ def generator_zamowien_api(request):
     from django.db.models import Count, Q
     import math
 
-    # Czyszczenie zaszłości po BUG: pozycje 'auto' dla narzędzi z stan_maksymalny=0
-    # nie powinny istnieć. Wcześniejsza wersja kodu tworzyła je na podstawie magicznej
-    # wartości 10. Usuwamy je przy każdym odświeżeniu, żeby widok generatora się
-    # zsynchronizował z regułą "stan_max=0 → nie zamawiaj".
-    PozycjaGeneratora.objects.filter(
-        zrodlo='auto',
-        narzedzie_typ__stan_maksymalny=0
-    ).delete()
-
-    # Czyszczenie zombie: auto-pozycje dla narzędzi, których stan już osiągnął lub
-    # przekroczył limit maksymalny (np. po dostawie). Bez tego pozycja utworzona
-    # kiedyś przy niskim stanie "trzyma się" generatora mimo że zamówienie jest
-    # nieuzasadnione (stan aktualny >= stan_maksymalny).
-    # Stan liczymy jak Zakupy: SUMA ilosc_w_komplecie (nie liczba egzemplarzy) —
-    # inaczej egzemplarz o ilosc_w_komplecie=10 byłby liczony jako 1 szt.
-    from django.db.models import F, Sum
+    from django.db.models import F, Sum, Value, Subquery, OuterRef
     from django.db.models.functions import Coalesce
-    zombie_ids = list(
+
+    # Aktualny sposób liczenia zamówień (Ustawienia → Inne):
+    #   'standardowa'             — dotychczasowa reguła min/max po stanie całkowitym
+    #   'wedlug_nowych_elementow' — limit minimalny porównywany z ilością nowych egzemplarzy
+    wedlug_nowych = get_sposob_liczenia_zamowien() == 'wedlug_nowych_elementow'
+
+    # Subquery: ilość nowych (stan='nowe', bez aktualnie wydanych) — liczona jak w Zakupy
+    _egzemplarze_wydane = HistoriaUzyciaNarzedzia.objects.filter(
+        data_zwrotu__isnull=True
+    ).values('egzemplarz_id')
+
+    def _nowe_subquery(outer_field):
+        return EgzemplarzNarzedzia.objects.filter(
+            narzedzie_typ=OuterRef(outer_field),
+            stan='nowe'
+        ).exclude(
+            id__in=Subquery(_egzemplarze_wydane)
+        ).values('narzedzie_typ').annotate(
+            total=Sum('ilosc_w_komplecie')
+        ).values('total')
+
+    if wedlug_nowych:
+        # Czyszczenie zombie (tryb "według nowych elementów"): auto-pozycje, dla których
+        # ilość nowych pokrywa już limit minimalny (stan wystarczający) — w tym pozycje
+        # utworzone wcześniej w trybie standardowym. stan_minimalny=0 → nigdy nie zamawiaj.
+        zombie_ids = list(
+            PozycjaGeneratora.objects.filter(
+                zrodlo='auto',
+            ).annotate(
+                _nowe=Coalesce(Subquery(_nowe_subquery('narzedzie_typ')), Value(0))
+            ).filter(_nowe__gte=F('narzedzie_typ__stan_minimalny')).values_list('id', flat=True)
+        )
+        if zombie_ids:
+            PozycjaGeneratora.objects.filter(id__in=zombie_ids).delete()
+    else:
+        # Czyszczenie zaszłości po BUG: pozycje 'auto' dla narzędzi z stan_maksymalny=0
+        # nie powinny istnieć. Wcześniejsza wersja kodu tworzyła je na podstawie magicznej
+        # wartości 10. Usuwamy je przy każdym odświeżeniu, żeby widok generatora się
+        # zsynchronizował z regułą "stan_max=0 → nie zamawiaj".
         PozycjaGeneratora.objects.filter(
             zrodlo='auto',
-            narzedzie_typ__stan_maksymalny__gt=0,
-        ).annotate(
-            _stan=Coalesce(Sum(
-                'narzedzie_typ__egzemplarze__ilosc_w_komplecie',
-                filter=~Q(narzedzie_typ__egzemplarze__stan='uszkodzone')
-                     & ~Q(narzedzie_typ__egzemplarze__stan='uszkodzone_regeneracja'),
-            ), 0)
-        ).filter(_stan__gte=F('narzedzie_typ__stan_maksymalny')).values_list('id', flat=True)
-    )
-    if zombie_ids:
-        PozycjaGeneratora.objects.filter(id__in=zombie_ids).delete()
+            narzedzie_typ__stan_maksymalny=0
+        ).delete()
+
+        # Czyszczenie zombie: auto-pozycje dla narzędzi, których stan już osiągnął lub
+        # przekroczył limit maksymalny (np. po dostawie). Bez tego pozycja utworzona
+        # kiedyś przy niskim stanie "trzyma się" generatora mimo że zamówienie jest
+        # nieuzasadnione (stan aktualny >= stan_maksymalny).
+        # Stan liczymy jak Zakupy: SUMA ilosc_w_komplecie (nie liczba egzemplarzy) —
+        # inaczej egzemplarz o ilosc_w_komplecie=10 byłby liczony jako 1 szt.
+        zombie_ids = list(
+            PozycjaGeneratora.objects.filter(
+                zrodlo='auto',
+                narzedzie_typ__stan_maksymalny__gt=0,
+            ).annotate(
+                _stan=Coalesce(Sum(
+                    'narzedzie_typ__egzemplarze__ilosc_w_komplecie',
+                    filter=~Q(narzedzie_typ__egzemplarze__stan='uszkodzone')
+                         & ~Q(narzedzie_typ__egzemplarze__stan='uszkodzone_regeneracja'),
+                ), 0)
+            ).filter(_stan__gte=F('narzedzie_typ__stan_maksymalny')).values_list('id', flat=True)
+        )
+        if zombie_ids:
+            PozycjaGeneratora.objects.filter(id__in=zombie_ids).delete()
 
     # Najpierw pobierz wszystkie istniejące pozycje z generatora
     istniejace_pozycje = PozycjaGeneratora.objects.select_related(
@@ -326,6 +361,11 @@ def generator_zamowien_api(request):
         ), 0)
     ).all()
 
+    if wedlug_nowych:
+        narzedzia = narzedzia.annotate(
+            ilosc_nowych=Coalesce(Subquery(_nowe_subquery('pk')), Value(0))
+        )
+
     # Lista narzędzi z ręczną kontrolą, których pole reczne_dodanie zostało odczytane — do wyzerowania
     reczne_do_wyzerowania = []
     nowe_pozycje = []
@@ -339,7 +379,8 @@ def generator_zamowien_api(request):
         if narzedzie.id in narzedzia_w_zamowieniach:
             continue
 
-        cena_jednostkowa = ostatnie_ceny.get(narzedzie.id, 0)
+        # Cena: ostatnia z zamówień, a gdy brak historii — ustawiona ręcznie w Zakupach
+        cena_jednostkowa = ostatnie_ceny.get(narzedzie.id) or narzedzie.cena_jednostkowa or 0
 
         # --- Ręczna kontrola zamówień ---
         if narzedzie.reczna_kontrola:
@@ -354,25 +395,33 @@ def generator_zamowien_api(request):
                 reczne_do_wyzerowania.append(narzedzie.id)
             continue
 
-        # --- Automatyczna kontrola (min/max) ---
-        # stan_maksymalny == 0 oznacza "nie zamawiaj automatycznie" — narzędzie pomijane
-        stan_maksymalny = narzedzie.stan_maksymalny
-
-        if stan_maksymalny > 0 and narzedzie.stan_aktualny < stan_maksymalny:
+        # --- Automatyczna kontrola ---
+        if wedlug_nowych:
+            # Tryb "według nowych elementów": zamawiamy gdy ilość nowych egzemplarzy
+            # (niewydanych) spadnie poniżej limitu minimalnego — różnicę (min − nowe)
+            ilosc_brakujacych_sztuk = narzedzie.stan_minimalny - narzedzie.ilosc_nowych
+            if ilosc_brakujacych_sztuk <= 0:
+                continue
+        else:
+            # Tryb standardowy (min/max):
+            # stan_maksymalny == 0 oznacza "nie zamawiaj automatycznie" — narzędzie pomijane
+            stan_maksymalny = narzedzie.stan_maksymalny
+            if stan_maksymalny <= 0 or narzedzie.stan_aktualny >= stan_maksymalny:
+                continue
             ilosc_brakujacych_sztuk = stan_maksymalny - narzedzie.stan_aktualny
 
-            if narzedzie.opakowanie == 'kompl' and narzedzie.ilosc_w_opakowaniu > 0:
-                ilosc_do_zamowienia = math.ceil(ilosc_brakujacych_sztuk / narzedzie.ilosc_w_opakowaniu)
-            else:
-                ilosc_do_zamowienia = ilosc_brakujacych_sztuk
+        if narzedzie.opakowanie == 'kompl' and narzedzie.ilosc_w_opakowaniu > 0:
+            ilosc_do_zamowienia = math.ceil(ilosc_brakujacych_sztuk / narzedzie.ilosc_w_opakowaniu)
+        else:
+            ilosc_do_zamowienia = ilosc_brakujacych_sztuk
 
-            nowe_pozycje.append(PozycjaGeneratora(
-                narzedzie_typ=narzedzie,
-                dostawca=narzedzie.ostatni_dostawca,
-                ilosc_do_zamowienia=ilosc_do_zamowienia,
-                cena_jednostkowa=cena_jednostkowa,
-                zrodlo='auto'
-            ))
+        nowe_pozycje.append(PozycjaGeneratora(
+            narzedzie_typ=narzedzie,
+            dostawca=narzedzie.ostatni_dostawca,
+            ilosc_do_zamowienia=ilosc_do_zamowienia,
+            cena_jednostkowa=cena_jednostkowa,
+            zrodlo='auto'
+        ))
 
     # Bulk create nowych pozycji (1 zapytanie zamiast N)
     if nowe_pozycje:
@@ -418,7 +467,8 @@ def generator_zamowien_api(request):
                 istniejaca.zrodlo_zapotrzebowanie_ids = (existing_ids + ',' + zap_numer).strip(',')
             istniejaca.save(update_fields=['ilosc_do_zamowienia', 'zrodlo', 'zrodlo_zapotrzebowanie_ids'])
         except PozycjaGeneratora.DoesNotExist:
-            cena_jednostkowa = ostatnie_ceny.get(narzedzie.id, 0)
+            # Cena: ostatnia z zamówień, a gdy brak historii — ustawiona ręcznie w Zakupach
+            cena_jednostkowa = ostatnie_ceny.get(narzedzie.id) or narzedzie.cena_jednostkowa or 0
             PozycjaGeneratora.objects.create(
                 narzedzie_typ=narzedzie,
                 dostawca=narzedzie.ostatni_dostawca,
@@ -1363,6 +1413,86 @@ def toggle_zamowienia_testowe(request):
         app_logger.info(user_name, msg)
 
     return JsonResponse({'success': True, 'zamowienia_testowe': value})
+
+
+# Dozwolone wartości ustawienia "Sposób liczenia zamówień" (slug → etykieta do logów/UI)
+SPOSOBY_LICZENIA_ZAMOWIEN = {
+    'standardowa': 'standardowa',
+    'wedlug_nowych_elementow': 'według nowych elementów',
+}
+
+
+def get_sposob_liczenia_zamowien():
+    """Aktualna wartość ustawienia "Sposób liczenia zamówień".
+
+    Czytana z app_settings.json przy każdym wywołaniu — wartość w django.conf.settings
+    może być nieaktualna przy wielu procesach (np. Apache/mod_wsgi na prod).
+    """
+    from django.conf import settings
+    import json
+
+    try:
+        with open(settings.BASE_DIR / 'app_settings.json', 'r') as f:
+            value = json.load(f).get('sposob_liczenia_zamowien')
+    except (FileNotFoundError, ValueError):
+        value = None
+    if value not in SPOSOBY_LICZENIA_ZAMOWIEN:
+        value = getattr(settings, 'SPOSOB_LICZENIA_ZAMOWIEN', 'standardowa')
+        if value not in SPOSOBY_LICZENIA_ZAMOWIEN:
+            value = 'standardowa'
+    return value
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def sposob_liczenia_zamowien_view(request):
+    """Odczyt (GET) / zmiana (POST) sposobu liczenia zamówień.
+
+    Wartość persystowana w app_settings.json, każda zmiana logowana.
+    """
+    from django.conf import settings
+    import json
+
+    if request.method == 'GET':
+        return JsonResponse({
+            'sposob_liczenia_zamowien': get_sposob_liczenia_zamowien(),
+        })
+
+    data = json.loads(request.body)
+    value = data.get('sposob_liczenia_zamowien')
+    if value not in SPOSOBY_LICZENIA_ZAMOWIEN:
+        return JsonResponse({'success': False, 'error': 'Nieprawidłowa wartość ustawienia.'}, status=400)
+
+    old_value = get_sposob_liczenia_zamowien()
+    settings.SPOSOB_LICZENIA_ZAMOWIEN = value
+
+    # Persystencja do pliku
+    settings_file = settings.BASE_DIR / 'app_settings.json'
+    try:
+        with open(settings_file, 'r') as f:
+            app_settings = json.loads(f.read())
+    except (FileNotFoundError, ValueError):
+        app_settings = {}
+    app_settings['sposob_liczenia_zamowien'] = value
+    with open(settings_file, 'w') as f:
+        f.write(json.dumps(app_settings, indent=2))
+
+    if value != old_value:
+        # Auto-pozycje generatora wyliczone poprzednią metodą tracą ważność — czyścimy,
+        # generator odtworzy je nową metodą przy najbliższym odświeżeniu
+        from .models import PozycjaGeneratora
+        usuniete, _ = PozycjaGeneratora.objects.filter(zrodlo='auto').delete()
+
+        user_name = get_user_display_name(request.user)
+        stara = SPOSOBY_LICZENIA_ZAMOWIEN.get(old_value, old_value)
+        nowa = SPOSOBY_LICZENIA_ZAMOWIEN[value]
+        app_logger.warning(
+            user_name,
+            f"Zmieniono sposób liczenia zamówień: '{stara}' → '{nowa}'"
+            f" (wyczyszczono auto-pozycje generatora: {usuniete})"
+        )
+
+    return JsonResponse({'success': True, 'sposob_liczenia_zamowien': value})
 
 
 # ========== API VIEWSETS ==========

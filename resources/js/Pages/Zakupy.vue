@@ -99,6 +99,11 @@
                                 </span>
                             </template>
                         </Column>
+                        <Column field="ilosc_nowych" header="Ilość nowych" style="width: 110px; text-align: center;">
+                            <template #body="{ data }">
+                                <span :class="{ 'zero-value': data.ilosc_nowych === 0 }">{{ data.ilosc_nowych }}</span>
+                            </template>
+                        </Column>
                         <Column header="Ilość całkowita" style="width: 120px; text-align: center;">
                             <template #body="{ data }">
                                 <strong :class="{ 'zero-value': data.calkowita_ilosc === 0 }">{{ data.calkowita_ilosc }}</strong>
@@ -226,7 +231,11 @@
                         :maxFractionDigits="2"
                         :min="0"
                         suffix=" zł"
+                        :disabled="cenaZablokowana"
                     />
+                    <small v-if="cenaZablokowana" class="text-muted">
+                        <i class="pi pi-lock"></i> Cena wyliczona z zamówień — nie podlega ręcznej edycji.
+                    </small>
                 </div>
                 <div class="field">
                     <label>Limit minimalny</label>
@@ -591,6 +600,13 @@ const getToolOrders = async (tool) => {
     }
 };
 
+// Cena wyliczona z zamówień (> 0) jest niezmienna; ręczna lub zerowa — edytowalna do woli
+const cenaZablokowana = computed(() =>
+    isEditMode.value
+    && !!currentTool.value.cena_z_zamowienia
+    && parseFloat(currentTool.value.cena_jednostkowa || 0) > 0
+);
+
 const openToolModal = (tool = null) => {
     isEditMode.value = !!tool;
     toolImagePreview.value = null;
@@ -646,13 +662,16 @@ const saveTool = async () => {
     if (currentTool.value.numer_katalogowy) {
         formData.append('numer_katalogowy', currentTool.value.numer_katalogowy);
     }
-    // cena_jednostkowa zawsze wysyłana — pusty string → DRF interpretuje jako None (DecimalField null=True)
-    formData.append(
-        'cena_jednostkowa',
-        currentTool.value.cena_jednostkowa != null && currentTool.value.cena_jednostkowa !== ''
-            ? currentTool.value.cena_jednostkowa
-            : ''
-    );
+    // cena_jednostkowa zawsze wysyłana — pusty string → DRF interpretuje jako None (DecimalField null=True).
+    // Wyjątek: cena zablokowana (wyliczona z zamówień) — pola nie wysyłamy, partial update jej nie tknie.
+    if (!cenaZablokowana.value) {
+        formData.append(
+            'cena_jednostkowa',
+            currentTool.value.cena_jednostkowa != null && currentTool.value.cena_jednostkowa !== ''
+                ? currentTool.value.cena_jednostkowa
+                : ''
+        );
+    }
     if (toolImageFile.value) {
         formData.append('obraz', toolImageFile.value);
     }
