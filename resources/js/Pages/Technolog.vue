@@ -379,6 +379,20 @@
                         <label>Ilość *</label>
                         <input type="number" v-model.number="kartaForm.ilosc" class="form-control" min="1" />
                     </div>
+                    <div class="form-group">
+                        <label>Rodzaj</label>
+                        <!-- Pozycja z magazynu: rodzaj wynika z narzędzia → dropdown zablokowany
+                             (jak Kategoria/Podkategoria). Pozycja ręczna: technolog wybiera szt./kompl. -->
+                        <Dropdown
+                            v-model="kartaForm.opakowanie"
+                            :options="opakowanieOptions"
+                            optionLabel="label"
+                            optionValue="value"
+                            :disabled="kartaForm.narzedzie_typ_id !== null"
+                            class="karta-dropdown"
+                            :class="{ 'disabled-field': kartaForm.narzedzie_typ_id !== null }"
+                        />
+                    </div>
                 </div>
 
                 <div class="form-group full-width">
@@ -652,9 +666,16 @@ const kartaForm = ref({
     nr_klienta: '',
     nr_zlecenia: '',
     ilosc: 1,
+    opakowanie: 'szt',
     uwagi: ''
 });
 const kartaMode = ref('add');
+
+// Rodzaj zamawiania: sztuki / komplety. Dropdown w "Nowej karcie", read-only w karcie z magazynu.
+const opakowanieOptions = [
+    { label: 'szt.', value: 'szt' },
+    { label: 'kompl.', value: 'kompl' },
+];
 const editingPozycjaId = ref(null);
 const returnToKoszyk = ref(false);
 
@@ -803,6 +824,7 @@ const resetKartaForm = () => {
         nr_klienta: '',
         nr_zlecenia: '',
         ilosc: 1,
+        opakowanie: 'szt',
         uwagi: ''
     };
     kartaMode.value = 'add';
@@ -833,6 +855,7 @@ const openKartaModal = (tool) => {
         kartaForm.value.narzedzie_typ_id = tool.id;
         kartaForm.value.specyfikacja = tool.opis || '';
         kartaForm.value.numer_katalogowy = tool.numer_katalogowy || '';
+        kartaForm.value.opakowanie = tool.opakowanie || 'szt';
         if (tool.podkategoria) {
             kartaForm.value.podkategoria_id = tool.podkategoria.id;
             const kat = kategorie.value.find(k =>
@@ -884,6 +907,7 @@ const saveKartaForm = async () => {
             nr_klienta: kartaForm.value.nr_klienta,
             nr_zlecenia: kartaForm.value.nr_zlecenia,
             ilosc: kartaForm.value.ilosc,
+            opakowanie: kartaForm.value.opakowanie,
             uwagi: kartaForm.value.uwagi
         };
 
@@ -927,6 +951,7 @@ const editPozycja = (pozycja) => {
         nr_klienta: pozycja.nr_klienta || '',
         nr_zlecenia: pozycja.nr_zlecenia || '',
         ilosc: pozycja.ilosc || 1,
+        opakowanie: pozycja.opakowanie || pozycja.narzedzie_typ?.opakowanie || 'szt',
         uwagi: pozycja.uwagi || ''
     };
 

@@ -818,6 +818,14 @@ class PozycjaZapotrzebowania(models.Model):
     specyfikacja = models.TextField(blank=True)
     numer_katalogowy = models.CharField(max_length=100, blank=True)
 
+    # Rodzaj: sztuki czy komplety. Dla pozycji z magazynu = snapshot opakowania narzędzia
+    # (tylko do odczytu w karcie), dla pozycji ręcznych = wybór technologa (domyślnie szt).
+    opakowanie = models.CharField(
+        max_length=20,
+        choices=NarzedzieMagazynowe.OPAKOWANIE_CHOICES,
+        default='szt',
+    )
+
     # Pola technologa
     nr_klienta = models.CharField(max_length=100, blank=True)
     nr_zlecenia = models.CharField(max_length=100, blank=True)

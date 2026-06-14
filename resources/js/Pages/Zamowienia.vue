@@ -91,7 +91,7 @@
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-check" class="p-button-success p-button-sm" @click="zatwierdzZamowienie(data)" title="Zatwierdź zamówienie" />
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-undo" class="p-button-secondary p-button-sm" @click="cofnijDoRoboczej(data)" title="Cofnij do wersji roboczej" />
                                     <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
-                                    <Button v-if="data.status === 'sent'" icon="pi pi-undo" class="p-button-warning p-button-sm" @click="openCofnijDoZatwierdzoneModal(data)" title="Cofnij do 'Zatwierdzone' (zmiana dostawcy)" />
+                                    <Button v-if="data.status === 'sent' && !isMagazynierView" icon="pi pi-undo" class="p-button-warning p-button-sm" @click="openCofnijDoZatwierdzoneModal(data)" title="Cofnij do 'Zatwierdzone' (zmiana dostawcy)" />
                                     <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="rozpocznijRealizacje(data)" title="Kontynuuj realizację" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-truck" class="p-button-help p-button-sm" @click="openZmienDostawceModal(data)" title="Zmień dostawcę" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="selectZamowienie(data)" title="Edytuj pozycje" />
@@ -756,11 +756,15 @@ const saveZamowienie = async () => {
     }
 };
 
+// Widok "czystego" magazyniera (magazyn bez logistyki) — ograniczona lista i akcje
+const isMagazynierView = computed(() => props.auth?.isMagazyn && !props.auth?.isLogistyka);
+
 // Computed — filtrowanie po wyszukiwarce (Numer, Dostawca, Data utworzenia, Data wysłania)
 const filteredZamowienia = computed(() => {
-    // Magazynier widzi wyłącznie zamówienia 'sent' (do realizacji) i 'completed' (historia)
-    const base = props.auth?.isMagazyn && !props.auth?.isLogistyka
-        ? zamowienia.value.filter(z => z.status === 'sent' || z.status === 'completed')
+    // Magazynier widzi zamówienia 'sent' (do realizacji), 'partially_received'
+    // (częściowo odebrane — realizacja w toku) i 'completed' (historia)
+    const base = isMagazynierView.value
+        ? zamowienia.value.filter(z => ['sent', 'partially_received', 'completed'].includes(z.status))
         : zamowienia.value;
     const q = searchQuery.value.trim().toLowerCase();
     if (!q) return base;

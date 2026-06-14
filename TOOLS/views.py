@@ -247,7 +247,10 @@ def generator_zamowien_api(request):
 
     # Aktualny sposób liczenia zamówień (Ustawienia → Inne):
     #   'standardowa'             — dotychczasowa reguła min/max po stanie całkowitym
-    #   'wedlug_nowych_elementow' — limit minimalny porównywany z ilością nowych egzemplarzy
+    #   'wedlug_nowych_elementow' — reguła PRZEDZIAŁOWA (min/max) po ilości NOWYCH egzemplarzy:
+    #       uzupełniamy do stanu MAKSYMALnego, gdy ilość nowych < max (także w przedziale
+    #       min–max). stan_minimalny=0 → narzędzie wyłączone z auto-zamawiania; max=0 →
+    #       brak celu uzupełnienia → pomijane.
     wedlug_nowych = get_sposob_liczenia_zamowien() == 'wedlug_nowych_elementow'
 
     # Subquery: ilość nowych (stan='nowe', bez aktualnie wydanych) — liczona jak w Zakupy
@@ -266,15 +269,21 @@ def generator_zamowien_api(request):
         ).values('total')
 
     if wedlug_nowych:
-        # Czyszczenie zombie (tryb "według nowych elementów"): auto-pozycje, dla których
-        # ilość nowych pokrywa już limit minimalny (stan wystarczający) — w tym pozycje
-        # utworzone wcześniej w trybie standardowym. stan_minimalny=0 → nigdy nie zamawiaj.
+        # Czyszczenie zombie (tryb "według nowych elementów"): auto-pozycje, które wg
+        # reguły przedziałowej nie są już uzasadnione. MUSI być lustrzane do reguły
+        # tworzenia (inaczej pozycje migoczą: delete+recreate, utrata ręcznych edycji).
+        # Pozycja uzasadniona ⇔ stan_min>0 AND stan_max>0 AND nowe < stan_max.
+        # Usuwamy więc gdy: min=0 (wyłączone) LUB max=0 (brak celu) LUB nowe >= max (pełno).
         zombie_ids = list(
             PozycjaGeneratora.objects.filter(
                 zrodlo='auto',
             ).annotate(
                 _nowe=Coalesce(Subquery(_nowe_subquery('narzedzie_typ')), Value(0))
-            ).filter(_nowe__gte=F('narzedzie_typ__stan_minimalny')).values_list('id', flat=True)
+            ).filter(
+                Q(narzedzie_typ__stan_minimalny__lte=0)
+                | Q(narzedzie_typ__stan_maksymalny__lte=0)
+                | Q(_nowe__gte=F('narzedzie_typ__stan_maksymalny'))
+            ).values_list('id', flat=True)
         )
         if zombie_ids:
             PozycjaGeneratora.objects.filter(id__in=zombie_ids).delete()
@@ -397,9 +406,14 @@ def generator_zamowien_api(request):
 
         # --- Automatyczna kontrola ---
         if wedlug_nowych:
-            # Tryb "według nowych elementów": zamawiamy gdy ilość nowych egzemplarzy
-            # (niewydanych) spadnie poniżej limitu minimalnego — różnicę (min − nowe)
-            ilosc_brakujacych_sztuk = narzedzie.stan_minimalny - narzedzie.ilosc_nowych
+            # Tryb "według nowych elementów" — reguła PRZEDZIAŁOWA (min/max po ilości
+            # nowych, niewydanych egzemplarzy). Uzupełniamy do stanu MAKSYMALnego, gdy
+            # nowych < max (także w przedziale min–max). Cel zawsze = max.
+            #   stan_minimalny=0 → narzędzie wyłączone z auto-zamawiania (jak dotąd).
+            #   stan_maksymalny=0 → brak celu uzupełnienia → pomijamy.
+            if narzedzie.stan_minimalny <= 0 or narzedzie.stan_maksymalny <= 0:
+                continue
+            ilosc_brakujacych_sztuk = narzedzie.stan_maksymalny - narzedzie.ilosc_nowych
             if ilosc_brakujacych_sztuk <= 0:
                 continue
         else:

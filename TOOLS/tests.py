@@ -991,10 +991,13 @@ class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).
 
-    Reguła AUTO w tym trybie:
-        brakuje = stan_minimalny − ilość_nowych (nowe, nieuszkodzone, niewydane)
-        brakuje > 0  → pozycja na 'brakuje'
-        brakuje <= 0 → stan wystarczający, pomiń
+    Reguła AUTO w tym trybie (PRZEDZIAŁOWA min/max po ilości nowych):
+        ilość_nowych = nowe, nieuszkodzone, niewydane (suma ilosc_w_komplecie)
+        stan_minimalny=0 → narzędzie wyłączone z auto-zamawiania
+        stan_maksymalny=0 → brak celu uzupełnienia → pomiń
+        brakuje = stan_maksymalny − ilość_nowych
+        brakuje > 0  → pozycja na 'brakuje' (uzupełnienie do MAX, także w przedziale min–max)
+        brakuje <= 0 → stan pełny, pomiń
     Wiersze z ręczną kontrolą liczą się jak dotychczas.
     """
 
@@ -1048,49 +1051,70 @@ class GeneratorWedlugNowychTestCase(APITestCase):
             for _ in range(ile)
         ]
 
-    # ========== Reguła min − nowe ==========
+    # ========== Reguła przedziałowa: brakuje = max − nowe ==========
 
-    def test_brak_nowych_zamawia_do_limitu_minimalnego(self):
-        """0 nowych, limit_min=5 → pozycja na 5 (NIE na 20 jak w trybie standardowym)."""
+    def test_brak_nowych_zamawia_do_limitu_maksymalnego(self):
+        """0 nowych, max=20 → pozycja na 20 (uzupełnienie do MAX)."""
         pozycja = self._pozycja()
         self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 20)
         self.assertEqual(pozycja['zrodlo'], 'auto')
 
-    def test_czesciowy_brak_zamawia_roznice(self):
-        """2 nowe, limit_min=5 → pozycja na 3."""
+    def test_czesciowy_brak_zamawia_roznice_do_max(self):
+        """2 nowe, max=20 → pozycja na 18."""
         self._dodaj_egzemplarze(2)
         pozycja = self._pozycja()
         self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 3)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 18)
 
-    def test_nowych_rowne_limitowi_nie_zamawia(self):
-        """5 nowych, limit_min=5 → różnica 0 → brak pozycji (warunek graniczny)."""
+    def test_nowych_na_dolnej_granicy_zamawia_do_max(self):
+        """5 nowych (= limit_min), max=20 → pozycja na 15 (w przedziale min–max → do max)."""
         self._dodaj_egzemplarze(5)
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 15)
+
+    def test_nowych_w_przedziale_zamawia_do_max(self):
+        """12 nowych (przedział min–max), max=20 → pozycja na 8."""
+        self._dodaj_egzemplarze(12)
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 8)
+
+    def test_nowych_tuz_pod_max_zamawia_pojedynczo(self):
+        """19 nowych, max=20 → pozycja na 1 (akceptowana konsekwencja reguły max→max)."""
+        self._dodaj_egzemplarze(19)
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
+
+    def test_nowych_rowne_max_nie_zamawia(self):
+        """20 nowych (= max) → różnica 0 → brak pozycji (warunek graniczny, stan pełny)."""
+        self._dodaj_egzemplarze(20)
         self.assertIsNone(self._pozycja())
 
-    def test_nowych_powyzej_limitu_nie_zamawia(self):
-        """6 nowych, limit_min=5 → brak pozycji."""
-        self._dodaj_egzemplarze(6)
+    def test_nowych_powyzej_max_nie_zamawia(self):
+        """21 nowych, max=20 → brak pozycji."""
+        self._dodaj_egzemplarze(21)
         self.assertIsNone(self._pozycja())
 
     def test_komplet_liczy_sie_jako_ilosc_w_komplecie(self):
-        """1 egzemplarz z ilosc_w_komplecie=10 = 10 nowych szt. → brak pozycji."""
-        self._dodaj_egzemplarze(1, ilosc_w_komplecie=10)
+        """1 egzemplarz z ilosc_w_komplecie=20 = 20 nowych szt. (= max) → brak pozycji."""
+        self._dodaj_egzemplarze(1, ilosc_w_komplecie=20)
         self.assertIsNone(self._pozycja())
 
     # ========== Co NIE liczy się jako "nowe" ==========
 
     def test_uzywane_nie_licza_sie_do_nowych(self):
-        """10 używanych, 0 nowych, limit_min=5 → pozycja na 5
-        (w trybie standardowym stan=10 < max=20 dałby 10 — tryby się różnią)."""
+        """10 używanych, 0 nowych, max=20 → pozycja na 20
+        (używane nie wliczają się — liczy się tylko stan nowych)."""
         self._dodaj_egzemplarze(10, stan='uzywane')
         pozycja = self._pozycja()
         self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 20)
 
     def test_wydane_nowe_nie_licza_sie(self):
-        """5 nowych, ale 3 wydane (aktywne wypożyczenie) → nowych=2 → pozycja na 3."""
+        """5 nowych, ale 3 wydane (aktywne wypożyczenie) → nowych=2 → pozycja na 18."""
         egzemplarze = self._dodaj_egzemplarze(5)
         for egz in egzemplarze[:3]:
             HistoriaUzyciaNarzedzia.objects.create(
@@ -1098,36 +1122,34 @@ class GeneratorWedlugNowychTestCase(APITestCase):
             )
         pozycja = self._pozycja()
         self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 3)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 18)
 
     def test_uszkodzone_nie_licza_sie_do_nowych(self):
-        """3 nowe + 4 uszkodzone, limit_min=5 → nowych=3 → pozycja na 2."""
+        """3 nowe + 4 uszkodzone, max=20 → nowych=3 → pozycja na 17."""
         self._dodaj_egzemplarze(3)
         self._dodaj_egzemplarze(4, stan='uszkodzone')
         pozycja = self._pozycja()
         self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 2)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 17)
 
     # ========== Limity zero ==========
 
     def test_stan_minimalny_zero_nie_zamawia(self):
-        """limit_min=0 → różnica zawsze <= 0 → brak pozycji (mimo max=20 i stanu 0)."""
+        """limit_min=0 → narzędzie wyłączone z auto-zamawiania → brak pozycji (mimo max=20)."""
         self.narzedzie.stan_minimalny = 0
         self.narzedzie.save()
         self.assertIsNone(self._pozycja())
 
-    def test_stan_maksymalny_zero_nie_blokuje(self):
-        """W tym trybie liczy się tylko limit minimalny — max=0 nie wyklucza narzędzia."""
+    def test_stan_maksymalny_zero_blokuje(self):
+        """max=0 → brak celu uzupełnienia → brak pozycji (reguła przedziałowa wymaga max>0)."""
         self.narzedzie.stan_maksymalny = 0
         self.narzedzie.save()
-        pozycja = self._pozycja()
-        self.assertIsNotNone(pozycja)
-        self.assertEqual(pozycja['ilosc_do_zamowienia'], 5)
+        self.assertIsNone(self._pozycja())
 
     # ========== Opakowania ==========
 
     def test_komplet_zaokragla_w_gore_do_opakowan(self):
-        """opakowanie='kompl' (5 szt.), limit_min=8, 2 nowe → brakuje 6 → ceil(6/5)=2 kompl."""
+        """opakowanie='kompl' (5 szt.), max=8, 2 nowe → brakuje 6 → ceil(6/5)=2 kompl."""
         narzedzie_kompl = NarzedzieMagazynowe.objects.create(
             podkategoria=self.podkategoria,
             opis="Płytki tokarskie",
@@ -1135,7 +1157,7 @@ class GeneratorWedlugNowychTestCase(APITestCase):
             opakowanie="kompl",
             ilosc_w_opakowaniu=5,
             stan_minimalny=8,
-            stan_maksymalny=0,
+            stan_maksymalny=8,
             ostatni_dostawca=self.dostawca,
         )
         self._dodaj_egzemplarze(2, narzedzie=narzedzie_kompl)
@@ -1164,14 +1186,24 @@ class GeneratorWedlugNowychTestCase(APITestCase):
 
     # ========== Czyszczenie zombie ==========
 
-    def test_zombie_pozycja_znika_po_uzupelnieniu_nowych(self):
-        """Auto-pozycja utworzona przy braku nowych znika po dostawie pokrywającej limit."""
-        self.assertIsNotNone(self._pozycja())  # tworzy auto-pozycję (5 szt.)
-        self._dodaj_egzemplarze(5)             # dostawa: nowych=5 >= limit_min=5
+    def test_zombie_pozycja_znika_po_uzupelnieniu_do_max(self):
+        """Auto-pozycja utworzona przy braku nowych znika dopiero po dostawie pokrywającej MAX."""
+        self.assertIsNotNone(self._pozycja())  # tworzy auto-pozycję (20 szt.)
+        self._dodaj_egzemplarze(20)            # dostawa: nowych=20 >= max=20 → pełno
         self.assertIsNone(self._pozycja())
         self.assertFalse(
             PozycjaGeneratora.objects.filter(narzedzie_typ=self.narzedzie).exists()
         )
+
+    def test_zombie_pozycja_zostaje_w_przedziale_min_max(self):
+        """Auto-pozycja NIE znika po częściowej dostawie utrzymującej stan w przedziale min–max
+        (nowych=12 < max=20 → nadal uzasadniona; bez migotania delete+recreate).
+        Ilość pozostaje pierwotna (20) — generator nie przelicza istniejących pozycji."""
+        self.assertIsNotNone(self._pozycja())  # tworzy auto-pozycję (20 szt.)
+        self._dodaj_egzemplarze(12)            # dostawa: nowych=12, w przedziale min–max
+        pozycja = self._pozycja()
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 20)
 
     # ========== Kontrola regresji trybu standardowego ==========
 
