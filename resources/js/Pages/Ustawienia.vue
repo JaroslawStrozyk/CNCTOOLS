@@ -156,7 +156,7 @@
                                 <Column field="adres" header="Adres" />
                                 <Column field="telefon" header="Telefon" />
                                 <Column field="email" header="Email" />
-                                <Column header="CSV" style="width: 90px; text-align: center;">
+                                <Column header="XLSX" style="width: 90px; text-align: center;">
                                     <template #body="{ data }">
                                         <Tag :severity="data.generuj_csv ? 'success' : 'secondary'" :value="data.generuj_csv ? 'TAK' : 'NIE'" />
                                     </template>
@@ -325,12 +325,19 @@
                     <div class="settings-panel">
                         <div class="panel-header">
                             <h3>Zarządzaj Użytkownikami</h3>
-                            <button class="btn btn-primary" @click="openUserModal()">
-                                <i class="pi pi-plus"></i> Dodaj użytkownika
-                            </button>
+                            <div class="header-actions">
+                                <div class="user-search-wrapper">
+                                    <i class="pi pi-search user-search-icon" />
+                                    <InputText v-model="userSearchQuery" placeholder="Szukaj..." class="user-search-input" />
+                                    <i v-if="userSearchQuery" class="pi pi-times user-search-clear" @click="userSearchQuery = ''" title="Wyczyść" />
+                                </div>
+                                <button class="btn btn-primary" @click="openUserModal()">
+                                    <i class="pi pi-plus"></i> Dodaj użytkownika
+                                </button>
+                            </div>
                         </div>
                         <div class="panel-body">
-                            <DataTable :value="users" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="users.length > 25" :rows="25">
+                            <DataTable :value="filteredUsers" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="filteredUsers.length > 25" :rows="25">
                                 <Column field="username" header="Login" style="width: 160px;" />
                                 <Column header="Imię i nazwisko" style="width: 220px;">
                                     <template #body="{ data }">
@@ -630,7 +637,7 @@
                     <div class="field">
                         <div class="checkbox-row">
                             <InputSwitch v-model="modal.currentItem.generuj_csv" inputId="supplier_generuj_csv" />
-                            <label for="supplier_generuj_csv" class="checkbox-label">Generuj plik CSV (załącznik do emaila zamówienia)</label>
+                            <label for="supplier_generuj_csv" class="checkbox-label">Generuj plik XLSX (załącznik do emaila zamówienia)</label>
                         </div>
                     </div>
                 </template>
@@ -1451,6 +1458,24 @@ const downloadInwenturaXls = async () => {
 const users = ref([]);
 const grupy = ref([]);
 const isLoadingUsers = ref(false);
+const userSearchQuery = ref('');
+
+const filteredUsers = computed(() => {
+    const q = userSearchQuery.value.trim().toLowerCase();
+    if (!q) return users.value;
+    return users.value.filter((u) => {
+        const grupy = (u.groups || []).map((g) => g.name).join(' ');
+        const haystack = [
+            u.username,
+            u.first_name,
+            u.last_name,
+            u.email,
+            u.karta,
+            grupy,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+    });
+});
 const userModalVisible = ref(false);
 const isEditUserMode = ref(false);
 const isSavingUser = ref(false);
@@ -1704,6 +1729,53 @@ onMounted(async () => {
 .header-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
+}
+
+/* Pole wyszukiwania użytkowników */
+.user-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.user-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #adb5bd;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.user-search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #adb5bd;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.user-search-clear:hover {
+    color: #dee2e6;
+}
+
+.user-search-wrapper :deep(.p-inputtext.user-search-input) {
+    width: 240px;
+    height: 38px;
+    padding: 0.5rem 2.25rem 0.5rem 2.5rem;
+    background: #343a40;
+    border: 1px solid #495057;
+    color: #dee2e6;
+    border-radius: 4px;
+}
+
+.user-search-wrapper :deep(.p-inputtext.user-search-input:focus) {
+    border-color: #ffc107;
+    box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.25);
 }
 
 .categories-grid {

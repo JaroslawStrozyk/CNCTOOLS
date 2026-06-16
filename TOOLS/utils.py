@@ -543,13 +543,17 @@ def send_zamowienie_email(zamowienie, override_email=None):
     </html>
     """
 
-    # Załącznik CSV (gdy dostawca ma włączoną flagę generuj_csv)
+    # Załącznik XLSX (gdy dostawca ma włączoną flagę generuj_csv)
     attachments = None
     if dostawca and getattr(dostawca, 'generuj_csv', False):
-        csv_bytes = _build_zamowienie_csv(pozycje, mapping)
+        xlsx_bytes = _build_zamowienie_xlsx(pozycje, mapping)
         # Nazwa pliku z numeru zamówienia (np. "2026/05/12" → "2026_05_12")
         safe_numer = re.sub(r'[^A-Za-z0-9._-]+', '_', zamowienie.numer or f'zam_{zamowienie.id}')
-        attachments = [(f'zamowienie_{safe_numer}.csv', csv_bytes, 'text/csv')]
+        attachments = [(
+            f'zamowienie_{safe_numer}.xlsx',
+            xlsx_bytes,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )]
 
     return send_html_email(
         recipient_email=override_email or zamowienie.email_docelowy,
@@ -560,29 +564,43 @@ def send_zamowienie_email(zamowienie, override_email=None):
     )
 
 
-def _build_zamowienie_csv(pozycje, mapping):
+def _build_zamowienie_xlsx(pozycje, mapping):
     """
-    Buduje plik CSV z pozycjami zamówienia (separator '|', UTF-8, z nagłówkiem).
-    Dla każdej pozycji:
+    Buduje plik XLSX z pozycjami zamówienia (arkusz "Zamówienie", z nagłówkiem).
+    Zawartość identyczna jak wcześniejszy CSV:
       - nr_katalogowy: numer dostawcy (jeśli mapowanie istnieje) lub nasz numer
       - nazwa: opis narzędzia
-      - ilosc: ilość zamówiona
-      - cena_jedn: cena jednostkowa (kropka dziesiętna, brak ceny → 0.00)
+      - ilosc: ilość zamówiona (liczba całkowita)
+      - cena_jedn: cena jednostkowa (brak ceny → 0.00)
       - suma: ilosc × cena_jedn
 
-    Returns: bytes (UTF-8 bez BOM)
+    Ceny zapisane jako liczby z formatem '0.00'. Returns: bytes (xlsx).
     """
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter='|', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
-    writer.writerow(['nr_katalogowy', 'nazwa', 'ilosc', 'cena_jedn', 'suma'])
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Zamówienie'
+    ws.append(['nr_katalogowy', 'nazwa', 'ilosc', 'cena_jedn', 'suma'])
     for poz in pozycje:
         nr = mapping.get(poz.narzedzie_typ_id) or poz.numer_katalogowy or ''
         cena = Decimal(str(poz.cena_jednostkowa)) if poz.cena_jednostkowa is not None else Decimal('0.00')
         suma = cena * poz.ilosc_zamowiona
-        writer.writerow([
-            nr, poz.narzedzie_opis or '', poz.ilosc_zamowiona, f'{cena:.2f}', f'{suma:.2f}'
+        ws.append([
+            nr,
+            poz.narzedzie_opis or '',
+            poz.ilosc_zamowiona,
+            float(cena),
+            float(suma),
         ])
-    return output.getvalue().encode('utf-8')
+        # Format dwóch miejsc po przecinku dla kolumn cena_jedn i suma
+        row = ws.max_row
+        ws.cell(row=row, column=4).number_format = '0.00'
+        ws.cell(row=row, column=5).number_format = '0.00'
+
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
 
 def send_approval_email(zamowienia, override_email=None):

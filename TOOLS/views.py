@@ -240,7 +240,6 @@ def generator_zamowien_api(request):
     """
     from .models import NarzedzieMagazynowe, EgzemplarzNarzedzia, PozycjaGeneratora, PozycjaZamowienia, PozycjaZapotrzebowania
     from django.db.models import Count, Q
-    import math
 
     from django.db.models import F, Sum, Value, Subquery, OuterRef
     from django.db.models.functions import Coalesce
@@ -425,7 +424,18 @@ def generator_zamowien_api(request):
             ilosc_brakujacych_sztuk = stan_maksymalny - narzedzie.stan_aktualny
 
         if narzedzie.opakowanie == 'kompl' and narzedzie.ilosc_w_opakowaniu > 0:
-            ilosc_do_zamowienia = math.ceil(ilosc_brakujacych_sztuk / narzedzie.ilosc_w_opakowaniu)
+            # Przelicz brakujące sztuki na komplety zakupowe. Zaokrąglamy do NAJBLIŻSZEJ
+            # liczby kompletów (połówki w górę), więc zamawiamy kolejny komplet dopiero gdy
+            # brakująca ilość jest zbliżona do pełnego opakowania (brak 6/10 → 1 kompl.,
+            # brak 4/10 → 0 kompl., brak 15/10 → 2 kompl.).
+            # Arytmetyka całkowita (2a+b)//(2b) daje zaokrąglenie połówek w górę bez błędów
+            # zmiennoprzecinkowych. UWAGA: Python round() zaokrągla bankowo (round(0.5)=0) —
+            # tu niepożądane, dlatego nie używamy round().
+            w_opak = narzedzie.ilosc_w_opakowaniu
+            komplety = (2 * ilosc_brakujacych_sztuk + w_opak) // (2 * w_opak)
+            # Gdy zaokrągliło do 0, a niedobór istnieje (ilosc_brakujacych_sztuk > 0 jest tu
+            # zawsze prawdą) — zamów minimum 1 komplet, by stan wrócił powyżej minimum.
+            ilosc_do_zamowienia = max(1, komplety)
         else:
             ilosc_do_zamowienia = ilosc_brakujacych_sztuk
 

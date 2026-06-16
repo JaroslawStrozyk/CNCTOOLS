@@ -1148,22 +1148,67 @@ class GeneratorWedlugNowychTestCase(APITestCase):
 
     # ========== Opakowania ==========
 
-    def test_komplet_zaokragla_w_gore_do_opakowan(self):
-        """opakowanie='kompl' (5 szt.), max=8, 2 nowe → brakuje 6 → ceil(6/5)=2 kompl."""
-        narzedzie_kompl = NarzedzieMagazynowe.objects.create(
+    def _narzedzie_kompl(self, ilosc_w_opakowaniu=10, stan_max=20, stan_min=1, opis="Płytki"):
+        return NarzedzieMagazynowe.objects.create(
             podkategoria=self.podkategoria,
-            opis="Płytki tokarskie",
-            numer_katalogowy="PT-1",
+            opis=opis,
+            numer_katalogowy=f"PT-{opis}",
             opakowanie="kompl",
-            ilosc_w_opakowaniu=5,
-            stan_minimalny=8,
-            stan_maksymalny=8,
+            ilosc_w_opakowaniu=ilosc_w_opakowaniu,
+            stan_minimalny=stan_min,
+            stan_maksymalny=stan_max,
             ostatni_dostawca=self.dostawca,
         )
-        self._dodaj_egzemplarze(2, narzedzie=narzedzie_kompl)
-        pozycja = self._pozycja(narzedzie_kompl)
+
+    def test_komplet_zaokragla_do_najblizszego_w_dol(self):
+        """kompl (10 szt.), max=20, 16 nowych → brakuje 4 → round(4/10)=0 → min. 1 komplet."""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(16, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
+
+    def test_komplet_polowka_zaokragla_w_gore(self):
+        """kompl (10 szt.), max=20, 15 nowych → brakuje 5 → 5/10=0,5 → w GÓRĘ → 1 komplet.
+        (Python round() dałby bankowo 0 — sprawdzamy, że tak NIE jest.)"""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(15, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
+
+    def test_komplet_zaokragla_do_najblizszego_w_gore(self):
+        """kompl (10 szt.), max=20, 14 nowych → brakuje 6 → round(6/10)=1 komplet."""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(14, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
+
+    def test_komplet_wiele_opakowan_z_reszta_w_gore(self):
+        """kompl (10 szt.), max=20, 5 nowych → brakuje 15 → 15/10=1,5 → 2 komplety."""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(5, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
         self.assertIsNotNone(pozycja)
         self.assertEqual(pozycja['ilosc_do_zamowienia'], 2)
+
+    def test_komplet_wiele_opakowan_z_reszta_w_dol(self):
+        """kompl (10 szt.), max=20, 6 nowych → brakuje 14 → 14/10=1,4 → 1 komplet."""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(6, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
+
+    def test_komplet_niedobor_jednej_sztuki_min_jeden_komplet(self):
+        """kompl (10 szt.), max=20, 19 nowych → brakuje 1 → round=0 → min. 1 komplet
+        (gwarancja powrotu powyżej minimum mimo zaokrąglenia w dół)."""
+        narzedzie = self._narzedzie_kompl()
+        self._dodaj_egzemplarze(19, narzedzie=narzedzie)
+        pozycja = self._pozycja(narzedzie)
+        self.assertIsNotNone(pozycja)
+        self.assertEqual(pozycja['ilosc_do_zamowienia'], 1)
 
     # ========== Ręczna kontrola — bez zmian ==========
 
@@ -1508,24 +1553,30 @@ class EmailZamowieniaTestCase(TestCase):
         self.assertIn('<strong style="font-size: 1.2em;">7</strong>', html)
         self.assertIn('62,50 zł', html)
 
-    # ========== Załącznik CSV ==========
+    # ========== Załącznik XLSX ==========
 
-    def test_csv_naglowek_i_kolumny(self):
-        from TOOLS.utils import _build_zamowienie_csv
-        csv_text = _build_zamowienie_csv(
-            list(self.zamowienie.pozycje.all()), {}
-        ).decode('utf-8')
-        wiersze = csv_text.strip().split('\r\n')
-        self.assertEqual(wiersze[0], 'nr_katalogowy|nazwa|ilosc|cena_jedn|suma')
-        self.assertEqual(wiersze[1], 'F10|Frez D10|5|12.50|62.50')
-        self.assertEqual(wiersze[2], 'P-1|Płytki|2|0.00|0.00')
+    def _wczytaj_xlsx(self, xlsx_bytes):
+        import io
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(xlsx_bytes))
+        ws = wb.active
+        return [list(row) for row in ws.iter_rows(values_only=True)]
 
-    def test_csv_mapowanie_nr_dostawcy(self):
-        from TOOLS.utils import _build_zamowienie_csv
-        csv_text = _build_zamowienie_csv(
-            [self.poz1], {self.narzedzie.id: 'DOST-123'}
-        ).decode('utf-8')
-        self.assertIn('DOST-123|Frez D10|5|12.50|62.50', csv_text)
+    def test_xlsx_naglowek_i_kolumny(self):
+        from TOOLS.utils import _build_zamowienie_xlsx
+        wiersze = self._wczytaj_xlsx(
+            _build_zamowienie_xlsx(list(self.zamowienie.pozycje.all()), {})
+        )
+        self.assertEqual(wiersze[0], ['nr_katalogowy', 'nazwa', 'ilosc', 'cena_jedn', 'suma'])
+        self.assertEqual(wiersze[1], ['F10', 'Frez D10', 5, 12.50, 62.50])
+        self.assertEqual(wiersze[2], ['P-1', 'Płytki', 2, 0.00, 0.00])
+
+    def test_xlsx_mapowanie_nr_dostawcy(self):
+        from TOOLS.utils import _build_zamowienie_xlsx
+        wiersze = self._wczytaj_xlsx(
+            _build_zamowienie_xlsx([self.poz1], {self.narzedzie.id: 'DOST-123'})
+        )
+        self.assertEqual(wiersze[1], ['DOST-123', 'Frez D10', 5, 12.50, 62.50])
 
     def test_format_pln(self):
         from TOOLS.utils import _format_pln
