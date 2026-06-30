@@ -10,7 +10,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.conf import settings
 from django.db.models import Count, F, Q, Sum
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 from datetime import datetime
 from decimal import Decimal
@@ -1656,6 +1656,13 @@ class NarzedzieMagazynoweViewSet(LoggingMixin, viewsets.ModelViewSet):
             return f"{instance.podkategoria.kategoria.nazwa}/{instance.podkategoria.nazwa} - {instance.opis}"
         return instance.opis
 
+    def get_serializer_class(self):
+        # Lekki serializer dla listy w panelu kierownika (?light=true) — mniejszy payload.
+        if self.action == 'list' and self.request.query_params.get('light') == 'true':
+            from .serializers import NarzedzieMagazynoweKierownikSerializer
+            return NarzedzieMagazynoweKierownikSerializer
+        return NarzedzieMagazynoweSerializer
+
     def get_queryset(self):
         from django.db.models import Value, Subquery, OuterRef
         from django.db.models.functions import Coalesce
@@ -1913,6 +1920,13 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = HistoriaUzyciaNarzedziaSerializer
 
+    def get_serializer_class(self):
+        # Odchudzony serializer dla listy "Narzędzia w użyciu" w panelu kierownika (?light=true).
+        if self.action == 'list' and self.request.query_params.get('light') == 'true':
+            from .serializers import HistoriaWUzyciuLightSerializer
+            return HistoriaWUzyciuLightSerializer
+        return HistoriaUzyciaNarzedziaSerializer
+
     def get_queryset(self):
         queryset = super().get_queryset()
         narzedzie_id = self.request.query_params.get('narzedzie_id', None)
@@ -1925,6 +1939,100 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(data_zwrotu__isnull=True)
 
         return queryset.order_by('-data_wydania')
+
+    @action(detail=False, methods=['post'])
+    def pdf_lista_w_uzyciu(self, request):
+        """
+        Generuje zbiorczy PDF z listą narzędzi aktualnie w użyciu.
+        Opcjonalny przedział dat pobrania (data_wydania) w body:
+        {"data_od": "2026-01-01", "data_do": "2026-06-30"}.
+        Brak dat → cała lista narzędzi w użyciu.
+        """
+        import os
+        from django.http import HttpResponse
+        from django.template.loader import render_to_string
+        from weasyprint import HTML
+
+        data_od = (request.data.get('data_od') or '').strip()
+        data_do = (request.data.get('data_do') or '').strip()
+
+        queryset = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).select_related(
+            'egzemplarz__narzedzie_typ__podkategoria__kategoria',
+            'maszyna',
+            'pracownik',
+        )
+
+        if data_od:
+            queryset = queryset.filter(data_wydania__date__gte=data_od)
+        if data_do:
+            queryset = queryset.filter(data_wydania__date__lte=data_do)
+
+        queryset = queryset.order_by('-data_wydania')
+
+        # Przygotuj dane do szablonu (kolumny jak w tabeli na ekranie)
+        lista = []
+        for h in queryset:
+            egz = h.egzemplarz
+            nt = egz.narzedzie_typ if egz else None
+
+            if nt and nt.podkategoria:
+                narzedzie = f"{nt.podkategoria.kategoria.nazwa} / {nt.podkategoria.nazwa} - {nt.opis}"
+            elif nt:
+                narzedzie = nt.opis
+            else:
+                narzedzie = '-'
+
+            # Opakowanie — ta sama logika co we front-endzie
+            if egz and egz.jednostka == 'kompl':
+                opakowanie = f"Komplet ({egz.ilosc_w_komplecie} szt.)"
+            elif nt and nt.opakowanie == 'kompl':
+                opakowanie = f"{egz.ilosc_w_komplecie} z kompletu"
+            else:
+                opakowanie = 'Sztuka'
+
+            pracownik = f"{h.pracownik.nazwisko} {h.pracownik.imie}" if h.pracownik else '-'
+
+            lista.append({
+                'narzedzie': narzedzie,
+                'maszyna': h.maszyna.nazwa if h.maszyna else '-',
+                'pracownik': pracownik,
+                'data_pobrania': h.data_wydania.strftime('%Y-%m-%d %H:%M') if h.data_wydania else '-',
+                'oznaczenie': (egz.oznaczenie if egz else '') or '-',
+                'opakowanie': opakowanie,
+                'nr_zlecenia': h.nr_zlecenia or '-',
+            })
+
+        # Opis zakresu dat do nagłówka raportu
+        if data_od and data_do:
+            zakres_dat = f"{data_od} — {data_do}"
+        elif data_od:
+            zakres_dat = f"od {data_od}"
+        elif data_do:
+            zakres_dat = f"do {data_do}"
+        else:
+            zakres_dat = 'Cała lista'
+
+        logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
+
+        context = {
+            'pozycje': lista,
+            'liczba': len(lista),
+            'zakres_dat': zakres_dat,
+            'tytul_dokumentu': 'LISTA NARZĘDZI W UŻYCIU',
+            'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
+            'logo_path': f'file://{logo_path}',
+            'wersja_dokumentu': getattr(settings, 'PDF_LISTA_W_UZYCIU_WERSJA', 1),
+        }
+
+        html_string = render_to_string('pdf/lista_w_uzyciu.html', context)
+        pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+
+        today = datetime.now().strftime('%Y-%m-%d')
+        response = HttpResponse(pdf_file, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Lista_w_uzyciu_{today}.pdf"'
+        return response
 
     @action(detail=False, methods=['post'])
     def wydanie(self, request):
@@ -1975,123 +2083,138 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
         karta_uszkodzenia = request.data.get('karta_uszkodzenia')  # Dane karty uszkodzenia
 
         try:
-            result = EgzemplarzService.zwroc_egzemplarz(
-                historia_id=historia.id,
-                stan_po_zwrocie=stan_po_zwrocie,
-                czesciowy_zwrot=czesciowy_zwrot,
-                ilosc_sztuk=ilosc_sztuk
-            )
+            # Cały zwrot w JEDNEJ transakcji: zapis data_zwrotu (w serwisie) i utworzenie
+            # karty uszkodzenia/regeneracji muszą się powieść razem. Bez tego nieudane
+            # utworzenie karty zostawiało historię "zamkniętą" (data_zwrotu ustawione),
+            # a ponowna próba dawała mylące "wpis już zamknięty" — patrz IntegrityError niżej.
+            with transaction.atomic():
+                result = EgzemplarzService.zwroc_egzemplarz(
+                    historia_id=historia.id,
+                    stan_po_zwrocie=stan_po_zwrocie,
+                    czesciowy_zwrot=czesciowy_zwrot,
+                    ilosc_sztuk=ilosc_sztuk
+                )
 
-            # result może być historia (pełny zwrot) lub tuple (historia_updated, egzemplarz_zwrocony) dla częściowego
-            if isinstance(result, tuple):
-                historia_updated, egzemplarz_zwrocony = result
-                # Przy częściowym zwrocie, historia pozostaje otwarta
-                # egzemplarz_zwrocony to nowy egzemplarz ze zwróconymi sztukami
-            else:
-                historia_updated = result
-                egzemplarz_zwrocony = historia_updated.egzemplarz
-
-            # Zapisz pracownika zwracającego
-            if pracownik_zwracajacy_id:
-                try:
-                    pracownik_zwracajacy = Pracownik.objects.get(id=pracownik_zwracajacy_id)
-                    historia_updated.pracownik_zwracajacy = pracownik_zwracajacy
-                    historia_updated.save()
-                except Pracownik.DoesNotExist:
-                    pass
-
-            # Zapisz stan po zwrocie w historii
-            historia_updated.stan_po_zwrocie = stan_po_zwrocie
-            historia_updated.save()
-
-            # Zapisz opis narzędzia do logowania (przed ewentualnym usunięciem egzemplarza)
-            narzedzie_opis_do_logu = historia.egzemplarz.narzedzie_typ.opis if historia.egzemplarz and historia.egzemplarz.narzedzie_typ else 'nieznane'
-
-            # Jeśli uszkodzone lub uszkodzone_regeneracja, utwórz wpis w tabeli uszkodzeń
-            if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
-                # Przygotuj dane do zapisu w uszkodzeniu (snapshot przed usunięciem egzemplarza)
-                narzedzie_typ = egzemplarz_zwrocony.narzedzie_typ
-                narzedzie_opis = narzedzie_typ.opis if narzedzie_typ else ''
-                numer_katalogowy = (narzedzie_typ.numer_katalogowy or '') if narzedzie_typ else ''
-                kategoria_narzedzia = ''
-                if narzedzie_typ and narzedzie_typ.podkategoria:
-                    kategoria_narzedzia = f"{narzedzie_typ.podkategoria.kategoria.nazwa} / {narzedzie_typ.podkategoria.nazwa}"
-                lokalizacja_opis = ''
-                if egzemplarz_zwrocony.lokalizacja:
-                    lok = egzemplarz_zwrocony.lokalizacja
-                    lokalizacja_opis = f"{lok.szafa}/{lok.polka}/{lok.kolumna}"
-                maszyna_nazwa = historia.maszyna.nazwa if historia.maszyna else ''
-                pracownik_nazwisko = historia.pracownik.nazwisko if historia.pracownik else ''
-                pracownik_imie = historia.pracownik.imie if historia.pracownik else ''
-                stan = egzemplarz_zwrocony.get_stan_display() if hasattr(egzemplarz_zwrocony, 'get_stan_display') else egzemplarz_zwrocony.stan
-
-                if stan_po_zwrocie == 'uszkodzone' and karta_uszkodzenia:
-                    # Uszkodzone z kartą uszkodzenia - generuj numer karty i zapisz pełne dane
-                    numer_karty = Uszkodzenie.generuj_numer_karty()
-                    uszkodzenie = Uszkodzenie.objects.create(
-                        egzemplarz=None,  # Egzemplarz zostanie usunięty
-                        narzedzie_typ=narzedzie_typ,
-                        narzedzie_opis=narzedzie_opis,
-                        numer_katalogowy=numer_katalogowy,
-                        kategoria_narzedzia=kategoria_narzedzia,
-                        lokalizacja_opis=lokalizacja_opis,
-                        stan=stan,
-                        maszyna_nazwa=maszyna_nazwa,
-                        pracownik_nazwisko=pracownik_nazwisko,
-                        pracownik_imie=pracownik_imie,
-                        opis_uszkodzenia=karta_uszkodzenia.get('uwagi', ''),
-                        pracownik=historia.pracownik,
-                        numer_karty=numer_karty,
-                        przyczyna_uszkodzenia=karta_uszkodzenia.get('przyczyna_uszkodzenia', ''),
-                        stracony_czas=karta_uszkodzenia.get('stracony_czas', ''),
-                        typ_zglaszajacego=karta_uszkodzenia.get('typ_zglaszajacego', ''),
-                        nazwisko_zglaszajacego=karta_uszkodzenia.get('nazwisko_zglaszajacego', '')
-                    )
-                    # Usuń egzemplarz
-                    egzemplarz_zwrocony.delete()
-                elif stan_po_zwrocie == 'uszkodzone_regeneracja':
-                    # Uszkodzone do regeneracji - z kartą w formacie RRRR/XXXR
-                    numer_karty_regen = Uszkodzenie.generuj_numer_karty_regeneracji()
-                    Uszkodzenie.objects.create(
-                        egzemplarz=None,  # Egzemplarz zostanie usunięty
-                        narzedzie_typ=narzedzie_typ,
-                        narzedzie_opis=narzedzie_opis,
-                        numer_katalogowy=numer_katalogowy,
-                        kategoria_narzedzia=kategoria_narzedzia,
-                        lokalizacja_opis=lokalizacja_opis,
-                        stan='Uszkodzone do regeneracji',
-                        maszyna_nazwa=maszyna_nazwa,
-                        pracownik_nazwisko=pracownik_nazwisko,
-                        pracownik_imie=pracownik_imie,
-                        opis_uszkodzenia=request.data.get('uwagi', 'Zużyte do regeneracji'),
-                        pracownik=historia.pracownik,
-                        numer_karty=numer_karty_regen
-                    )
-                    # Usuń egzemplarz
-                    egzemplarz_zwrocony.delete()
+                # result może być historia (pełny zwrot) lub tuple (historia_updated, egzemplarz_zwrocony) dla częściowego
+                if isinstance(result, tuple):
+                    historia_updated, egzemplarz_zwrocony = result
+                    # Przy częściowym zwrocie, historia pozostaje otwarta
+                    # egzemplarz_zwrocony to nowy egzemplarz ze zwróconymi sztukami
                 else:
-                    # Fallback - uszkodzone bez karty (stary tryb)
-                    opis_domyslny = 'Uszkodzenie podczas użycia'
-                    Uszkodzenie.objects.create(
-                        egzemplarz=egzemplarz_zwrocony,
-                        opis_uszkodzenia=request.data.get('uwagi', opis_domyslny),
-                        pracownik=historia.pracownik
-                    )
+                    historia_updated = result
+                    egzemplarz_zwrocony = historia_updated.egzemplarz
 
-            # Logowanie zwrotu
-            user_name = get_user_display_name(request.user)
-            stan_map = {'nowe': 'nowe', 'uzywane': 'używane', 'uszkodzone': 'uszkodzone', 'uszkodzone_regeneracja': 'do regeneracji'}
-            stan_tekst = stan_map.get(stan_po_zwrocie, stan_po_zwrocie)
-            if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
-                app_logger.warning(user_name, f"Zwrócono narzędzie jako {stan_tekst}: {narzedzie_opis_do_logu}")
-            else:
-                app_logger.success(user_name, f"Zwrócono narzędzie ({stan_tekst}): {narzedzie_opis_do_logu}")
+                # Zapisz pracownika zwracającego
+                if pracownik_zwracajacy_id:
+                    try:
+                        pracownik_zwracajacy = Pracownik.objects.get(id=pracownik_zwracajacy_id)
+                        historia_updated.pracownik_zwracajacy = pracownik_zwracajacy
+                        historia_updated.save()
+                    except Pracownik.DoesNotExist:
+                        pass
 
-            serializer = self.get_serializer(historia_updated)
-            return Response(serializer.data)
+                # Zapisz stan po zwrocie w historii
+                historia_updated.stan_po_zwrocie = stan_po_zwrocie
+                historia_updated.save()
+
+                # Zapisz opis narzędzia do logowania (przed ewentualnym usunięciem egzemplarza)
+                narzedzie_opis_do_logu = historia.egzemplarz.narzedzie_typ.opis if historia.egzemplarz and historia.egzemplarz.narzedzie_typ else 'nieznane'
+
+                # Jeśli uszkodzone lub uszkodzone_regeneracja, utwórz wpis w tabeli uszkodzeń
+                if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
+                    # Przygotuj dane do zapisu w uszkodzeniu (snapshot przed usunięciem egzemplarza)
+                    narzedzie_typ = egzemplarz_zwrocony.narzedzie_typ
+                    narzedzie_opis = narzedzie_typ.opis if narzedzie_typ else ''
+                    numer_katalogowy = (narzedzie_typ.numer_katalogowy or '') if narzedzie_typ else ''
+                    kategoria_narzedzia = ''
+                    if narzedzie_typ and narzedzie_typ.podkategoria:
+                        kategoria_narzedzia = f"{narzedzie_typ.podkategoria.kategoria.nazwa} / {narzedzie_typ.podkategoria.nazwa}"
+                    lokalizacja_opis = ''
+                    if egzemplarz_zwrocony.lokalizacja:
+                        lok = egzemplarz_zwrocony.lokalizacja
+                        lokalizacja_opis = f"{lok.szafa}/{lok.polka}/{lok.kolumna}"
+                    maszyna_nazwa = historia.maszyna.nazwa if historia.maszyna else ''
+                    pracownik_nazwisko = historia.pracownik.nazwisko if historia.pracownik else ''
+                    pracownik_imie = historia.pracownik.imie if historia.pracownik else ''
+                    stan = egzemplarz_zwrocony.get_stan_display() if hasattr(egzemplarz_zwrocony, 'get_stan_display') else egzemplarz_zwrocony.stan
+
+                    if stan_po_zwrocie == 'uszkodzone' and karta_uszkodzenia:
+                        # Uszkodzone z kartą uszkodzenia - generuj numer karty i zapisz pełne dane
+                        numer_karty = Uszkodzenie.generuj_numer_karty()
+                        uszkodzenie = Uszkodzenie.objects.create(
+                            egzemplarz=None,  # Egzemplarz zostanie usunięty
+                            narzedzie_typ=narzedzie_typ,
+                            narzedzie_opis=narzedzie_opis,
+                            numer_katalogowy=numer_katalogowy,
+                            kategoria_narzedzia=kategoria_narzedzia,
+                            lokalizacja_opis=lokalizacja_opis,
+                            stan=stan,
+                            maszyna_nazwa=maszyna_nazwa,
+                            pracownik_nazwisko=pracownik_nazwisko,
+                            pracownik_imie=pracownik_imie,
+                            opis_uszkodzenia=karta_uszkodzenia.get('uwagi', ''),
+                            pracownik=historia.pracownik,
+                            numer_karty=numer_karty,
+                            przyczyna_uszkodzenia=karta_uszkodzenia.get('przyczyna_uszkodzenia', ''),
+                            stracony_czas=karta_uszkodzenia.get('stracony_czas', ''),
+                            typ_zglaszajacego=karta_uszkodzenia.get('typ_zglaszajacego', ''),
+                            nazwisko_zglaszajacego=karta_uszkodzenia.get('nazwisko_zglaszajacego', '')
+                        )
+                        # Usuń egzemplarz
+                        egzemplarz_zwrocony.delete()
+                    elif stan_po_zwrocie == 'uszkodzone_regeneracja':
+                        # Uszkodzone do regeneracji - z kartą w formacie RRRR/XXXR
+                        numer_karty_regen = Uszkodzenie.generuj_numer_karty_regeneracji()
+                        Uszkodzenie.objects.create(
+                            egzemplarz=None,  # Egzemplarz zostanie usunięty
+                            narzedzie_typ=narzedzie_typ,
+                            narzedzie_opis=narzedzie_opis,
+                            numer_katalogowy=numer_katalogowy,
+                            kategoria_narzedzia=kategoria_narzedzia,
+                            lokalizacja_opis=lokalizacja_opis,
+                            stan='Uszkodzone do regeneracji',
+                            maszyna_nazwa=maszyna_nazwa,
+                            pracownik_nazwisko=pracownik_nazwisko,
+                            pracownik_imie=pracownik_imie,
+                            opis_uszkodzenia=request.data.get('uwagi', 'Zużyte do regeneracji'),
+                            pracownik=historia.pracownik,
+                            numer_karty=numer_karty_regen
+                        )
+                        # Usuń egzemplarz
+                        egzemplarz_zwrocony.delete()
+                    else:
+                        # Fallback - uszkodzone bez karty (stary tryb)
+                        opis_domyslny = 'Uszkodzenie podczas użycia'
+                        Uszkodzenie.objects.create(
+                            egzemplarz=egzemplarz_zwrocony,
+                            opis_uszkodzenia=request.data.get('uwagi', opis_domyslny),
+                            pracownik=historia.pracownik
+                        )
+
+                # Logowanie zwrotu
+                user_name = get_user_display_name(request.user)
+                stan_map = {'nowe': 'nowe', 'uzywane': 'używane', 'uszkodzone': 'uszkodzone', 'uszkodzone_regeneracja': 'do regeneracji'}
+                stan_tekst = stan_map.get(stan_po_zwrocie, stan_po_zwrocie)
+                if stan_po_zwrocie in ['uszkodzone', 'uszkodzone_regeneracja']:
+                    app_logger.warning(user_name, f"Zwrócono narzędzie jako {stan_tekst}: {narzedzie_opis_do_logu}")
+                else:
+                    app_logger.success(user_name, f"Zwrócono narzędzie ({stan_tekst}): {narzedzie_opis_do_logu}")
+
+                serializer = self.get_serializer(historia_updated)
+                response_data = serializer.data
+
+            return Response(response_data)
         except ValidationError as e:
             return Response(
                 {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except IntegrityError:
+            # Najczęściej kolizja numeru karty. Transakcja wycofana → data_zwrotu NIE zostaje
+            # ustawione, więc ponowna próba ma sens (mylące "wpis już zamknięty" nie wystąpi).
+            app_logger.error(get_user_display_name(request.user), "Zwrot narzędzia: konflikt zapisu (IntegrityError) — transakcja wycofana")
+            return Response(
+                {'error': 'Nie udało się zapisać zwrotu (konflikt numeru karty). Spróbuj ponownie.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -2099,17 +2222,30 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
 class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Uszkodzenie.objects.select_related(
         'egzemplarz__narzedzie_typ__podkategoria__kategoria',
+        'egzemplarz__lokalizacja',
         'pracownik'
     ).all()
     serializer_class = UszkodzenieSerializer
     log_name = 'uszkodzenie'
+
+    def get_serializer_class(self):
+        # Odchudzony serializer dla listy Zwroty.vue (?light=true) — mniejszy payload.
+        if self.action == 'list' and self.request.query_params.get('light') == 'true':
+            from .serializers import UszkodzenieListLightSerializer
+            return UszkodzenieListLightSerializer
+        return UszkodzenieSerializer
 
     def get_log_description(self, instance):
         narzedzie = instance.narzedzie_opis or (instance.egzemplarz.narzedzie_typ.opis if instance.egzemplarz else 'nieznane')
         return f"{narzedzie} (ID: {instance.id})"
 
     def get_queryset(self):
-        return super().get_queryset().order_by('-data_uszkodzenia')
+        # Prefetch historii pod fallbacki maszyny/pracownika w serializerze
+        # (dotyczy tylko kart z nieusuniętym egzemplarzem; eliminuje N+1).
+        return super().get_queryset().prefetch_related(
+            'egzemplarz__historia__maszyna',
+            'egzemplarz__historia__pracownik',
+        ).order_by('-data_uszkodzenia')
 
     @action(detail=False, methods=['get'])
     def nastepny_numer_karty(self, request):
@@ -2240,13 +2376,24 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
             'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),
             'logo_path': f'file://{logo_path}',
             'wersja_dokumentu': getattr(settings, 'PDF_LISTA_USZKODZEN_WERSJA', 1),
+            'liczba_stron': '',  # placeholder na 1. przebieg (poznamy po renderze)
         }
 
-        # Renderowanie HTML
-        html_string = render_to_string('pdf/lista_uszkodzen.html', context)
+        # Dwuprzebiegowy render: stopka "Liczba stron N" jest tylko na ostatniej
+        # stronie (przepływowa, nie fixed), a faktyczną liczbę stron znamy dopiero
+        # po wyrenderowaniu dokumentu.
+        base_url = str(settings.BASE_DIR)
+        document = HTML(
+            string=render_to_string('pdf/lista_uszkodzen.html', context),
+            base_url=base_url
+        ).render()
+        context['liczba_stron'] = len(document.pages)
 
-        # Generowanie PDF
-        pdf_file = HTML(string=html_string, base_url=str(settings.BASE_DIR)).write_pdf()
+        # Generowanie PDF z poprawną liczbą stron
+        pdf_file = HTML(
+            string=render_to_string('pdf/lista_uszkodzen.html', context),
+            base_url=base_url
+        ).write_pdf()
 
         today = datetime.now().strftime('%Y-%m-%d')
         response = HttpResponse(pdf_file, content_type='application/pdf')

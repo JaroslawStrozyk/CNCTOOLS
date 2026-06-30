@@ -11,7 +11,31 @@
         color: #dc3545;
         font-weight: bold;
     }
+
+    /* Stopka listy — w normalnym przepływie (NIE position:fixed), więc pojawia się
+       jednorazowo, na końcu treści = wyłącznie na ostatniej stronie. Pozostałe
+       strony są bez czerwonej linii i bez napisu o stronach. */
+    .list-end-footer {
+        margin-top: 15px;
+        border-top: 2px solid #dc3545;
+        padding-top: 5px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 9pt;
+        color: #666;
+    }
+    .list-end-footer .footer-left { text-align: left; flex: 1; }
+    .list-end-footer .footer-center { text-align: center; flex: 1; }
+    .list-end-footer .footer-right { text-align: right; flex: 1; }
 </style>
+{% endblock %}
+
+{% block page_bottom %}
+    <div class="list-end-footer">
+        <span class="footer-left">Data: {{ data_wydruku }}</span>
+        <span class="footer-center">Wersja dokumentu: {{ wersja_dokumentu }}</span>
+        <span class="footer-right">Liczba stron {{ liczba_stron }}</span>
+    </div>
 {% endblock %}
 
 {% block content %}

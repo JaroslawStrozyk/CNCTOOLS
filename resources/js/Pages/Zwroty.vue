@@ -43,7 +43,7 @@
                 </div>
                 <Button v-if="searchQuery" icon="pi pi-times" class="p-button-secondary p-button-sm" @click="searchQuery = ''" title="Wyczyść" />
                 <div class="search-bar-spacer"></div>
-                <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfListPreview" title="Drukuj listę" />
+                <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfListPreview" title="Drukuj listę" :loading="isGeneratingList" :disabled="isGeneratingList" :label="isGeneratingList ? 'Generowanie...' : null" />
               </div>
               <DataTable
                 :value="filteredDamagesUszkodzone"
@@ -52,6 +52,10 @@
                 stripedRows
                 scrollable
                 scrollHeight="flex"
+                :paginator="true"
+                :rows="pageSize"
+                :rowsPerPageOptions="[25, 50, 100, 200]"
+                paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
               >
                 <Column header="Nr karty" style="width: 100px;">
                   <template #body="{ data }">
@@ -132,7 +136,7 @@
                   </div>
                   <Button v-if="searchQueryRegen" icon="pi pi-times" class="p-button-secondary p-button-sm" @click="searchQueryRegen = ''" title="Wyczyść" />
                   <div class="search-bar-spacer"></div>
-                  <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfListPreviewRegen" title="Drukuj listę" />
+                  <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfListPreviewRegen" title="Drukuj listę" :loading="isGeneratingList" :disabled="isGeneratingList" :label="isGeneratingList ? 'Generowanie...' : null" />
                 </div>
                 <DataTable
                   :value="filteredDamagesRegeneracja"
@@ -141,6 +145,10 @@
                   stripedRows
                   scrollable
                   scrollHeight="flex"
+                  :paginator="true"
+                  :rows="pageSize"
+                  :rowsPerPageOptions="[25, 50, 100, 200]"
+                  paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
                 >
                   <Column header="Nr karty" style="width: 100px;">
                     <template #body="{ data }">
@@ -299,6 +307,7 @@ const props = defineProps({
 
 // State
 const damages = ref([]);
+const pageSize = ref(50);
 const isLoading = ref(false);
 const activeTab = ref(0);
 const searchQuery = ref('');
@@ -318,6 +327,7 @@ const isDeleting = ref(false);
 const pdfPreviewVisible = ref(false);
 const pdfPreviewUrl = ref('');
 const currentPdfData = ref(null);
+const isGeneratingList = ref(false);  // trwa generowanie zbiorczego PDF (feedback na przycisku)
 
 // User menu
 const userMenu = ref(null);
@@ -383,7 +393,7 @@ const filteredDamagesRegeneracja = computed(() => {
 const fetchDamages = async () => {
   isLoading.value = true;
   try {
-    const response = await axios.get(`${API_URL}/uszkodzenia/`);
+    const response = await axios.get(`${API_URL}/uszkodzenia/?light=true`);
     damages.value = response.data.results || response.data;
   } catch (error) {
     console.error('Błąd pobierania uszkodzeń:', error);
@@ -516,15 +526,16 @@ const closePdfPreview = () => {
 
 // Zbiorcze PDF listy uszkodzeń
 const openPdfListPreview = async () => {
+  // Pobierz ID z przefiltrowanej listy
+  const ids = filteredDamagesUszkodzone.value.map(d => d.id);
+
+  if (ids.length === 0) {
+    alert('Brak elementów do wydruku.');
+    return;
+  }
+
+  isGeneratingList.value = true;
   try {
-    // Pobierz ID z przefiltrowanej listy
-    const ids = filteredDamagesUszkodzone.value.map(d => d.id);
-
-    if (ids.length === 0) {
-      alert('Brak elementów do wydruku.');
-      return;
-    }
-
     const response = await axios.post(`${API_URL}/uszkodzenia/pdf_lista/`, { ids, typ: 'uszkodzone' }, {
       responseType: 'blob'
     });
@@ -539,19 +550,22 @@ const openPdfListPreview = async () => {
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
     alert('Błąd podczas generowania zbiorczego PDF');
+  } finally {
+    isGeneratingList.value = false;
   }
 };
 
 // Zbiorcze PDF listy do regeneracji
 const openPdfListPreviewRegen = async () => {
+  const ids = filteredDamagesRegeneracja.value.map(d => d.id);
+
+  if (ids.length === 0) {
+    alert('Brak elementów do wydruku.');
+    return;
+  }
+
+  isGeneratingList.value = true;
   try {
-    const ids = filteredDamagesRegeneracja.value.map(d => d.id);
-
-    if (ids.length === 0) {
-      alert('Brak elementów do wydruku.');
-      return;
-    }
-
     const response = await axios.post(`${API_URL}/uszkodzenia/pdf_lista/`, { ids, typ: 'regeneracja' }, {
       responseType: 'blob'
     });
@@ -566,6 +580,8 @@ const openPdfListPreviewRegen = async () => {
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
     alert('Błąd podczas generowania zbiorczego PDF');
+  } finally {
+    isGeneratingList.value = false;
   }
 };
 

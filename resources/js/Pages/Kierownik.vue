@@ -158,6 +158,9 @@
                         <button class="btn-chart" @click="openChartModal" title="Wykres">
                             <i class="pi pi-chart-bar"></i>
                         </button>
+                        <button class="btn-pdf-header" @click="openInUsePdfDialog" title="Eksport PDF całej listy">
+                            <i class="pi pi-file-pdf"></i>
+                        </button>
                     </div>
                 </div>
                 <div class="panel-body">
@@ -166,6 +169,11 @@
                         :loading="isLoadingTools"
                         :scrollable="true"
                         scrollHeight="flex"
+                        :paginator="true"
+                        :rows="pageSize"
+                        :rowsPerPageOptions="[25, 50, 100, 200]"
+                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                     >
                         <Column header="Narzędzie">
@@ -241,6 +249,11 @@
                         :loading="isLoadingDamages"
                         :scrollable="true"
                         scrollHeight="flex"
+                        :paginator="true"
+                        :rows="pageSize"
+                        :rowsPerPageOptions="[25, 50, 100, 200]"
+                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                         stripedRows
                     >
@@ -328,6 +341,11 @@
                         :loading="isLoadingDamages"
                         :scrollable="true"
                         scrollHeight="flex"
+                        :paginator="true"
+                        :rows="pageSize"
+                        :rowsPerPageOptions="[25, 50, 100, 200]"
+                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                         stripedRows
                     >
@@ -402,6 +420,31 @@
             </div>
             <template #footer>
                 <Button label="Zamknij" icon="pi pi-times" class="btn-modal-secondary" @click="closeDmgPdfPreview" />
+            </template>
+        </Dialog>
+
+        <!-- Modal: Wybór przedziału dat dla PDF "Narzędzia w użyciu" -->
+        <Dialog
+            v-model:visible="inUsePdfDialogVisible"
+            header="Eksport PDF — narzędzia w użyciu"
+            :modal="true"
+            :style="{ width: '440px' }"
+        >
+            <div class="pdf-date-form">
+                <p class="pdf-date-hint">Wybierz przedział dat pobrania. Pozostaw puste pola, aby wygenerować całą listę.</p>
+                <div class="pdf-date-row">
+                    <label for="pdf-date-od">Data od:</label>
+                    <input id="pdf-date-od" type="date" v-model="inUsePdfDateOd" class="pdf-date-input" />
+                </div>
+                <div class="pdf-date-row">
+                    <label for="pdf-date-do">Data do:</label>
+                    <input id="pdf-date-do" type="date" v-model="inUsePdfDateDo" class="pdf-date-input" />
+                </div>
+                <p v-if="inUsePdfDateError" class="pdf-date-error">{{ inUsePdfDateError }}</p>
+            </div>
+            <template #footer>
+                <Button label="Generuj PDF" icon="pi pi-file-pdf" severity="success" :loading="inUsePdfGenerating" @click="generateInUsePdf" />
+                <Button label="Anuluj" icon="pi pi-times" class="btn-modal-secondary" @click="inUsePdfDialogVisible = false" />
             </template>
         </Dialog>
 
@@ -1000,6 +1043,46 @@ const closeDmgPdfPreview = () => {
     }
 };
 
+// Eksport PDF listy "Narzędzia w użyciu" z wyborem przedziału dat
+const inUsePdfDialogVisible = ref(false);
+const inUsePdfDateOd = ref('');
+const inUsePdfDateDo = ref('');
+const inUsePdfGenerating = ref(false);
+const inUsePdfDateError = ref('');
+
+const openInUsePdfDialog = () => {
+    inUsePdfDateOd.value = '';
+    inUsePdfDateDo.value = '';
+    inUsePdfDateError.value = '';
+    inUsePdfDialogVisible.value = true;
+};
+
+const generateInUsePdf = async () => {
+    inUsePdfDateError.value = '';
+    if (inUsePdfDateOd.value && inUsePdfDateDo.value && inUsePdfDateOd.value > inUsePdfDateDo.value) {
+        inUsePdfDateError.value = 'Data "od" nie może być późniejsza niż data "do".';
+        return;
+    }
+    inUsePdfGenerating.value = true;
+    try {
+        const response = await axios.post(`${API_URL}/historia/pdf_lista_w_uzyciu/`, {
+            data_od: inUsePdfDateOd.value || '',
+            data_do: inUsePdfDateDo.value || ''
+        }, { responseType: 'blob' });
+        if (dmgPdfPreviewUrl.value) {
+            window.URL.revokeObjectURL(dmgPdfPreviewUrl.value);
+        }
+        dmgPdfPreviewUrl.value = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        inUsePdfDialogVisible.value = false;
+        dmgPdfPreviewVisible.value = true;
+    } catch (error) {
+        console.error('Błąd generowania PDF listy w użyciu:', error);
+        inUsePdfDateError.value = 'Błąd podczas generowania PDF.';
+    } finally {
+        inUsePdfGenerating.value = false;
+    }
+};
+
 // Wykres uszkodzeń/zużytych
 const showDmgChartModal = ref(false);
 const dmgChartType = ref('uszkodzone');
@@ -1271,9 +1354,9 @@ const onToolUnselect = () => {};
 const fetchInitialData = async () => {
     try {
         const [toolsRes, categoriesRes, usagesRes, machinesRes, damagesRes] = await Promise.all([
-            axios.get(`${API_URL}/narzedzia/`),
+            axios.get(`${API_URL}/narzedzia/?light=true`),
             axios.get(`${API_URL}/kategorie/`),
-            axios.get(`${API_URL}/historia/?w_uzyciu=true`),
+            axios.get(`${API_URL}/historia/?w_uzyciu=true&light=true`),
             axios.get(`${API_URL}/maszyny/`),
             axios.get(`${API_URL}/uszkodzenia/`)
         ]);
@@ -1990,6 +2073,56 @@ onMounted(() => {
     color: #888;
     font-size: 0.85rem;
     white-space: nowrap;
+}
+
+/* === FORMULARZ WYBORU DAT (PDF w użyciu) === */
+.pdf-date-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.pdf-date-hint {
+    color: #adb5bd;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.pdf-date-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.pdf-date-row label {
+    min-width: 70px;
+    color: #dee2e6;
+    font-size: 0.9rem;
+}
+
+.pdf-date-input {
+    flex: 1;
+    background: #2b3035;
+    border: 1px solid #495057;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    color-scheme: dark;
+    transition: border-color 0.15s ease;
+}
+
+.pdf-date-input:focus {
+    outline: none;
+    border-color: #ffc107;
+    box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.25);
+}
+
+.pdf-date-error {
+    color: #e53935;
+    font-size: 0.85rem;
+    margin: 0;
 }
 
 /* === PODGLĄD PDF === */

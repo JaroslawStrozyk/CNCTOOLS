@@ -65,6 +65,8 @@ MagazynTestCase:
 from unittest import mock
 
 from django.test import TestCase, Client
+from django.db import IntegrityError
+from django.utils import timezone
 from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
 from rest_framework import status
@@ -73,7 +75,7 @@ from .models import (
     Dostawca, Pracownik, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     HistoriaUzyciaNarzedzia, FakturaZakupu, PozycjaGeneratora,
     Zamowienie, PozycjaZamowienia, ZapotrzebowanieTechnologa,
-    PozycjaZapotrzebowania
+    PozycjaZapotrzebowania, Uszkodzenie
 )
 
 
@@ -1600,6 +1602,212 @@ class MagazynViewTestCase(TestCase):
         response = self.client.get('/magazyn/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Magazyn')
+
+
+class KierownikPanelTestCase(APITestCase):
+    """Testy dla panelu kierownika: lekkie serializery (optymalizacja) oraz
+    eksport PDF listy "Narzędzia w użyciu" z opcjonalnym przedziałem dat."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('kier', 'kier@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=self.kategoria)
+        self.lokalizacja = Lokalizacja.objects.create(szafa="A", kolumna="01", polka="1")
+        self.maszyna = Maszyna.objects.create(nazwa="DMU60")
+        self.pracownik = Pracownik.objects.create(karta="12345", nazwisko="Kowalski", imie="Jan")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Frez walcowy D10",
+            numer_katalogowy="F10-VHM",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+        )
+        self.egzemplarz = EgzemplarzNarzedzia.objects.create(
+            narzedzie_typ=self.narzedzie, stan='nowe', lokalizacja=self.lokalizacja
+        )
+        self.historia = HistoriaUzyciaNarzedzia.objects.create(
+            egzemplarz=self.egzemplarz, maszyna=self.maszyna, pracownik=self.pracownik,
+            nr_zlecenia='26-0001',
+        )
+
+    @staticmethod
+    def _as_list(data):
+        if isinstance(data, dict) and 'results' in data:
+            return data['results']
+        return data
+
+    # ---------- Lekkie serializery (optymalizacja ładowania) ----------
+
+    def test_narzedzia_light_pomija_ciezkie_pola(self):
+        """?light=true zwraca odchudzony narzędzie z zagnieżdżoną podkategorią,
+        ale bez ciężkich relacji (dostawca/lokalizacja)."""
+        response = self.client.get('/api/narzedzia/?light=true')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rec = next(r for r in self._as_list(response.data) if r['id'] == self.narzedzie.id)
+        # Kształt oczekiwany przez front Kierownik.vue
+        self.assertEqual(rec['podkategoria']['nazwa'], 'VHM')
+        self.assertEqual(rec['podkategoria']['kategoria_nazwa'], 'Frezy')
+        self.assertIn('calkowita_ilosc', rec)
+        # Ciężkie pola pełnego serializera nie powinny być obecne
+        self.assertNotIn('ostatni_dostawca', rec)
+        self.assertNotIn('domyslna_lokalizacja', rec)
+
+    def test_narzedzia_pelny_zawiera_dostawce(self):
+        """Bez ?light pełny serializer wciąż zwraca komplet pól (brak regresji)."""
+        response = self.client.get('/api/narzedzia/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rec = next(r for r in self._as_list(response.data) if r['id'] == self.narzedzie.id)
+        self.assertIn('ostatni_dostawca', rec)
+
+    def test_historia_w_uzyciu_light_ksztalt(self):
+        """?w_uzyciu=true&light=true zwraca slim historię z zachowanym kształtem."""
+        response = self.client.get('/api/historia/?w_uzyciu=true&light=true')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        items = self._as_list(response.data)
+        self.assertEqual(len(items), 1)
+        rec = items[0]
+        self.assertEqual(rec['nr_zlecenia'], '26-0001')
+        self.assertEqual(rec['maszyna']['nazwa'], 'DMU60')
+        self.assertEqual(rec['pracownik']['nazwisko'], 'Kowalski')
+        self.assertEqual(rec['egzemplarz']['narzedzie_typ']['id'], self.narzedzie.id)
+        self.assertEqual(
+            rec['egzemplarz']['narzedzie_typ']['podkategoria']['kategoria']['nazwa'], 'Frezy'
+        )
+        # Slim: brak pełnych, ciężkich gałęzi
+        self.assertNotIn('pracownik_zwracajacy', rec)
+
+    # ---------- Eksport PDF listy "Narzędzia w użyciu" ----------
+
+    def test_pdf_lista_w_uzyciu_cala(self):
+        """Bez dat generuje PDF całej listy w użyciu."""
+        response = self.client.post('/api/historia/pdf_lista_w_uzyciu/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertTrue(response.content.startswith(b'%PDF-'))
+
+    def test_pdf_lista_w_uzyciu_przedzial_dat(self):
+        """Przedział dat filtruje po dacie pobrania (data_wydania)."""
+        # data_wydania = auto_now_add → nadpisujemy przez update (omija auto_now_add)
+        HistoriaUzyciaNarzedzia.objects.filter(pk=self.historia.pk).update(
+            data_wydania='2026-03-15T10:00:00+00:00'
+        )
+        # Zakres obejmujący rekord
+        resp_in = self.client.post('/api/historia/pdf_lista_w_uzyciu/',
+                                   {'data_od': '2026-03-01', 'data_do': '2026-03-31'}, format='json')
+        self.assertEqual(resp_in.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp_in.content.startswith(b'%PDF-'))
+        # Zakres poza rekordem — wciąż poprawny PDF (pusta lista)
+        resp_out = self.client.post('/api/historia/pdf_lista_w_uzyciu/',
+                                    {'data_od': '2026-05-01', 'data_do': '2026-05-31'}, format='json')
+        self.assertEqual(resp_out.status_code, status.HTTP_200_OK)
+        self.assertTrue(resp_out.content.startswith(b'%PDF-'))
+
+    def test_pdf_lista_w_uzyciu_pomija_zwrocone(self):
+        """Egzemplarze już zwrócone nie trafiają na listę w użyciu (PDF generuje się mimo to)."""
+        # Zwróć jedyny egzemplarz
+        HistoriaUzyciaNarzedzia.objects.filter(pk=self.historia.pk).update(
+            data_zwrotu='2026-04-01T10:00:00+00:00'
+        )
+        response = self.client.post('/api/historia/pdf_lista_w_uzyciu/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.content.startswith(b'%PDF-'))
+
+
+class ZwrotRegeneracjaTestCase(APITestCase):
+    """Regresja: zwrot narzędzia jako "Zużyte" (uszkodzone_regeneracja).
+
+    Pokrywa dwa sprzężone błędy naprawione w tej sesji:
+      1. Generator numeru karty sortował tekstowo → po przekroczeniu 999 zapętlał
+         się na istniejącym numerze (kolizja unique).
+      2. Akcja zwrot nie była atomowa → nieudane tworzenie karty zostawiało
+         "ducha": historia zamknięta (data_zwrotu), bez karty, egzemplarz nieusunięty.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('regtest', 'reg@test.pl', 'test123')
+        self.client.force_authenticate(user=self.user)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=self.kategoria)
+        self.lokalizacja = Lokalizacja.objects.create(szafa="A", kolumna="01", polka="1")
+        self.maszyna = Maszyna.objects.create(nazwa="DMU60")
+        self.pracownik = Pracownik.objects.create(karta="12345", nazwisko="Kowalski", imie="Jan")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria, opis="Frez D10",
+            numer_katalogowy="F10", opakowanie="szt", ilosc_w_opakowaniu=1
+        )
+        self.rok = timezone.now().year
+
+    def _wydaj(self):
+        """Tworzy egzemplarz w użyciu i zwraca (egzemplarz, historia)."""
+        egz = EgzemplarzNarzedzia.objects.create(
+            narzedzie_typ=self.narzedzie, stan='nowe', lokalizacja=self.lokalizacja
+        )
+        hist = HistoriaUzyciaNarzedzia.objects.create(
+            egzemplarz=egz, maszyna=self.maszyna, pracownik=self.pracownik
+        )
+        return egz, hist
+
+    def test_generator_regeneracji_numeryczny_po_999(self):
+        """Po przekroczeniu 999 generator liczy numerycznie, nie tekstowo."""
+        Uszkodzenie.objects.create(numer_karty=f'{self.rok}/999R')
+        Uszkodzenie.objects.create(numer_karty=f'{self.rok}/1000R')
+        # Sort tekstowy zwróciłby 999R i wygenerował 1000R (kolizja). Numerycznie → 1001R.
+        self.assertEqual(
+            Uszkodzenie.generuj_numer_karty_regeneracji(), f'{self.rok}/1001R'
+        )
+
+    def test_generator_zwykly_numeryczny_po_999(self):
+        """Ten sam fix dla zwykłych kart uszkodzeń (bez sufiksu R)."""
+        Uszkodzenie.objects.create(numer_karty=f'{self.rok}/999')
+        Uszkodzenie.objects.create(numer_karty=f'{self.rok}/1000')
+        self.assertEqual(
+            Uszkodzenie.generuj_numer_karty(), f'{self.rok}/1001'
+        )
+
+    def test_zwrot_regeneracja_tworzy_karte_i_usuwa_egzemplarz(self):
+        """Pełny zwrot 'Zużyte' nawet przy liczniku > 1000: 200, karta powstaje, egzemplarz znika."""
+        # Dopchnij licznik ponad granicę, która wcześniej blokowała zwroty.
+        Uszkodzenie.objects.create(numer_karty=f'{self.rok}/1000R')
+        egz, hist = self._wydaj()
+
+        response = self.client.post(
+            f'/api/historia/{hist.id}/zwrot/',
+            {'stan_po_zwrocie': 'uszkodzone_regeneracja', 'pracownik_zwracajacy_id': self.pracownik.id},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Udany zwrot regeneracji usuwa egzemplarz; historia kasuje się kaskadowo (CASCADE).
+        self.assertFalse(EgzemplarzNarzedzia.objects.filter(id=egz.id).exists())
+        self.assertFalse(HistoriaUzyciaNarzedzia.objects.filter(id=hist.id).exists())
+        # Powstała nowa karta regeneracji z poprawnym kolejnym numerem
+        self.assertTrue(
+            Uszkodzenie.objects.filter(numer_karty=f'{self.rok}/1001R').exists()
+        )
+
+    def test_zwrot_regeneracja_rollback_przy_bledzie_karty(self):
+        """Gdy tworzenie karty padnie, transakcja się wycofuje: brak 'ducha', data_zwrotu pusta, 400."""
+        egz, hist = self._wydaj()
+
+        with mock.patch.object(
+            Uszkodzenie.objects, 'create', side_effect=IntegrityError('symulacja kolizji')
+        ):
+            response = self.client.post(
+                f'/api/historia/{hist.id}/zwrot/',
+                {'stan_po_zwrocie': 'uszkodzone_regeneracja', 'pracownik_zwracajacy_id': self.pracownik.id},
+                format='json'
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # Kluczowe: zwrot NIE został utrwalony — ponowna próba jest możliwa
+        hist.refresh_from_db()
+        self.assertIsNone(hist.data_zwrotu)
+        egz.refresh_from_db()
+        self.assertTrue(EgzemplarzNarzedzia.objects.filter(id=egz.id).exists())
+        self.assertNotEqual(egz.stan, 'uszkodzone_regeneracja')
 
 
 # ========== RUNNER ==========

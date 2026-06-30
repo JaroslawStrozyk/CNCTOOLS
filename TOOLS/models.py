@@ -458,39 +458,41 @@ class Uszkodzenie(models.Model):
     def generuj_numer_karty(cls):
         """Generuje unikalny numer karty uszkodzenia w formacie ROK/NNN"""
         rok = timezone.now().year
-        # Filtruj tylko karty bez sufiksu R (czyli zwykłe uszkodzenia)
-        ostatnia = cls.objects.filter(
+        # UWAGA: maksimum liczone NUMERYCZNIE, nie przez order_by('-numer_karty').
+        # Sort tekstowy myli się po przekroczeniu 999 ('999' > '1000' jako string),
+        # przez co generator zapętlał się na istniejącym numerze → kolizja unique.
+        ostatni_numer = 0
+        numery = cls.objects.filter(
             numer_karty__startswith=f'{rok}/'
         ).exclude(
             numer_karty__endswith='R'
-        ).order_by('-numer_karty').first()
-        if ostatnia:
+        ).values_list('numer_karty', flat=True)
+        for nr in numery:
             try:
-                ostatni_numer = int(ostatnia.numer_karty.split('/')[1])
+                n = int(nr.split('/')[1])
             except (ValueError, IndexError):
-                ostatni_numer = 0
-        else:
-            ostatni_numer = 0
+                continue
+            if n > ostatni_numer:
+                ostatni_numer = n
         return f'{rok}/{ostatni_numer + 1:03d}'
 
     @classmethod
     def generuj_numer_karty_regeneracji(cls):
         """Generuje unikalny numer karty regeneracji w formacie ROK/NNNR"""
         rok = timezone.now().year
-        # Filtruj tylko karty z sufiksem R (regeneracje)
-        ostatnia = cls.objects.filter(
+        # UWAGA: maksimum liczone NUMERYCZNIE (patrz komentarz w generuj_numer_karty).
+        ostatni_numer = 0
+        numery = cls.objects.filter(
             numer_karty__startswith=f'{rok}/',
             numer_karty__endswith='R'
-        ).order_by('-numer_karty').first()
-        if ostatnia:
+        ).values_list('numer_karty', flat=True)
+        for nr in numery:
             try:
-                # Usuń sufiks R i pobierz numer
-                numer_str = ostatnia.numer_karty.split('/')[1].rstrip('R')
-                ostatni_numer = int(numer_str)
+                n = int(nr.split('/')[1].rstrip('R'))
             except (ValueError, IndexError):
-                ostatni_numer = 0
-        else:
-            ostatni_numer = 0
+                continue
+            if n > ostatni_numer:
+                ostatni_numer = n
         return f'{rok}/{ostatni_numer + 1:03d}R'
 
     def __str__(self):

@@ -143,7 +143,15 @@ def main():
         "Migracje bazy danych"
     )
 
-    # 7. Podsumowanie
+    # 7. Naprawa danych: dokonczenie zaleglych zwrotow "Zuzyte" (uszkodzone_regeneracja)
+    #    sprzed naprawy generatora numeru karty. Tworzy brakujace karty regeneracji
+    #    i usuwa egzemplarze-duchy. IDEMPOTENTNE - bez duchow nic nie robi (Naprawiono: 0).
+    run_command(
+        f"{sys.executable} manage.py napraw_zwroty_regeneracja --apply",
+        "Naprawa zaleglych zwrotow 'Zuzyte' (duchy egzemplarzy)"
+    )
+
+    # 8. Podsumowanie
     print(f"{GREEN}")
     print("=" * 64)
     print("              SETUP ZAKONCZONY POMYSLNIE!")

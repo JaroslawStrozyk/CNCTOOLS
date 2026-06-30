@@ -237,6 +237,7 @@
     {% block content %}{% endblock %}
 
     <!-- Dolna sekcja: podpisy + stopka -->
+    {% block page_bottom %}
     <div class="page-bottom">
         {% block signatures %}{% endblock %}
         <div class="page-footer">
@@ -245,5 +246,6 @@
             <span class="footer-right">Strona 1 z 1</span>
         </div>
     </div>
+    {% endblock %}
 </body>
 </html>

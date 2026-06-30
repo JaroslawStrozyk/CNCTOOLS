@@ -215,6 +215,27 @@ class NarzedzieMagazynoweProdSerializer(serializers.ModelSerializer):
         return bool(obj.obraz)
 
 
+class NarzedzieMagazynoweKierownikSerializer(serializers.ModelSerializer):
+    """Lekki serializer dla listy narzędzi w panelu kierownika.
+
+    Zachowuje kształt zagnieżdżonej `podkategoria` oczekiwany przez front
+    (Kierownik.vue), ale pomija ciężkie pola (dostawca, lokalizacja, faktury,
+    metadane) — payload dla ~1500 typów spada wielokrotnie.
+    """
+    podkategoria = PodkategoriaSerializer(read_only=True)
+    ilosc_nowych = serializers.IntegerField(read_only=True)
+    ilosc_uzywanych_dostepnych = serializers.IntegerField(read_only=True)
+    ilosc_w_uzyciu = serializers.IntegerField(read_only=True)
+    calkowita_ilosc = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = NarzedzieMagazynowe
+        fields = [
+            'id', 'opis', 'numer_katalogowy', 'obraz', 'podkategoria',
+            'ilosc_nowych', 'ilosc_uzywanych_dostepnych', 'ilosc_w_uzyciu', 'calkowita_ilosc',
+        ]
+
+
 class EgzemplarzNarzedziaSerializer(serializers.ModelSerializer):
     narzedzie_typ = NarzedzieMagazynoweSerializer(read_only=True)
     narzedzie_typ_id = serializers.PrimaryKeyRelatedField(
@@ -325,6 +346,60 @@ class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
             'uszkodzone_regeneracja': 'Do regeneracji'
         }
         return stan_map.get(obj.stan_po_zwrocie, obj.stan_po_zwrocie)
+
+
+class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
+    """Odchudzony serializer dla zakładki "Narzędzia w użyciu" (panel kierownika).
+
+    Zwraca wyłącznie pola wykorzystywane przez tabelę, wykres i modal w
+    Kierownik.vue, zachowując ich kształt. Pomija pełne, głęboko zagnieżdżone
+    obiekty (cały NarzedzieMagazynowe, dostawca, lokalizacja, user pracownika),
+    dzięki czemu payload ~800 rekordów drastycznie maleje. Korzysta z
+    select_related ustawionego we viewsecie — bez dodatkowych zapytań.
+    """
+    egzemplarz = serializers.SerializerMethodField()
+    maszyna = serializers.SerializerMethodField()
+    pracownik = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HistoriaUzyciaNarzedzia
+        fields = ['id', 'data_wydania', 'nr_zlecenia', 'egzemplarz', 'maszyna', 'pracownik']
+
+    def get_maszyna(self, obj):
+        if not obj.maszyna:
+            return None
+        return {'id': obj.maszyna.id, 'nazwa': obj.maszyna.nazwa}
+
+    def get_pracownik(self, obj):
+        if not obj.pracownik:
+            return None
+        return {'nazwisko': obj.pracownik.nazwisko, 'imie': obj.pracownik.imie}
+
+    def get_egzemplarz(self, obj):
+        e = obj.egzemplarz
+        if not e:
+            return None
+        nt = e.narzedzie_typ
+        narzedzie_typ = None
+        if nt:
+            podkategoria = None
+            if nt.podkategoria:
+                kategoria = None
+                if nt.podkategoria.kategoria:
+                    kategoria = {'nazwa': nt.podkategoria.kategoria.nazwa}
+                podkategoria = {'nazwa': nt.podkategoria.nazwa, 'kategoria': kategoria}
+            narzedzie_typ = {
+                'id': nt.id,
+                'opis': nt.opis,
+                'opakowanie': nt.opakowanie,
+                'podkategoria': podkategoria,
+            }
+        return {
+            'oznaczenie': e.oznaczenie,
+            'jednostka': e.jednostka,
+            'ilosc_w_komplecie': e.ilosc_w_komplecie,
+            'narzedzie_typ': narzedzie_typ,
+        }
 
 
 class UszkodzenieSerializer(serializers.ModelSerializer):
@@ -448,6 +523,26 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
             }
             return stan_map.get(obj.egzemplarz.stan, obj.egzemplarz.stan)
         return None
+
+
+class UszkodzenieListLightSerializer(UszkodzenieSerializer):
+    """Odchudzony serializer listy dla Zwroty.vue (?light=true).
+
+    Reużywa metody get_* z UszkodzenieSerializer, ale zwraca WYŁĄCZNIE pola
+    wykorzystywane przez tabele (Uszkodzone/Zużyte), wyszukiwarkę i modale —
+    bez ciężkich zagnieżdżeń (cały EgzemplarzNarzedzia→NarzedzieMagazynowe z
+    obrazem/dostawcą oraz pełny Pracownik). Przy ~1000+ kartach payload spada
+    wielokrotnie. Zapisy (PATCH/DELETE) idą na endpoint szczegółu pełnym
+    serializerem — light dotyczy tylko akcji `list`.
+    """
+    class Meta(UszkodzenieSerializer.Meta):
+        fields = [
+            'id', 'numer_karty', 'data_uszkodzenia', 'stan_egzemplarza',
+            'kategoria_narzedzia', 'opis_narzedzia', 'numer_katalogowy',
+            'ostatnia_lokalizacja', 'maszyna_uszkodzenia', 'ostatni_pracownik',
+            'nazwisko_zglaszajacego', 'przyczyna_uszkodzenia', 'stracony_czas',
+            'opis_uszkodzenia',
+        ]
 
 
 class PozycjaZamowieniaSerializer(serializers.ModelSerializer):
