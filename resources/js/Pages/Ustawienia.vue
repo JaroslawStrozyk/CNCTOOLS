@@ -268,7 +268,8 @@
                                     <div class="config-row"><span class="config-label">Konto email</span><span>{{ emailConfig.email_host_user }}</span></div>
                                     <div class="config-row"><span class="config-label">Email nadawcy</span><span>{{ emailConfig.default_from_email }}</span></div>
                                     <div class="config-row"><span class="config-label">Adres testowy</span><span>{{ emailConfig.email_test_address }}</span></div>
-                                    <div class="config-row"><span class="config-label">Adres DW</span><span>{{ emailConfig.email_dw || '-' }}</span></div>
+                                    <div class="config-row"><span class="config-label">Adres DW 1</span><span>{{ emailConfig.email_dw || '-' }}</span></div>
+                                    <div class="config-row"><span class="config-label">Adres DW 2</span><span>{{ emailConfig.email_dw2 || '-' }}</span></div>
                                     <div class="config-row"><span class="config-label">Adres Szefa</span><span>{{ emailConfig.email_szef || '-' }}</span></div>
                                     <div class="config-row">
                                         <span class="config-label">Status SMTP</span>

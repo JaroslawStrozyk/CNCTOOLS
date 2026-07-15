@@ -829,6 +829,62 @@ class GeneratorZamowienTestCase(APITestCase):
         self.assertIn(narzedzie.id, ids)
 
     # ========================================================================
+    # Masowe usuwanie pozycji generatora (bulk-delete)
+    # ========================================================================
+
+    def _narzedzie_z_limitami(self, opis):
+        return NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria, opis=opis, opakowanie="szt",
+            ilosc_w_opakowaniu=1, stan_minimalny=5, stan_maksymalny=20,
+            ostatni_dostawca=self.dostawca,
+        )
+
+    def test_bulk_delete_usuwa_zaznaczone_zostawia_reszte(self):
+        n1 = self.narzedzie_z_limitami
+        n2 = self._narzedzie_z_limitami("Frez 2")
+        n3 = self._narzedzie_z_limitami("Frez 3")  # ma zostać
+        self.client.get('/api/generator-zamowien/')  # populate PozycjaGeneratora
+        for n in (n1, n2, n3):
+            self.assertTrue(PozycjaGeneratora.objects.filter(narzedzie_typ=n).exists())
+
+        resp = self.client.post(
+            '/api/generator-zamowien/bulk-delete/',
+            {'narzedzie_ids': [n1.id, n2.id]}, format='json'
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['usunieto'], 2)
+        self.assertFalse(PozycjaGeneratora.objects.filter(narzedzie_typ=n1).exists())
+        self.assertFalse(PozycjaGeneratora.objects.filter(narzedzie_typ=n2).exists())
+        self.assertTrue(PozycjaGeneratora.objects.filter(narzedzie_typ=n3).exists())
+
+    def test_bulk_delete_resetuje_w_zamowieniu(self):
+        narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria, opis="Frez zap", opakowanie="szt",
+            stan_minimalny=0, stan_maksymalny=0,  # tylko zapotrzebowanie go napędza
+        )
+        zap = ZapotrzebowanieTechnologa.objects.create(technolog=self.user, status='completed')
+        pozycja_zap = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=zap, narzedzie_typ=narzedzie, ilosc=5,
+        )
+        self.client.get('/api/generator-zamowien/')
+        pozycja_zap.refresh_from_db()
+        self.assertTrue(pozycja_zap.w_zamowieniu)
+
+        resp = self.client.post(
+            '/api/generator-zamowien/bulk-delete/',
+            {'narzedzie_ids': [narzedzie.id]}, format='json'
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        pozycja_zap.refresh_from_db()
+        self.assertFalse(pozycja_zap.w_zamowieniu)
+
+    def test_bulk_delete_pusta_lista_zwraca_400(self):
+        resp = self.client.post(
+            '/api/generator-zamowien/bulk-delete/', {'narzedzie_ids': []}, format='json'
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ========================================================================
     # BUG #3: nieprzypisane pozycje zapotrzebowania — assign/reject
     # ========================================================================
 
@@ -1534,17 +1590,22 @@ class EmailZamowieniaTestCase(TestCase):
 
     # ========== Email — tabela pozycji ==========
 
-    def test_email_skonsolidowana_kolumna_ilosc(self):
+    def test_email_kolumny_ilosc_jednostka(self):
+        """Osobne kolumny Ilość i Jednostka (jak w mailu do zatwierdzenia)."""
         html = self._wyslij_i_przechwyc_html()
-        self.assertIn('5 szt.', html)
-        self.assertIn('2 kompl. (10 szt.)', html)
-        self.assertNotIn('<th style="text-align: center;">Jednostka</th>', html)
+        self.assertIn('<th style="text-align: center;">Ilość</th>', html)
+        self.assertIn('<th style="text-align: center;">Jednostka</th>', html)
+        self.assertIn('szt.', html)                 # poz. na sztuki
+        self.assertIn('kompl. (10 szt.)', html)     # poz. w komplecie
 
-    def test_email_kolumna_cena(self):
+    def test_email_kolumny_cena_i_wartosc(self):
         html = self._wyslij_i_przechwyc_html()
-        self.assertIn('>Cena</th>', html)
-        self.assertIn('12,50 zł', html)
-        self.assertIn('0,00 zł', html)  # pozycja bez ceny
+        self.assertIn('>Cena jedn.<br>', html)  # nagłówek z drugą linią [netto]
+        self.assertIn('>Wartość<br>', html)
+        self.assertIn('[netto]', html)
+        self.assertIn('12,50 zł', html)   # cena za szt. (poz1)
+        self.assertIn('62,50 zł', html)   # wartość poz1: 5 × 12,50
+        self.assertIn('0,00 zł', html)    # poz2 bez ceny
 
     def test_email_podsumowanie_pozycje_i_suma(self):
         html = self._wyslij_i_przechwyc_html()
@@ -1571,7 +1632,8 @@ class EmailZamowieniaTestCase(TestCase):
         )
         self.assertEqual(wiersze[0], ['nr_katalogowy', 'nazwa', 'ilosc', 'cena_jedn', 'suma'])
         self.assertEqual(wiersze[1], ['F10', 'Frez D10', 5, 12.50, 62.50])
-        self.assertEqual(wiersze[2], ['P-1', 'Płytki', 2, 0.00, 0.00])
+        # Komplet: ilosc rozbita na sztuki (2 kompl. × 10 = 20 szt.); cena za szt.
+        self.assertEqual(wiersze[2], ['P-1', 'Płytki', 20, 0.00, 0.00])
 
     def test_xlsx_mapowanie_nr_dostawcy(self):
         from TOOLS.utils import _build_zamowienie_xlsx
@@ -1808,6 +1870,130 @@ class ZwrotRegeneracjaTestCase(APITestCase):
         egz.refresh_from_db()
         self.assertTrue(EgzemplarzNarzedzia.objects.filter(id=egz.id).exists())
         self.assertNotEqual(egz.stan, 'uszkodzone_regeneracja')
+
+
+class WartoscKompletuTestCase(TestCase):
+    """
+    Wartość pozycji/zamówienia dla narzędzi kupowanych w KOMPLETACH.
+    cena_jednostkowa dotyczy pojedynczej sztuki, więc wartość = ilosc × ilosc_w_komplecie × cena.
+    Pokrywa: model (oblicz_wartosc/save), agregat zamówienia, XLSX, mail HTML, komendę naprawczą.
+    """
+
+    def setUp(self):
+        self.kategoria = Kategoria.objects.create(nazwa="Płytki")
+        self.podkategoria = Podkategoria.objects.create(nazwa="Tokarskie", kategoria=self.kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TESTK", nazwa_firmy="Komplet Sp. z o.o.")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Płytka WNMG",
+            numer_katalogowy="WNMG-1",
+            opakowanie="kompl",
+            ilosc_w_opakowaniu=10,
+        )
+        self.zamowienie = Zamowienie.objects.create(
+            numer="2026/07/K01", dostawca=self.dostawca, email_docelowy="d@test.pl"
+        )
+
+    def _poz(self, jednostka='kompl', ilosc=1, w_komplecie=10, cena='30.00'):
+        return PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie,
+            narzedzie_typ=self.narzedzie,
+            narzedzie_opis="Płytka WNMG",
+            numer_katalogowy="WNMG-1",
+            ilosc_zamowiona=ilosc,
+            jednostka=jednostka,
+            ilosc_w_komplecie=w_komplecie,
+            cena_jednostkowa=cena,
+        )
+
+    # ========== Model ==========
+
+    def test_wartosc_kompletu_mnozona_przez_ilosc_w_komplecie(self):
+        """1 kompl. × 10 szt. × 30 zł = 300 zł (a nie 30 zł)."""
+        poz = self._poz(ilosc=1, w_komplecie=10, cena='30.00')
+        self.assertEqual(float(poz.wartosc_pozycji), 300.00)
+
+    def test_wartosc_sztuki_bez_mnoznika(self):
+        """Dla 'szt' mnożnik = 1: 5 × 12 = 60 zł."""
+        poz = self._poz(jednostka='szt', ilosc=5, w_komplecie=1, cena='12.00')
+        self.assertEqual(float(poz.wartosc_pozycji), 60.00)
+
+    def test_wartosc_wielu_kompletow(self):
+        """3 kompl. × 10 szt. × 41.39 zł = 1241.70 zł."""
+        poz = self._poz(ilosc=3, w_komplecie=10, cena='41.39')
+        self.assertEqual(float(poz.wartosc_pozycji), 1241.70)
+
+    def test_save_zawsze_przelicza_wartosc(self):
+        """Nawet gdy podano złe wartosc_pozycji, save() je nadpisuje poprawną."""
+        poz = PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie, narzedzie_typ=self.narzedzie,
+            narzedzie_opis="X", ilosc_zamowiona=2, jednostka='kompl',
+            ilosc_w_komplecie=10, cena_jednostkowa='30.00',
+            wartosc_pozycji=999,  # celowo błędna
+        )
+        self.assertEqual(float(poz.wartosc_pozycji), 600.00)
+
+    def test_brak_ceny_wartosc_zero(self):
+        poz = self._poz(cena=None)
+        self.assertEqual(float(poz.wartosc_pozycji), 0.00)
+
+    # ========== Agregat zamówienia ==========
+
+    def test_agregat_wartosci_zamowienia_z_kompletami(self):
+        """wartosc_zamowienia = suma wartosc_pozycji (1 kompl×10×30 + 2 szt×15)."""
+        from django.db.models import Sum
+        self._poz(ilosc=1, w_komplecie=10, cena='30.00')      # 300
+        self._poz(jednostka='szt', ilosc=2, w_komplecie=1, cena='15.00')  # 30
+        total = self.zamowienie.pozycje.aggregate(s=Sum('wartosc_pozycji'))['s']
+        self.assertEqual(float(total), 330.00)
+
+    # ========== XLSX ==========
+
+    def test_xlsx_komplet_suma_pelna(self):
+        import io
+        from openpyxl import load_workbook
+        from TOOLS.utils import _build_zamowienie_xlsx
+        self._poz(ilosc=2, w_komplecie=10, cena='30.00')  # 20 szt × 30 = 600
+        wb = load_workbook(io.BytesIO(_build_zamowienie_xlsx(list(self.zamowienie.pozycje.all()), {})))
+        wiersz = [list(r) for r in wb.active.iter_rows(values_only=True)][1]
+        # nr, nazwa, ilosc(szt), cena_jedn, suma
+        self.assertEqual(wiersz[2], 20)       # ilość w sztukach
+        self.assertEqual(wiersz[3], 30.00)    # cena za sztukę
+        self.assertEqual(wiersz[4], 600.00)   # suma pełna
+
+    # ========== Mail HTML (send_zamowienie_email) ==========
+
+    def test_email_suma_uwzglednia_komplety(self):
+        from TOOLS import utils
+        self._poz(ilosc=2, w_komplecie=10, cena='30.00')  # 600
+        with mock.patch.object(utils, 'send_html_email', return_value={'success': True}) as m:
+            utils.send_zamowienie_email(self.zamowienie)
+        html = m.call_args.kwargs['html_content']
+        self.assertIn('600,00 zł', html)          # suma pełna (2 kompl × 10 × 30)
+        self.assertIn('kompl. (10 szt.)', html)   # kolumna Jednostka
+
+    # ========== Komenda przelicz_wartosci_zamowien ==========
+
+    def test_komenda_przelicza_zanizone_wartosci(self):
+        from django.core.management import call_command
+        # Zapisz błędne (zaniżone) wartości bezpośrednio, omijając save()
+        poz = self._poz(ilosc=1, w_komplecie=10, cena='30.00')
+        PozycjaZamowienia.objects.filter(pk=poz.pk).update(wartosc_pozycji=30)  # zaniżona
+        Zamowienie.objects.filter(pk=self.zamowienie.pk).update(wartosc_zamowienia=30)
+
+        call_command('przelicz_wartosci_zamowien', '--apply', verbosity=0)
+
+        poz.refresh_from_db()
+        self.zamowienie.refresh_from_db()
+        self.assertEqual(float(poz.wartosc_pozycji), 300.00)
+        self.assertEqual(float(self.zamowienie.wartosc_zamowienia), 300.00)
+
+    def test_komenda_idempotentna(self):
+        from django.core.management import call_command
+        self._poz(ilosc=1, w_komplecie=10, cena='30.00')  # już poprawne = 300
+        call_command('przelicz_wartosci_zamowien', '--apply', verbosity=0)
+        self.zamowienie.refresh_from_db()
+        self.assertEqual(float(self.zamowienie.wartosc_zamowienia), 300.00)
 
 
 # ========== RUNNER ==========

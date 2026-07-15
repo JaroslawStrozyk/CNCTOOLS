@@ -70,6 +70,20 @@ def save_to_imap_sent(email_message):
         logger.error(f"IMAP: Błąd zapisu do folderu Wysłane — {str(e)}")
 
 
+def get_dw_emails():
+    """
+    Zwraca listę adresów DW (do wiadomości) z konfiguracji — maksymalnie 2, pomija puste.
+
+    Źródło: settings.EMAIL_DW oraz settings.EMAIL_DW2 (z pass_file.py).
+    Używane jako kopia (CC) przy wysyłce zamówień do dostawcy i do zatwierdzenia.
+    """
+    adresy = [
+        (getattr(settings, 'EMAIL_DW', '') or '').strip(),
+        (getattr(settings, 'EMAIL_DW2', '') or '').strip(),
+    ]
+    return [a for a in adresy if a][:2]
+
+
 def send_html_email(recipient_email, subject, html_content, attachments=None, cc_email=None):
     """
     Wysyła email HTML na wskazany adres.
@@ -127,9 +141,12 @@ def send_html_email(recipient_email, subject, html_content, attachments=None, cc
         to_list = [recipient_email]
         cc_list = []
 
-        # Dodaj kopię DW jeśli podano
+        # Dodaj kopię DW jeśli podano (obsługa pojedynczego adresu lub listy adresów)
         if cc_email:
-            cc_list.append(cc_email)
+            if isinstance(cc_email, (list, tuple)):
+                cc_list.extend([c for c in cc_email if c])
+            else:
+                cc_list.append(cc_email)
 
         # Tworzenie wiadomości email
         email = EmailMessage(
@@ -155,8 +172,8 @@ def send_html_email(recipient_email, subject, html_content, attachments=None, cc
         save_to_imap_sent(email)
 
         recipients_info = recipient_email
-        if cc_email:
-            recipients_info += f" (DW: {cc_email})"
+        if cc_list:
+            recipients_info += f" (DW: {', '.join(cc_list)})"
 
         logger.info(f"Email wysłany pomyślnie do: {recipients_info}")
 
@@ -197,7 +214,7 @@ def send_test_email(recipient_email=None):
         }
 
     # Pobierz adres DW z settings
-    cc_email = getattr(settings, 'EMAIL_DW', None)
+    cc_email = get_dw_emails()
 
     subject = "Test Email - CNC Tools"
 
@@ -216,14 +233,17 @@ def send_test_email(recipient_email=None):
                 background-color: #f4f4f4;
                 padding: 20px;
                 margin: 0;
+                text-align: center; /* centruje inline-block .email-container */
             }}
             .email-container {{
                 background-color: white;
                 padding: 30px;
                 border-radius: 10px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                max-width: 900px;
-                margin: 0 auto;
+                display: inline-block;       /* panel rośnie do zawartości tabeli */
+                min-width: 600px;            /* sensowne minimum przy krótkich treściach */
+                text-align: left;            /* przywróć po body text-align: center */
+                box-sizing: border-box;
             }}
             .header {{
                 background: linear-gradient(to bottom, #FF0000, #8B0000);
@@ -320,7 +340,7 @@ def send_zamowienie_email(zamowienie, override_email=None):
     from .models import NumerKatalogowyDostawcy
 
     # Pobierz email DW z settings
-    cc_email = getattr(settings, 'EMAIL_DW', None)
+    cc_email = get_dw_emails()
 
     # Przygotuj dane
     dostawca = zamowienie.dostawca
@@ -353,11 +373,12 @@ def send_zamowienie_email(zamowienie, override_email=None):
     for poz in pozycje:
         suma_ilosc += poz.ilosc_zamowiona
         jednostka_display = f"kompl. ({poz.ilosc_w_komplecie} szt.)" if poz.jednostka == 'kompl' else 'szt.'
-        # Skonsolidowana kolumna "Ilość": wartość + jednostka
-        ilosc_display = f"{poz.ilosc_zamowiona} {jednostka_display}"
-        # Cena jednostkowa pozycji (brak ceny traktowany jako 0.00)
+        # Cena jednostkowa pozycji (brak ceny traktowany jako 0.00) — cena za sztukę,
+        # więc dla kompletów mnożymy przez ilość sztuk w komplecie
         cena = Decimal(str(poz.cena_jednostkowa)) if poz.cena_jednostkowa is not None else Decimal('0.00')
-        suma_wartosc += cena * poz.ilosc_zamowiona
+        mnoznik = poz.ilosc_w_komplecie if poz.jednostka == 'kompl' else 1
+        wartosc_poz = cena * poz.ilosc_zamowiona * mnoznik
+        suma_wartosc += wartosc_poz
 
         narzedzie_full = f"{poz.kategoria_nazwa} {poz.podkategoria_nazwa}".strip()
         nr_dostawcy_cell = ''
@@ -369,8 +390,10 @@ def send_zamowienie_email(zamowienie, override_email=None):
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;"><strong>{poz.narzedzie_opis}</strong></td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">{poz.numer_katalogowy}</td>
             {nr_dostawcy_cell}
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{ilosc_display}</strong></td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;"><strong>{poz.ilosc_zamowiona}</strong></td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: center;">{jednostka_display}</td>
             <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;">{_format_pln(cena)}</td>
+            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: right;"><strong>{_format_pln(wartosc_poz)}</strong></td>
         </tr>
         """
 
@@ -397,14 +420,17 @@ def send_zamowienie_email(zamowienie, override_email=None):
                 background-color: #f4f4f4;
                 padding: 20px;
                 margin: 0;
+                text-align: center; /* centruje inline-block .email-container */
             }}
             .email-container {{
                 background-color: white;
                 padding: 30px;
                 border-radius: 10px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                max-width: 900px;
-                margin: 0 auto;
+                display: inline-block;       /* panel rośnie do zawartości tabeli */
+                min-width: 600px;            /* sensowne minimum przy krótkich treściach */
+                text-align: left;            /* przywróć po body text-align: center */
+                box-sizing: border-box;
             }}
             .header {{
                 background: linear-gradient(to bottom, #FF0000, #8B0000);
@@ -479,13 +505,15 @@ def send_zamowienie_email(zamowienie, override_email=None):
                         <th>Nr katalogowy</th>
                         {'<th>Nr u dostawcy</th>' if has_supplier_numbers else ''}
                         <th style="text-align: center;">Ilość</th>
-                        <th style="text-align: right;">Cena</th>
+                        <th style="text-align: center;">Jednostka</th>
+                        <th style="text-align: right;">Cena jedn.<br><span style="font-weight: normal; font-size: 0.8em; color: #ffffff;">[netto]</span></th>
+                        <th style="text-align: right;">Wartość<br><span style="font-weight: normal; font-size: 0.8em; color: #ffffff;">[netto]</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     {pozycje_html}
                     <tr class="total-row">
-                        <td colspan="{6 if has_supplier_numbers else 5}" style="padding: 15px; text-align: right;">
+                        <td colspan="{8 if has_supplier_numbers else 7}" style="padding: 15px; text-align: right;">
                             POZYCJI: <strong style="font-size: 1.2em;">{suma_ilosc}</strong>;&nbsp;
                             SUMA: <strong style="font-size: 1.2em;">{_format_pln(suma_wartosc)}</strong>
                         </td>
@@ -585,11 +613,15 @@ def _build_zamowienie_xlsx(pozycje, mapping):
     for poz in pozycje:
         nr = mapping.get(poz.narzedzie_typ_id) or poz.numer_katalogowy or ''
         cena = Decimal(str(poz.cena_jednostkowa)) if poz.cena_jednostkowa is not None else Decimal('0.00')
-        suma = cena * poz.ilosc_zamowiona
+        # cena_jedn dotyczy pojedynczej sztuki — dla kompletów ilość rozbijamy na sztuki,
+        # by w arkuszu zachodziło ilosc × cena_jedn = suma
+        mnoznik = poz.ilosc_w_komplecie if poz.jednostka == 'kompl' else 1
+        ilosc_szt = poz.ilosc_zamowiona * mnoznik
+        suma = cena * ilosc_szt
         ws.append([
             nr,
             poz.narzedzie_opis or '',
-            poz.ilosc_zamowiona,
+            ilosc_szt,
             float(cena),
             float(suma),
         ])
@@ -756,7 +788,7 @@ def send_approval_email(zamowienia, override_email=None):
                         <th>Nr zamówienia</th>
                         <th>Dostawca</th>
                         <th style="text-align: center;">Pozycji</th>
-                        <th style="text-align: right;">Wartość</th>
+                        <th style="text-align: right;">Wartość<br><span style="font-weight: normal; font-size: 0.8em; color: #ffffff;">[netto]</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -779,8 +811,8 @@ def send_approval_email(zamowienia, override_email=None):
                         <th>Nr katalogowy</th>
                         <th style="text-align: center;">Ilość</th>
                         <th style="text-align: center;">Jednostka</th>
-                        <th style="text-align: right;">Cena jedn.</th>
-                        <th style="text-align: right;">Wartość</th>
+                        <th style="text-align: right;">Cena jedn.<br><span style="font-weight: normal; font-size: 0.8em; color: #ffffff;">[netto]</span></th>
+                        <th style="text-align: right;">Wartość<br><span style="font-weight: normal; font-size: 0.8em; color: #ffffff;">[netto]</span></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -815,4 +847,5 @@ def send_approval_email(zamowienia, override_email=None):
         recipient_email=email_szef,
         subject=subject,
         html_content=html_content,
+        cc_email=get_dw_emails(),
     )

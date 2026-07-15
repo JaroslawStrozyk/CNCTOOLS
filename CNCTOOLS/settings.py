@@ -27,6 +27,12 @@ except ImportError:
         "Brak pliku pass_file.py! Skopiuj pass_file.py.example i uzupełnij danymi."
     )
 
+# Drugi adres DW — opcjonalny, importowany osobno by nie wymuszać zmian w starych pass_file.py
+try:
+    from .pass_file import EMAIL_DW2
+except ImportError:
+    EMAIL_DW2 = ''
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -228,7 +234,7 @@ TECHNOLOG_PAGE_SIZE = 50
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.13.3g',
+        'WERSJA'     : '1.14.0g',
         'MODYFIKACJA': '30.06.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',

@@ -151,6 +151,14 @@ def main():
         "Naprawa zaleglych zwrotow 'Zuzyte' (duchy egzemplarzy)"
     )
 
+    # 7b. Naprawa danych: przeliczenie wartosci pozycji/zamowien z mnoznikiem kompletu.
+    #     Cena jednostkowa dotyczy pojedynczej sztuki - dla kompletow wartosc byla zanizona
+    #     (brak mnozenia przez ilosc sztuk w komplecie). IDEMPOTENTNE.
+    run_command(
+        f"{sys.executable} manage.py przelicz_wartosci_zamowien --apply",
+        "Przeliczenie wartosci zamowien (mnoznik kompletu)"
+    )
+
     # 8. Podsumowanie
     print(f"{GREEN}")
     print("=" * 64)

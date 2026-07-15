@@ -167,7 +167,7 @@
                     </Column>
                     <Column header="Wartość" style="width: 110px;">
                         <template #body="{ data }">
-                            <strong>{{ (data.ilosc_zamowiona * (data.cena_jednostkowa || 0)).toFixed(2) }} zł</strong>
+                            <strong>{{ wartoscPozycji(data).toFixed(2) }} zł</strong>
                         </template>
                     </Column>
                     <Column v-if="canDeletePozycja" header="" style="width: 60px; text-align: center;">
@@ -351,16 +351,6 @@
                     </div>
 
                     <DataTable :value="realizacjaPozycje" class="p-datatable-sm realizacja-table" :scrollable="true" scrollHeight="400px">
-                        <Column header="" style="width: 50px; text-align: center;">
-                            <template #body="{ data }">
-                                <Checkbox
-                                    v-model="data.przyjmij"
-                                    :binary="true"
-                                    :disabled="data.ilosc_pozostala <= 0"
-                                    @change="onPrzyjmijToggle(data)"
-                                />
-                            </template>
-                        </Column>
                         <Column field="narzedzie_opis" header="Narzędzie" />
                         <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 140px;" />
                         <Column header="Zamówiono" style="width: 100px; text-align: center;">
@@ -369,9 +359,20 @@
                                 <span class="unit-label">{{ data.jednostka === 'kompl' ? 'kompl.' : 'szt.' }}</span>
                             </template>
                         </Column>
-                        <Column header="Przyjęto" style="width: 90px; text-align: center;">
+                        <Column header="Przyjęto" style="width: 130px; text-align: center;">
                             <template #body="{ data }">
-                                <span :class="{ 'text-green': data.ilosc_przyjeta > 0 }">{{ data.ilosc_przyjeta }}</span>
+                                <div v-if="data.ilosc_pozostala > 0 && !data.odpisz">
+                                    <InputNumber
+                                        v-model="data.ilosc_do_przyjecia"
+                                        :min="0"
+                                        :max="data.ilosc_pozostala"
+                                        inputClass="qty-input"
+                                        :inputStyle="{ width: '70px', textAlign: 'center' }"
+                                    />
+                                    <div v-if="data.ilosc_przyjeta > 0" class="text-muted" style="font-size: 0.72rem; margin-top: 2px;">już przyjęto: {{ data.ilosc_przyjeta }}</div>
+                                </div>
+                                <span v-else-if="data.ilosc_pozostala === 0" class="text-green">{{ data.ilosc_przyjeta }} ✓</span>
+                                <span v-else class="text-muted">-</span>
                             </template>
                         </Column>
                         <Column header="Pozostało" style="width: 90px; text-align: center;">
@@ -379,20 +380,6 @@
                                 <span :class="{ 'text-orange': data.ilosc_pozostala > 0, 'text-green': data.ilosc_pozostala === 0 }">
                                     {{ data.ilosc_pozostala }}
                                 </span>
-                            </template>
-                        </Column>
-                        <Column header="Do przyjęcia" style="width: 120px; text-align: center;">
-                            <template #body="{ data }">
-                                <InputNumber
-                                    v-if="data.przyjmij && data.ilosc_pozostala > 0"
-                                    v-model="data.ilosc_do_przyjecia"
-                                    :min="1"
-                                    :max="data.ilosc_pozostala"
-                                    inputClass="qty-input"
-                                    :inputStyle="{ width: '70px', textAlign: 'center' }"
-                                />
-                                <Tag v-else-if="data.ilosc_pozostala === 0" value="OK" severity="success" />
-                                <span v-else>-</span>
                             </template>
                         </Column>
                         <Column header="Odpisz" style="width: 80px; text-align: center;">
@@ -797,10 +784,15 @@ const canDeletePozycja = computed(() => {
     if (!selectedZamowienie.value) return false;
     return ['draft', 'pending_approval'].includes(selectedZamowienie.value.status);
 });
+// Wartość pozycji: cena jest za sztukę, więc dla kompletów mnożymy przez ilość sztuk w komplecie
+const wartoscPozycji = (p) => {
+    const mnoznik = p.jednostka === 'kompl' ? (p.ilosc_w_komplecie || 1) : 1;
+    return p.ilosc_zamowiona * mnoznik * (p.cena_jednostkowa || 0);
+};
 const obliczonaWartoscZamowienia = computed(() => {
     if (!selectedZamowienie.value?.pozycje) return '0.00';
     return selectedZamowienie.value.pozycje
-        .reduce((sum, p) => sum + p.ilosc_zamowiona * (p.cena_jednostkowa || 0), 0)
+        .reduce((sum, p) => sum + wartoscPozycji(p), 0)
         .toFixed(2);
 });
 const approvalTotal = computed(() => {
@@ -999,7 +991,7 @@ const realizacjaModalTitle = computed(() => {
 });
 
 const hasSelectedPozycje = computed(() => {
-    return realizacjaPozycje.value.some(p => (p.przyjmij || p.odpisz) && p.ilosc_pozostala > 0);
+    return realizacjaPozycje.value.some(p => ((p.ilosc_do_przyjecia > 0 && !p.odpisz) || p.odpisz) && p.ilosc_pozostala > 0);
 });
 
 const rozpocznijRealizacje = async (zamowienie) => {
@@ -1014,9 +1006,8 @@ const rozpocznijRealizacje = async (zamowienie) => {
         const res = await axios.get(`${API_URL}/zamowienia/${zamowienie.id}/stan_realizacji/`);
         realizacjaPozycje.value = res.data.pozycje.map(poz => ({
             ...poz,
-            przyjmij: false,
             odpisz: false,
-            ilosc_do_przyjecia: poz.ilosc_pozostala,
+            ilosc_do_przyjecia: 0,  // "ile przyjąć teraz" — domyślnie 0, magazynier wpisuje ręcznie
         }));
     } catch (error) {
         realizacjaError.value = 'Błąd ładowania danych: ' + (error.response?.data?.error || error.message);
@@ -1050,22 +1041,20 @@ const onAnulujRealizacja = async () => {
     realizacjaConfirmModalVisible.value = false;
 };
 
-const onPrzyjmijToggle = (poz) => {
-    if (poz.przyjmij) poz.odpisz = false;
-};
-
 const onOdpiszToggle = (poz) => {
-    if (poz.odpisz) poz.przyjmij = false;
+    // Odpisanie i przyjęcie wykluczają się — przy odpisaniu zeruj ilość do przyjęcia
+    if (poz.odpisz) poz.ilosc_do_przyjecia = 0;
 };
 
 const toggleSelectAll = () => {
     const val = realizacjaSelectAll.value;
     realizacjaPozycje.value.forEach(poz => {
         if (poz.ilosc_pozostala > 0) {
-            poz.przyjmij = val;
             if (val) {
                 poz.odpisz = false;
-                poz.ilosc_do_przyjecia = poz.ilosc_pozostala;
+                poz.ilosc_do_przyjecia = poz.ilosc_pozostala;  // pełna realizacja
+            } else {
+                poz.ilosc_do_przyjecia = 0;
             }
         }
     });
@@ -1074,19 +1063,15 @@ const toggleSelectAll = () => {
 const confirmRealizuj = async () => {
     realizacjaError.value = '';
 
-    const zaznaczone = realizacjaPozycje.value.filter(p => p.przyjmij && p.ilosc_pozostala > 0);
+    const zaznaczone = realizacjaPozycje.value.filter(p => p.ilosc_do_przyjecia > 0 && !p.odpisz && p.ilosc_pozostala > 0);
     const odpisane = realizacjaPozycje.value.filter(p => p.odpisz && p.ilosc_pozostala > 0);
 
     if (zaznaczone.length === 0 && odpisane.length === 0) {
-        realizacjaError.value = 'Zaznacz przynajmniej jedną pozycję do przyjęcia lub odpisania.';
+        realizacjaError.value = 'Wpisz ilość do przyjęcia lub zaznacz pozycję do odpisania.';
         return;
     }
 
     for (const poz of zaznaczone) {
-        if (!poz.ilosc_do_przyjecia || poz.ilosc_do_przyjecia <= 0) {
-            realizacjaError.value = 'Wszystkie zaznaczone pozycje muszą mieć ilość > 0.';
-            return;
-        }
         if (poz.ilosc_do_przyjecia > poz.ilosc_pozostala) {
             realizacjaError.value = `Ilość do przyjęcia nie może przekroczyć pozostałej (${poz.narzedzie_opis}).`;
             return;

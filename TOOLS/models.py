@@ -597,7 +597,28 @@ class PozycjaZamowienia(models.Model):
     def __str__(self):
         return f"{self.zamowienie.numer} - {self.narzedzie_opis} x{self.ilosc_zamowiona}"
 
+    @property
+    def mnoznik_kompletu(self):
+        """
+        Liczba sztuk przypadająca na jedną zamawianą jednostkę.
+        Dla 'kompl' = ilość sztuk w komplecie, dla 'szt' = 1.
+        cena_jednostkowa dotyczy pojedynczej sztuki, więc wartość pozycji
+        wymaga przemnożenia przez ten mnożnik.
+        """
+        return self.ilosc_w_komplecie if self.jednostka == 'kompl' else 1
+
+    def oblicz_wartosc(self):
+        """Wartość pozycji = ilość zamawiana × mnożnik kompletu × cena za sztukę."""
+        from decimal import Decimal
+        cena = self.cena_jednostkowa or 0
+        # Świeżo utworzony obiekt (bez refetch) może mieć cenę jako str — koercja do Decimal
+        if not isinstance(cena, Decimal):
+            cena = Decimal(str(cena))
+        return self.ilosc_zamowiona * self.mnoznik_kompletu * cena
+
     def save(self, *args, **kwargs):
+        # Jedno źródło prawdy dla wartości — nie da się jej rozjechać żadną ścieżką zapisu.
+        self.wartosc_pozycji = self.oblicz_wartosc()
         super().save(*args, **kwargs)
         if self.cena_jednostkowa is not None and self.narzedzie_typ_id:
             NarzedzieMagazynowe.objects.filter(pk=self.narzedzie_typ_id).update(

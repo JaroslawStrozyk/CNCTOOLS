@@ -110,6 +110,8 @@ urlpatterns = [
     path('api/generator-zamowien/gotowe/', views.generator_zamowien_gotowe_api, name='generator-zamowien-gotowe'),
     path('api/generator-zamowien/<int:narzedzie_id>/update/', views.generator_zamowien_update_api,
          name='generator-zamowien-update'),
+    path('api/generator-zamowien/bulk-delete/', views.generator_zamowien_bulk_delete_api,
+         name='generator-zamowien-bulk-delete'),
     path('api/generator-zamowien/<int:narzedzie_id>/delete/', views.generator_zamowien_delete_api,
          name='generator-zamowien-delete'),
     path('api/generator-zamowien/przypisz-pozycje/<int:pozycja_id>/',

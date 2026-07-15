@@ -671,21 +671,15 @@ def generator_zamowien_update_api(request, narzedzie_id):
     return Response({'success': True, 'message': 'Zaktualizowano pomyślnie'})
 
 
-@api_view(['DELETE'])
-def generator_zamowien_delete_api(request, narzedzie_id):
+def _usun_pozycje_generatora(narzedzie):
     """
-    Endpoint do usuwania pozycji z generatora.
-    Usuwa pozycję z PozycjaGeneratora. Jeśli pozycja pochodziła z zapotrzebowania
-    technologa, resetuje flagę w_zamowieniu, aby mogła wrócić przy kolejnym odświeżeniu.
+    Usuwa pozycje generatora dla danego narzędzia i cofa flagę w_zamowieniu na
+    powiązanych zapotrzebowaniach technologa. Zwraca zbiór id zapotrzebowań do
+    ewentualnego cofnięcia statusu 'ordered' → 'completed'.
+    Wspólna logika dla usuwania pojedynczego i masowego.
     """
-    from .models import NarzedzieMagazynowe, PozycjaGeneratora, PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
+    from .models import PozycjaGeneratora, PozycjaZapotrzebowania
 
-    try:
-        narzedzie = NarzedzieMagazynowe.objects.get(id=narzedzie_id)
-    except NarzedzieMagazynowe.DoesNotExist:
-        return Response({'error': 'Narzędzie nie istnieje'}, status=404)
-
-    # Znajdź pozycje generatora i cofnij flagę w_zamowieniu na powiązanych zapotrzebowaniach
     pozycje_generatora = PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie)
     zapotrzebowania_do_cofniecia = set()
 
@@ -705,19 +699,77 @@ def generator_zamowien_delete_api(request, narzedzie_id):
                         continue
 
     pozycje_generatora.delete()
+    return zapotrzebowania_do_cofniecia
 
-    # Cofnij status 'ordered' → 'completed' dla zapotrzebowań, które znów mają pozycje oczekujące
-    for zap_id in zapotrzebowania_do_cofniecia:
+
+def _cofnij_status_zapotrzebowan(zapotrzebowania_ids):
+    """Cofa status 'ordered' → 'completed' dla zapotrzebowań, które znów mają pozycje oczekujące."""
+    from .models import ZapotrzebowanieTechnologa
+
+    for zap_id in zapotrzebowania_ids:
         zap = ZapotrzebowanieTechnologa.objects.filter(id=zap_id, status='ordered').first()
         if zap and zap.pozycje.filter(narzedzie_typ__isnull=False, w_zamowieniu=False).exists():
             zap.status = 'completed'
             zap.save(update_fields=['status'])
 
-    # Logowanie
+
+@api_view(['DELETE'])
+def generator_zamowien_delete_api(request, narzedzie_id):
+    """
+    Endpoint do usuwania pozycji z generatora.
+    Usuwa pozycję z PozycjaGeneratora. Jeśli pozycja pochodziła z zapotrzebowania
+    technologa, resetuje flagę w_zamowieniu, aby mogła wrócić przy kolejnym odświeżeniu.
+    """
+    from .models import NarzedzieMagazynowe
+
+    try:
+        narzedzie = NarzedzieMagazynowe.objects.get(id=narzedzie_id)
+    except NarzedzieMagazynowe.DoesNotExist:
+        return Response({'error': 'Narzędzie nie istnieje'}, status=404)
+
+    with transaction.atomic():
+        zapotrzebowania_do_cofniecia = _usun_pozycje_generatora(narzedzie)
+        _cofnij_status_zapotrzebowan(zapotrzebowania_do_cofniecia)
+
     user_name = get_user_display_name(request.user)
     app_logger.warning(user_name, f"Usunięto z generatora zamówień: {narzedzie.opis}")
 
     return Response({'success': True, 'message': 'Usunięto z listy zamówień'})
+
+
+@api_view(['POST'])
+def generator_zamowien_bulk_delete_api(request):
+    """
+    Masowe usuwanie pozycji z generatora. Body: {narzedzie_ids: [id, ...]}.
+    Atomowe — cofa flagi w_zamowieniu i statusy zapotrzebowań w jednej transakcji.
+    """
+    from .models import NarzedzieMagazynowe
+
+    narzedzie_ids = request.data.get('narzedzie_ids', [])
+    if not isinstance(narzedzie_ids, list) or not narzedzie_ids:
+        return Response({'error': 'Brak pozycji do usunięcia'}, status=400)
+
+    narzedzia = list(NarzedzieMagazynowe.objects.filter(id__in=narzedzie_ids))
+    if not narzedzia:
+        return Response({'error': 'Nie znaleziono pozycji do usunięcia'}, status=404)
+
+    zapotrzebowania_do_cofniecia = set()
+    with transaction.atomic():
+        for narzedzie in narzedzia:
+            zapotrzebowania_do_cofniecia |= _usun_pozycje_generatora(narzedzie)
+        _cofnij_status_zapotrzebowan(zapotrzebowania_do_cofniecia)
+
+    user_name = get_user_display_name(request.user)
+    app_logger.warning(
+        user_name,
+        f"Usunięto masowo z generatora zamówień: {len(narzedzia)} pozycji"
+    )
+
+    return Response({
+        'success': True,
+        'message': f'Usunięto {len(narzedzia)} pozycji z listy zamówień',
+        'usunieto': len(narzedzia),
+    })
 
 
 @api_view(['POST'])
@@ -991,11 +1043,13 @@ def generator_zamowien_gotowe_api(request):
 
                 numer_zamowienia = f"{rok_miesiac}/{nowy_nr:03d}"
 
-                # Oblicz wartość zamówienia
+                # Oblicz wartość zamówienia (cena jest za sztukę — dla kompletów
+                # trzeba przemnożyć przez ilość sztuk w komplecie)
                 wartosc_zamowienia = Decimal('0.00')
                 for poz in pozycje:
                     cena = poz.cena_jednostkowa if poz.cena_jednostkowa else Decimal('0.00')
-                    wartosc_zamowienia += cena * poz.ilosc_do_zamowienia
+                    mnoznik = poz.narzedzie_typ.ilosc_w_opakowaniu if poz.narzedzie_typ.opakowanie == 'kompl' else 1
+                    wartosc_zamowienia += cena * poz.ilosc_do_zamowienia * mnoznik
 
                 # Utwórz zamówienie
                 zamowienie = Zamowienie.objects.create(
@@ -1041,7 +1095,8 @@ def generator_zamowien_gotowe_api(request):
                         podkategoria_nazwa = narzedzie.podkategoria.nazwa
 
                     cena = pozycja_gen.cena_jednostkowa if pozycja_gen.cena_jednostkowa else Decimal('0.00')
-                    wartosc_poz = cena * pozycja_gen.ilosc_do_zamowienia
+                    mnoznik = narzedzie.ilosc_w_opakowaniu if narzedzie.opakowanie == 'kompl' else 1
+                    wartosc_poz = cena * pozycja_gen.ilosc_do_zamowienia * mnoznik
 
                     PozycjaZamowienia.objects.create(
                         zamowienie=zamowienie,
@@ -1394,6 +1449,7 @@ def email_config_view(request):
         'default_from_email': getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
         'email_test_address': getattr(settings, 'EMAIL_TEST_ADDRESS', ''),
         'email_dw': getattr(settings, 'EMAIL_DW', ''),
+        'email_dw2': getattr(settings, 'EMAIL_DW2', ''),
         'email_configured': bool(getattr(settings, 'EMAIL_HOST_USER', '')),
         'zamowienia_testowe': getattr(settings, 'ZAMOWIENIA_TESTOWE', False),
         'imap_host': getattr(settings, 'IMAP_HOST', ''),
@@ -2795,10 +2851,12 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                             zap.status = 'completed'
                             zap.save(update_fields=['status'])
 
-                    # Przelicz wartość zamówienia po kasowaniu pozycji
-                    from django.db.models import Sum, F
+                    # Przelicz wartość zamówienia po kasowaniu pozycji.
+                    # wartosc_pozycji jest zawsze aktualne (liczone w PozycjaZamowienia.save()
+                    # z uwzględnieniem mnożnika kompletu), więc wystarczy je zsumować.
+                    from django.db.models import Sum
                     total = zamowienie.pozycje.aggregate(
-                        suma=Sum(F('ilosc_zamowiona') * F('cena_jednostkowa'))
+                        suma=Sum('wartosc_pozycji')
                     )['suma'] or 0
                     zamowienie.wartosc_zamowienia = total
                     zamowienie.save(update_fields=['wartosc_zamowienia'])
@@ -2872,17 +2930,18 @@ class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
         return queryset
 
     def _przelicz_wartosc_zamowienia(self, zamowienie):
-        from django.db.models import Sum, F
+        # wartosc_pozycji jest liczone w PozycjaZamowienia.save() z mnożnikiem kompletu.
+        from django.db.models import Sum
         total = zamowienie.pozycje.aggregate(
-            suma=Sum(F('ilosc_zamowiona') * F('cena_jednostkowa'))
+            suma=Sum('wartosc_pozycji')
         )['suma'] or 0
         zamowienie.wartosc_zamowienia = total
         zamowienie.save(update_fields=['wartosc_zamowienia'])
 
     def perform_update(self, serializer):
         instance = serializer.save()
-        instance.wartosc_pozycji = instance.ilosc_zamowiona * (instance.cena_jednostkowa or 0)
-        instance.save(update_fields=['wartosc_pozycji'])
+        # wartosc_pozycji przeliczane w PozycjaZamowienia.save() (mnożnik kompletu) —
+        # serializer.save() już to zrobił, tu tylko przeliczamy sumę zamówienia.
         self._przelicz_wartosc_zamowienia(instance.zamowienie)
         user_name = get_user_display_name(self.request.user)
         app_logger.info(

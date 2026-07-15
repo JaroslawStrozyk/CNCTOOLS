@@ -28,7 +28,9 @@
                         <i class="pi pi-check-circle" style="font-size: 3rem; color: #198754; margin-right: 0.5rem;"></i>
                         <h5>Wszystkie narzędzia są na odpowiednim poziomie - Nie ma nic do zamówienia.</h5>
                     </div>
-                    <DataTable v-else :value="toolsToOrder" :scrollable="true" scrollHeight="flex">
+                    <DataTable v-else :value="toolsToOrder" :scrollable="true" scrollHeight="flex"
+                               v-model:selection="selectedTools" dataKey="id">
+                        <Column selectionMode="multiple" headerStyle="width: 3rem" :exportable="false" />
                         <Column field="dostawca_nazwa" header="Dostawca">
                             <template #body="{ data }">{{ data.dostawca_nazwa || '-' }}</template>
                         </Column>
@@ -48,7 +50,13 @@
                                 <span :class="'zrodlo-' + data.zrodlo">{{ data.zrodlo_label || '-' }}</span>
                             </template>
                         </Column>
-                        <Column header="" style="width: 120px; text-align: center;">
+                        <Column style="width: 170px; text-align: center;">
+                            <template #header>
+                                <Button icon="pi pi-trash" label="Kas. seryjne"
+                                        class="p-button-danger p-button-sm btn-bulk-delete"
+                                        :disabled="selectedTools.length === 0"
+                                        @click="openBulkDeleteModal" title="Usuń zaznaczone pozycje" />
+                            </template>
                             <template #body="{ data }">
                                 <div style="display: flex; gap: 4px; justify-content: center;">
                                     <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openEditModal(data)" title="Edytuj" />
@@ -167,6 +175,16 @@
             </template>
         </Dialog>
 
+        <!-- Modal Masowego Usuwania -->
+        <Dialog v-model:visible="bulkDeleteModalVisible" header="Potwierdzenie masowego usunięcia" :modal="true" :style="{ width: '420px' }">
+            <p>Czy na pewno chcesz usunąć zaznaczone pozycje z listy zamówień?</p>
+            <Message severity="warn" :closable="false"><strong>Liczba pozycji do usunięcia: {{ selectedTools.length }}</strong></Message>
+            <template #footer>
+                <Button label="Anuluj" class="p-button-text" @click="bulkDeleteModalVisible = false" />
+                <Button :label="`Usuń zaznaczone (${selectedTools.length})`" class="p-button-danger" @click="confirmBulkDelete" :loading="isBulkDeleting" />
+            </template>
+        </Dialog>
+
         <!-- Modal Potwierdzenia Generowania -->
         <Dialog v-model:visible="confirmOrderModalVisible" header="Potwierdzenie generowania zamówień" :modal="true" :style="{ width: '450px' }">
             <Message severity="info" :closable="false"><strong>Liczba pozycji do zamówienia: {{ toolsToOrder.length }}</strong></Message>
@@ -190,7 +208,7 @@
                             :severity="addForm.tryb === 'istniejace' ? 'secondary' : 'info'"
                             :outlined="addForm.tryb !== 'istniejace'"
                             style="flex: 1;"
-                            @click="addForm.tryb = 'istniejace'"
+                            @click="setTryb('istniejace')"
                         />
                         <Button
                             label="Nowe narzędzie"
@@ -198,46 +216,62 @@
                             :severity="addForm.tryb === 'nowe' ? 'secondary' : 'info'"
                             :outlined="addForm.tryb !== 'nowe'"
                             style="flex: 1;"
-                            @click="addForm.tryb = 'nowe'"
+                            @click="setTryb('nowe')"
                         />
                     </div>
                 </div>
 
-                <div class="field"><label>Dostawca</label><Dropdown v-model="addForm.dostawca_id" :options="dostawcyOptions" optionLabel="label" optionValue="value" placeholder="Brak" /></div>
-
-                <!-- Kategoria: istniejąca lub nowa -->
-                <div class="field">
-                    <label>Kategoria</label>
-                    <div class="p-inputgroup" v-if="!addForm.nowa_kategoria">
-                        <Dropdown v-model="addForm.kategoria_id" :options="kategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz kategorię" @change="onKategoriaChange" />
-                        <Button v-if="addForm.tryb === 'nowe'" icon="pi pi-plus" class="p-button-secondary" title="Nowa kategoria" @click="toggleNowaKategoria(true)" />
-                    </div>
-                    <div class="p-inputgroup" v-else>
-                        <InputText v-model="addForm.nowa_kategoria_nazwa" placeholder="Nazwa nowej kategorii" />
-                        <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaKategoria(false)" />
-                    </div>
-                </div>
-
-                <!-- Podkategoria: istniejąca lub nowa -->
-                <div class="field">
-                    <label>Podkategoria</label>
-                    <div class="p-inputgroup" v-if="!addForm.nowa_podkategoria">
-                        <Dropdown v-model="addForm.podkategoria_id" :options="filteredPodkategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz podkategorię" :disabled="!addForm.kategoria_id && !addForm.nowa_kategoria" @change="onPodkategoriaChange" />
-                        <Button v-if="addForm.tryb === 'nowe'" icon="pi pi-plus" class="p-button-secondary" title="Nowa podkategoria" @click="toggleNowaPodkategoria(true)" />
-                    </div>
-                    <div class="p-inputgroup" v-else>
-                        <InputText v-model="addForm.nowa_podkategoria_nazwa" placeholder="Nazwa nowej podkategorii" />
-                        <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaPodkategoria(false)" :disabled="addForm.nowa_kategoria" />
-                    </div>
-                </div>
-
-                <!-- TRYB: istniejące — wybór narzędzia z listy -->
+                <!-- TRYB: istniejące — najpierw wyszukiwarka narzędzia, potem podgląd + dostawca -->
                 <template v-if="addForm.tryb === 'istniejace'">
-                    <div class="field"><label>Narzędzie</label><Dropdown v-model="addForm.narzedzie_id" :options="filteredNarzedziaOptions" optionLabel="label" optionValue="value" placeholder="Wybierz narzędzie" :disabled="!addForm.podkategoria_id" @change="onNarzedzieChange" /></div>
+                    <div class="field">
+                        <label>Narzędzie</label>
+                        <Dropdown v-model="addForm.narzedzie_id" :options="allNarzedziaOptions" optionLabel="label" optionValue="value"
+                                  placeholder="Wyszukaj narzędzie..." filter filterPlaceholder="Szukaj po nazwie lub nr katalogowym"
+                                  @change="onNarzedzieChange" />
+                    </div>
+                    <div class="p-grid" style="display: flex; gap: 12px;">
+                        <div class="field" style="flex: 1;">
+                            <label>Kategoria</label>
+                            <InputText :modelValue="selectedNarzedzie ? (selectedNarzedzie.kategoria_nazwa || '-') : ''" disabled placeholder="—" />
+                        </div>
+                        <div class="field" style="flex: 1;">
+                            <label>Podkategoria</label>
+                            <InputText :modelValue="selectedNarzedzie ? (selectedNarzedzie.podkategoria?.nazwa || '-') : ''" disabled placeholder="—" />
+                        </div>
+                    </div>
+                    <div class="field"><label>Dostawca</label><Dropdown v-model="addForm.dostawca_id" :options="dostawcyOptions" optionLabel="label" optionValue="value" placeholder="Brak" /></div>
                 </template>
 
-                <!-- TRYB: nowe — pola nowego narzędzia -->
+                <!-- TRYB: nowe — dostawca + kaskada kategoria/podkategoria + pola nowego narzędzia -->
                 <template v-else>
+                    <div class="field"><label>Dostawca</label><Dropdown v-model="addForm.dostawca_id" :options="dostawcyOptions" optionLabel="label" optionValue="value" placeholder="Brak" /></div>
+
+                    <!-- Kategoria: istniejąca lub nowa -->
+                    <div class="field">
+                        <label>Kategoria</label>
+                        <div class="p-inputgroup" v-if="!addForm.nowa_kategoria">
+                            <Dropdown v-model="addForm.kategoria_id" :options="kategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz kategorię" @change="onKategoriaChange" />
+                            <Button icon="pi pi-plus" class="p-button-secondary" title="Nowa kategoria" @click="toggleNowaKategoria(true)" />
+                        </div>
+                        <div class="p-inputgroup" v-else>
+                            <InputText v-model="addForm.nowa_kategoria_nazwa" placeholder="Nazwa nowej kategorii" />
+                            <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaKategoria(false)" />
+                        </div>
+                    </div>
+
+                    <!-- Podkategoria: istniejąca lub nowa -->
+                    <div class="field">
+                        <label>Podkategoria</label>
+                        <div class="p-inputgroup" v-if="!addForm.nowa_podkategoria">
+                            <Dropdown v-model="addForm.podkategoria_id" :options="filteredPodkategorieOptions" optionLabel="label" optionValue="value" placeholder="Wybierz podkategorię" :disabled="!addForm.kategoria_id && !addForm.nowa_kategoria" @change="onPodkategoriaChange" />
+                            <Button icon="pi pi-plus" class="p-button-secondary" title="Nowa podkategoria" @click="toggleNowaPodkategoria(true)" />
+                        </div>
+                        <div class="p-inputgroup" v-else>
+                            <InputText v-model="addForm.nowa_podkategoria_nazwa" placeholder="Nazwa nowej podkategorii" />
+                            <Button icon="pi pi-times" class="p-button-secondary" title="Wybierz z listy" @click="toggleNowaPodkategoria(false)" :disabled="addForm.nowa_kategoria" />
+                        </div>
+                    </div>
+
                     <div class="field"><label>Opis / nazwa narzędzia *</label><InputText v-model="addForm.opis" placeholder="Np. Frez węglikowy 10mm" /></div>
                     <div class="field"><label>Numer katalogowy</label><InputText v-model="addForm.numer_katalogowy" placeholder="Opcjonalnie" /></div>
                     <div class="p-grid" style="display: flex; gap: 12px;">
@@ -303,11 +337,14 @@ const narzedzia = ref([]);
 const isLoading = ref(true);
 const isSaving = ref(false);
 const isDeleting = ref(false);
+const isBulkDeleting = ref(false);
 const isAdding = ref(false);
 const isGenerating = ref(false);
 
 const editModalVisible = ref(false);
 const deleteModalVisible = ref(false);
+const bulkDeleteModalVisible = ref(false);
+const selectedTools = ref([]);
 const addModalVisible = ref(false);
 const confirmOrderModalVisible = ref(false);
 
@@ -364,6 +401,16 @@ const filteredNarzedziaOptions = computed(() => {
     if (!addForm.value.podkategoria_id) return [];
     return [{ label: 'Wybierz narzędzie', value: null }, ...narzedzia.value.filter(n => n.podkategoria?.id === addForm.value.podkategoria_id).map(n => ({ label: `${n.opis} ${n.numer_katalogowy ? '(' + n.numer_katalogowy + ')' : ''}`, value: n.id }))];
 });
+// Wszystkie narzędzia — dla wyszukiwarki w trybie "Z listy narzędzi" (kolejność: najpierw narzędzie)
+const allNarzedziaOptions = computed(() => narzedzia.value.map(n => {
+    const kat = n.kategoria_nazwa || '';
+    const podkat = n.podkategoria?.nazwa || '';
+    const sciezka = [kat, podkat].filter(Boolean).join(' / ');
+    return {
+        label: `${sciezka ? sciezka + ' — ' : ''}${n.opis}${n.numer_katalogowy ? ' (' + n.numer_katalogowy + ')' : ''}`,
+        value: n.id,
+    };
+}));
 
 const assignPodkategorieOptions = computed(() => {
     if (!assignForm.value.kategoria_id) return [];
@@ -377,7 +424,32 @@ const assignNarzedziaOptions = computed(() => {
 
 const onKategoriaChange = () => { addForm.value.podkategoria_id = null; addForm.value.narzedzie_id = null; selectedNarzedzie.value = null; };
 const onPodkategoriaChange = () => { addForm.value.narzedzie_id = null; selectedNarzedzie.value = null; };
-const onNarzedzieChange = () => { selectedNarzedzie.value = addForm.value.narzedzie_id ? narzedzia.value.find(n => n.id === addForm.value.narzedzie_id) : null; };
+const onNarzedzieChange = () => {
+    const n = addForm.value.narzedzie_id ? narzedzia.value.find(x => x.id === addForm.value.narzedzie_id) : null;
+    selectedNarzedzie.value = n;
+    // Tryb "Z listy narzędzi": po wyborze narzędzia auto-uzupełnij dostawcę i cenę (edytowalne)
+    if (n && addForm.value.tryb === 'istniejace') {
+        // ostatni_dostawca_id jest write_only w API — w payloadzie jest tylko zagnieżdżony ostatni_dostawca
+        addForm.value.dostawca_id = n.ostatni_dostawca?.id ?? null;
+        addForm.value.cena_jednostkowa = n.cena_jednostkowa != null ? Number(n.cena_jednostkowa) : 0;
+    }
+};
+
+// Przełączenie trybu dodawania — reset pól zależnych od trybu, by stany się nie mieszały
+const setTryb = (tryb) => {
+    if (addForm.value.tryb === tryb) return;
+    addForm.value.tryb = tryb;
+    addForm.value.narzedzie_id = null;
+    addForm.value.kategoria_id = null;
+    addForm.value.podkategoria_id = null;
+    addForm.value.dostawca_id = null;
+    addForm.value.cena_jednostkowa = 0;
+    addForm.value.nowa_kategoria = false;
+    addForm.value.nowa_podkategoria = false;
+    addForm.value.nowa_kategoria_nazwa = '';
+    addForm.value.nowa_podkategoria_nazwa = '';
+    selectedNarzedzie.value = null;
+};
 
 const toggleNowaKategoria = (val) => {
     addForm.value.nowa_kategoria = val;
@@ -488,6 +560,24 @@ const confirmDelete = async () => {
     }
     catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isDeleting.value = false; deleteItem.value = null; }
+};
+
+const openBulkDeleteModal = () => { if (selectedTools.value.length > 0) bulkDeleteModalVisible.value = true; };
+
+const confirmBulkDelete = async () => {
+    if (selectedTools.value.length === 0) return;
+    isBulkDeleting.value = true;
+    const ids = selectedTools.value.map(t => t.id);
+    try {
+        await axios.post(`${API_URL}/generator-zamowien/bulk-delete/`, { narzedzie_ids: ids });
+        // Lokalne usunięcie - bez refetchu, żeby pozycje nie wróciły od razu z GET.
+        const idsSet = new Set(ids);
+        toolsToOrder.value = toolsToOrder.value.filter(t => !idsSet.has(t.id));
+        selectedTools.value = [];
+        bulkDeleteModalVisible.value = false;
+    }
+    catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
+    finally { isBulkDeleting.value = false; }
 };
 
 const openAssignModal = (item) => {
@@ -608,6 +698,9 @@ onMounted(async () => {
 .panel-header h3 { margin: 0; color: #ffc107; }
 .panel-header .text-muted { margin-left: auto; }
 .panel-header .btn-add-manual { margin-left: 30px; }
+.btn-bulk-delete { width: auto !important; min-width: 8rem !important; padding: 0.3rem 0.6rem; white-space: nowrap; gap: 0.35rem; }
+.btn-bulk-delete :deep(.p-button-label) { display: inline-block !important; visibility: visible !important; width: auto !important; font-size: 0.8rem; font-weight: 600; }
+.btn-bulk-delete :deep(.p-button-icon) { font-size: 0.8rem; }
 .panel-body { flex: 1; overflow: auto; min-height: 0; background: #212529; }
 .empty-state.success { color: #75b798; }
 .empty-state.success i { color: #198754 !important; }
