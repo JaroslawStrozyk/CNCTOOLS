@@ -1833,8 +1833,9 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = NarzedzieMagazynoweSerializer
 
     def get_queryset(self):
-        from django.db.models import Value, Subquery, OuterRef
+        from django.db.models import Value, Subquery, OuterRef, Exists
         from django.db.models.functions import Coalesce
+        from .models import PozycjaZamowienia
 
         # IDs egzemplarzy aktualnie wydanych (w użyciu)
         egzemplarze_w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
@@ -1870,6 +1871,10 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
             total=Sum('egzemplarz__ilosc_w_komplecie')
         ).values('total')
 
+        # Czy typ narzędzia ma historię zakupów (jakąkolwiek pozycję zamówienia).
+        # Tanie EXISTS po zaindeksowanym FK — front koloruje "Opis" tych wierszy.
+        historia_zakupow = PozycjaZamowienia.objects.filter(narzedzie_typ=OuterRef('pk'))
+
         queryset = NarzedzieMagazynowe.objects.select_related(
             'podkategoria__kategoria',
             'ostatni_dostawca',
@@ -1878,6 +1883,7 @@ class NarzedzieMagazynoweZakupyViewSet(viewsets.ReadOnlyModelViewSet):
             ilosc_nowych=Coalesce(Subquery(nowe_subquery), Value(0)),
             ilosc_uzywanych_dostepnych=Coalesce(Subquery(uzywane_subquery), Value(0)),
             ilosc_w_uzyciu=Coalesce(Subquery(w_uzyciu_subquery), Value(0)),
+            ma_historie_zakupow=Exists(historia_zakupow),
         ).annotate(
             calkowita_ilosc=F('ilosc_nowych') + F('ilosc_uzywanych_dostepnych') + F('ilosc_w_uzyciu')
         )

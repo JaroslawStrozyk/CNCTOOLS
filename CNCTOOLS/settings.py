@@ -141,6 +141,13 @@ DATABASES = {
         'PASSWORD': DB_PASSWORD,
         'HOST': DB_HOST,
         'PORT': DB_PORT,
+        # JIT wyłączony: przy skorelowanych podzapytaniach (np. lista typów narzędzi
+        # w Magazynie) planer PostgreSQL zawyża szacowany koszt ponad jit_above_cost
+        # i włącza kompilację JIT (~525 ms), która przy krótkich zapytaniach OLTP tylko
+        # szkodzi — samo wykonanie trwa ~35 ms. Efekt: zapytanie 0,55 s -> 0,035 s (16x).
+        'OPTIONS': {
+            'options': '-c jit=off',
+        },
     }
 }
 
@@ -234,8 +241,8 @@ TECHNOLOG_PAGE_SIZE = 50
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.14.0g',
-        'MODYFIKACJA': '30.06.2026r.',
+        'WERSJA'     : '1.14.1g',
+        'MODYFIKACJA': '19.07.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

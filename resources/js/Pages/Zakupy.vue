@@ -16,6 +16,9 @@
                 <button class="btn btn-primary" @click="goToMagazyn">
                     <i class="pi pi-building"></i> Magazyn
                 </button>
+                <button class="btn btn-primary" @click="goToStatystyka" title="Panel statystyk (Kierownik)">
+                    <i class="pi pi-chart-bar"></i> Statystyka
+                </button>
                 <!-- Toggle motywu jasnego — ukryty, kod zachowany na przyszłość.
                      Aby aktywować: zmień v-if="false" na v-if="true" + przywróć odczyt z localStorage w onMounted. -->
                 <button v-if="false" class="btn-theme-toggle" @click="toggleTheme" :title="isLightTheme ? 'Przełącz na motyw ciemny' : 'Przełącz na motyw jasny'">
@@ -90,7 +93,11 @@
                                 <span v-else class="text-muted">Brak kategorii</span>
                             </template>
                         </Column>
-                        <Column field="opis" header="Opis" />
+                        <Column field="opis" header="Opis">
+                            <template #body="{ data }">
+                                <span :class="{ 'ma-historie-zakupow': data.ma_historie_zakupow }">{{ data.opis }}</span>
+                            </template>
+                        </Column>
                         <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 200px;" />
                         <Column header="Cena jednostkowa" style="width: 130px; text-align: right;">
                             <template #body="{ data }">
@@ -401,6 +408,8 @@ const openHelp = () => {
 const goToZapotrzebowania = () => { window.location.href = props.urls.zapotrzebowania + '?from=zakupy'; };
 const goToZamowienia = () => { window.location.href = props.urls.zamowienia; };
 const goToMagazyn = () => { window.location.href = props.urls.magazyn; };
+// Panel statystyk = Kierownik.vue; ?from=zakupy → tam pokaże się przycisk powrotu do Zakupów.
+const goToStatystyka = () => { window.location.href = (props.urls.kierownik || '/kierownik/') + '?from=zakupy'; };
 
 // User menu
 const userMenu = ref(null);
@@ -784,6 +793,8 @@ onBeforeUnmount(() => {
 .status-blue { background-color: #0d6efd; }
 
 .zero-value { color: #6c757d !important; }
+/* Opis narzędzi, które mają historię zakupów — delikatny żółty (odróżnia od białego) */
+.ma-historie-zakupow { color: #e2d07a; }
 .control-auto { color: #6c757d; font-size: 0.85rem; border: 1px solid #495057; border-radius: 4px; padding: 2px 8px; }
 .control-reczna :deep(.p-tag-value) { color: #5bc0de !important; }
 
@@ -944,6 +955,8 @@ onBeforeUnmount(() => {
 
 /* === Status indicator i etykiety pomocnicze === */
 .zakupy-app.light-theme .zero-value { color: #adb5bd !important; }
+/* Historia zakupów w motywie jasnym — ciemniejszy, czytelny gold na białym tle */
+.zakupy-app.light-theme .ma-historie-zakupow { color: #8a6d00 !important; }
 .zakupy-app.light-theme .control-auto {
     color: #6c757d;
     border-color: #dee2e6;

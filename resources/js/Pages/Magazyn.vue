@@ -371,7 +371,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <DataTable :value="filteredUsagesInUse" :scrollable="true" scrollHeight="flex">
+                            <DataTable :value="filteredUsagesInUse" :loading="isLoadingUsages" :scrollable="true" scrollHeight="flex">
                                 <Column header="Narzędzie">
                                     <template #body="{ data }">
                                         <span v-if="data.egzemplarz.narzedzie_typ.podkategoria">
@@ -973,6 +973,7 @@ const activeTabIndex = ref(0);
 const isLoadingTools = ref(true);
 const isLoadingDetails = ref(false);
 const isLoadingHistory = ref(false);
+const isLoadingUsages = ref(true);
 const isEditMode = ref(false);
 const isSavingInstance = ref(false);
 
@@ -2050,10 +2051,11 @@ const fetchInitialData = async () => {
     }
 
     // Faza 2: dane pomocnicze (modale, zakładki, formularze) — w tle
+    isLoadingUsages.value = true;
     try {
         const [machinesRes, usagesRes, locationsRes, pracownicyRes, fakturyRes, zamowieniaRes] = await Promise.all([
             axios.get(`${API_URL}/maszyny/`),
-            axios.get(`${API_URL}/historia/?w_uzyciu=true`),
+            axios.get(`${API_URL}/historia/?w_uzyciu=true&light=true`),
             axios.get(`${API_URL}/lokalizacje/`),
             axios.get(`${API_URL}/pracownicy/`),
             axios.get(`${API_URL}/faktury/`),
@@ -2083,6 +2085,8 @@ const fetchInitialData = async () => {
         zamowienia.value = zamowieniaRes.data.results || zamowieniaRes.data;
     } catch (error) {
         console.error("Błąd ładowania danych pomocniczych:", error.response?.data || error.message);
+    } finally {
+        isLoadingUsages.value = false;
     }
 };
 

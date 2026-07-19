@@ -157,6 +157,9 @@ class NarzedzieMagazynoweSerializer(serializers.ModelSerializer):
     ilosc_w_uzyciu = serializers.IntegerField(read_only=True)
     calkowita_ilosc = serializers.IntegerField(read_only=True)
     cena_z_zamowienia = serializers.BooleanField(read_only=True)
+    # Ustawiane tylko przez endpoint Zakupy (adnotacja Exists). Gdy adnotacji brak
+    # (Magazyn, odpowiedź po zapisie) DRF pomija pole — read_only + brak atrybutu = SkipField.
+    ma_historie_zakupow = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = NarzedzieMagazynowe
@@ -349,7 +352,7 @@ class HistoriaUzyciaNarzedziaSerializer(serializers.ModelSerializer):
 
 
 class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
-    """Odchudzony serializer dla zakładki "Narzędzia w użyciu" (panel kierownika).
+    """Odchudzony serializer dla zakładki "Narzędzia w użyciu" (Magazyn.vue oraz panel kierownika).
 
     Zwraca wyłącznie pola wykorzystywane przez tabelę, wykres i modal w
     Kierownik.vue, zachowując ich kształt. Pomija pełne, głęboko zagnieżdżone
@@ -373,7 +376,7 @@ class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
     def get_pracownik(self, obj):
         if not obj.pracownik:
             return None
-        return {'nazwisko': obj.pracownik.nazwisko, 'imie': obj.pracownik.imie}
+        return {'id': obj.pracownik.id, 'nazwisko': obj.pracownik.nazwisko, 'imie': obj.pracownik.imie}
 
     def get_egzemplarz(self, obj):
         e = obj.egzemplarz
@@ -387,7 +390,7 @@ class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
                 kategoria = None
                 if nt.podkategoria.kategoria:
                     kategoria = {'nazwa': nt.podkategoria.kategoria.nazwa}
-                podkategoria = {'nazwa': nt.podkategoria.nazwa, 'kategoria': kategoria}
+                podkategoria = {'id': nt.podkategoria.id, 'nazwa': nt.podkategoria.nazwa, 'kategoria': kategoria}
             narzedzie_typ = {
                 'id': nt.id,
                 'opis': nt.opis,
@@ -395,6 +398,7 @@ class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
                 'podkategoria': podkategoria,
             }
         return {
+            'id': e.id,
             'oznaczenie': e.oznaczenie,
             'jednostka': e.jednostka,
             'ilosc_w_komplecie': e.ilosc_w_komplecie,

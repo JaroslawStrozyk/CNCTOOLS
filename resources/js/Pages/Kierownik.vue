@@ -4,6 +4,11 @@
         <header class="magazyn-header">
             <h2 class="header-title">PANEL KIEROWNIKA</h2>
             <div class="header-buttons">
+                <!-- Powrót do Zakupów — widoczny tylko przy wejściu z Zakupy.vue (?from=zakupy);
+                     profil kierownika (wejście bez parametru) nie widzi tego przycisku. -->
+                <button v-if="cameFromZakupy" class="btn btn-success" @click="goToZakupy" title="Wróć do Zakupów">
+                    <i class="pi pi-arrow-left"></i> Zakupy
+                </button>
                 <div class="dropdown-wrapper">
                     <button class="btn btn-primary" @click="toggleMiejscaMenu">
                         <i class="pi pi-building"></i> Miejsca
@@ -1280,6 +1285,11 @@ const miejscaMenuItems = ref([
 ]);
 const toggleMiejscaMenu = (event) => { miejscaMenu.value.toggle(event); };
 
+// Powrót do Zakupów — aktywny tylko przy wejściu z Zakupy.vue (?from=zakupy).
+// Dzięki temu logistyk wraca skąd przyszedł, a profil kierownika pozostaje nietknięty.
+const cameFromZakupy = ref(false);
+const goToZakupy = () => { window.location.href = props.urls.zakupy || '/zakupy/'; };
+
 const openHistoryModal = async (tool) => {
     selectedToolForHistory.value = tool;
     showHistoryModal.value = true;
@@ -1374,6 +1384,7 @@ const fetchInitialData = async () => {
 };
 
 onMounted(() => {
+    cameFromZakupy.value = new URLSearchParams(window.location.search).get('from') === 'zakupy';
     fetchInitialData();
 });
 </script>
