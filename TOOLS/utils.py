@@ -70,18 +70,27 @@ def save_to_imap_sent(email_message):
         logger.error(f"IMAP: Błąd zapisu do folderu Wysłane — {str(e)}")
 
 
-def get_dw_emails():
+def get_dw_emails(rodzaj=None):
     """
-    Zwraca listę adresów DW (do wiadomości) z konfiguracji — maksymalnie 2, pomija puste.
+    Zwraca listę adresów DW (do wiadomości) z konfiguracji — pomija puste.
 
-    Źródło: settings.EMAIL_DW oraz settings.EMAIL_DW2 (z pass_file.py).
-    Używane jako kopia (CC) przy wysyłce zamówień do dostawcy i do zatwierdzenia.
+    Źródło: settings.EMAIL_DW (DW 1) oraz settings.EMAIL_DW2 (DW 2) z pass_file.py.
+
+    Args:
+        rodzaj (str, optional): 'dostawca' → tylko DW 1, 'szef' → tylko DW 2,
+            None → oba adresy (np. mail testowy).
     """
-    adresy = [
-        (getattr(settings, 'EMAIL_DW', '') or '').strip(),
-        (getattr(settings, 'EMAIL_DW2', '') or '').strip(),
-    ]
-    return [a for a in adresy if a][:2]
+    dw1 = (getattr(settings, 'EMAIL_DW', '') or '').strip()
+    dw2 = (getattr(settings, 'EMAIL_DW2', '') or '').strip()
+
+    if rodzaj == 'dostawca':
+        adresy = [dw1]
+    elif rodzaj == 'szef':
+        adresy = [dw2]
+    else:
+        adresy = [dw1, dw2]
+
+    return [a for a in adresy if a]
 
 
 def send_html_email(recipient_email, subject, html_content, attachments=None, cc_email=None):
@@ -339,8 +348,8 @@ def send_zamowienie_email(zamowienie, override_email=None):
     from django.utils import timezone
     from .models import NumerKatalogowyDostawcy
 
-    # Pobierz email DW z settings
-    cc_email = get_dw_emails()
+    # Pobierz email DW z settings (mail do dostawcy → DW 1)
+    cc_email = get_dw_emails('dostawca')
 
     # Przygotuj dane
     dostawca = zamowienie.dostawca
@@ -847,5 +856,5 @@ def send_approval_email(zamowienia, override_email=None):
         recipient_email=email_szef,
         subject=subject,
         html_content=html_content,
-        cc_email=get_dw_emails(),
+        cc_email=get_dw_emails('szef'),
     )
