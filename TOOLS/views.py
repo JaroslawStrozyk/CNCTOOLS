@@ -532,8 +532,11 @@ def generator_zamowien_api(request):
     for pozycja in wszystkie_pozycje:
         narzedzie = pozycja.narzedzie_typ
 
-        # Pomiń jeśli jest w aktywnym zamówieniu (z cache)
-        if narzedzie.id in narzedzia_w_zamowieniach:
+        # Pomiń jeśli jest w aktywnym zamówieniu (z cache).
+        # WYJĄTEK: pozycje dodane RĘCZNIE ('reczne') są świadomą decyzją użytkownika —
+        # muszą pojawić się na liście i uczestniczyć w generowaniu niezależnie od tego,
+        # czy narzędzie figuruje już w aktywnym zamówieniu.
+        if pozycja.zrodlo != 'reczne' and narzedzie.id in narzedzia_w_zamowieniach:
             continue
 
         # Przygotuj dane do wyświetlenia
@@ -555,7 +558,7 @@ def generator_zamowien_api(request):
             dostawca_id = pozycja.dostawca.id
 
         # Etykieta źródła
-        zrodlo_label = {'auto': 'Auto (stany)', 'reczne': 'Ręczne', 'zapotrzebowanie': 'Zapotrzebowanie'}.get(pozycja.zrodlo, pozycja.zrodlo)
+        zrodlo_label = {'auto': 'Auto (stany)', 'reczne': 'Dodane ręcznie', 'zapotrzebowanie': 'Zapotrzebowanie'}.get(pozycja.zrodlo, pozycja.zrodlo)
         if pozycja.zrodlo == 'zapotrzebowanie' and pozycja.zrodlo_zapotrzebowanie_ids:
             zrodlo_label = pozycja.zrodlo_zapotrzebowanie_ids
 
