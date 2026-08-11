@@ -2005,6 +2005,20 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by('-data_wydania')
 
+    @action(detail=False, methods=['get'])
+    def egzemplarze_w_uzyciu(self, request):
+        """Same ID egzemplarzy aktualnie w użyciu (bez daty zwrotu).
+
+        Minimalny payload dla Magazyn.vue: po wyniesieniu zakładki "Narzędzia
+        aktualnie w użyciu" do osobnej strony (/uzycie/) magazyn nie ładuje już
+        listy wydań, a nadal potrzebuje wiedzieć, które egzemplarze są zajęte
+        (blokada przycisku "Pobierz" i sortowanie listy egzemplarzy).
+        """
+        ids = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).values_list('egzemplarz_id', flat=True)
+        return Response({'ids': list(ids)})
+
     @action(detail=False, methods=['post'])
     def pdf_lista_w_uzyciu(self, request):
         """

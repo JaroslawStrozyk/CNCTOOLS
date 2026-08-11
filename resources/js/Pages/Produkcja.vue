@@ -144,6 +144,11 @@
                                                 {{ data.maszyna?.nazwa || 'Brak' }}
                                             </template>
                                         </Column>
+                                        <Column header="Oznaczenie">
+                                            <template #body="{ data }">
+                                                {{ data.egzemplarz?.oznaczenie }}
+                                            </template>
+                                        </Column>
                                         <Column header="Data pobrania">
                                             <template #body="{ data }">
                                                 {{ formatCustomDate(data.data_wydania) }}
@@ -205,6 +210,11 @@
                 <Column header="Pracownik">
                     <template #body="{ data }">
                         {{ data.pracownik ? `${data.pracownik.nazwisko} ${data.pracownik.imie}` : 'Brak' }}
+                    </template>
+                </Column>
+                <Column header="Oznaczenie">
+                    <template #body="{ data }">
+                        {{ data.egzemplarz?.oznaczenie }}
                     </template>
                 </Column>
                 <Column header="Data pobrania">

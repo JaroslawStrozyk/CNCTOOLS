@@ -80,6 +80,7 @@ def get_common_urls():
     """Zwraca wspólne URL-e dla wszystkich widoków Inertia"""
     return {
         'magazyn': '/magazyn/',
+        'uzycie': '/uzycie/',
         'zakupy': '/zakupy/',
         'zamowienia': '/zamowienia/',
         'ustawienia': '/ustawienia/',
@@ -176,6 +177,29 @@ def magazyn_view(request):
         data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
 
     return render(request, 'Magazyn', data)
+
+
+@login_required
+def uzycie_view(request):
+    """Narzędzia aktualnie w użyciu - Inertia.
+
+    Zakładka wyniesiona z Magazyn.vue na osobną stronę (odciąża panel magazynu).
+    Powrót kieruje na /magazyn/ — w trybie produkcja z zachowaniem ?tryb=produkcja.
+    """
+    tryb_produkcja = request.GET.get('tryb') == 'produkcja'
+
+    data = {
+        'auth': get_auth_data(request),
+        'urls': get_common_urls(),
+        'infoProgram': get_info_program(),
+        'trybProdukcja': tryb_produkcja,
+    }
+
+    # Auto-wylogowanie dla grup produkcyjnych
+    if has_produkcja_perms(request.user) or has_produkcja_magazyn_perms(request.user):
+        data['autoLogoutMinutes'] = getattr(settings, 'AUTO_LOGOUT_IDLE_MINUTES', 5)
+
+    return render(request, 'Uzycie', data)
 
 
 @login_required

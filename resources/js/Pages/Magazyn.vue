@@ -27,6 +27,9 @@
                     <button class="btn btn-success" @click="goToZamowienia">
                         <i class="pi pi-file"></i> Zamówienia
                     </button>
+                    <button class="btn btn-primary" @click="goToUzycie">
+                        <i class="pi pi-wrench"></i> W użyciu
+                    </button>
                     <button class="btn btn-primary" @click="goToZwroty">
                         <i class="pi pi-undo"></i> Zwroty
                     </button>
@@ -44,6 +47,10 @@
                 </template>
                 <!-- Tryb produkcja - buttony po prawej -->
                 <template v-else>
+                    <button class="btn-narzedzia-prod" @click="goToUzycie">
+                        <i class="pi pi-wrench"></i>
+                        W użyciu
+                    </button>
                     <a :href="urls.produkcja" class="btn-narzedzia-prod">
                         <i class="pi pi-arrow-left"></i>
                         Wróć do Produkcji
@@ -333,7 +340,9 @@
                         </div>
                     </TabPanel>
 
-                    <TabPanel>
+                    <!-- Zakładka wyniesiona na osobną stronę /uzycie/ (Uzycie.vue).
+                         Kod zostaje — POKAZ_ZAKLADKE_W_UZYCIU=true przywraca ją tutaj wraz z ładowaniem danych. -->
+                    <TabPanel v-if="POKAZ_ZAKLADKE_W_UZYCIU">
                         <template #header>
                             <span>Narzędzia aktualnie w użyciu</span>
                             <Badge :value="usagesInUse.length" style="background-color: #8B4513;" class="ml-2" />
@@ -906,6 +915,11 @@ import Textarea from 'primevue/textarea';
 
 const API_URL = '/api';
 
+// Zakładka "Narzędzia aktualnie w użyciu" żyje teraz na osobnej stronie /uzycie/ (Uzycie.vue).
+// Flaga wyłącza zakładkę I ładowanie jej danych (lista wydań), zostawiając kod nietknięty —
+// ustawienie na true przywraca poprzednie zachowanie magazynu.
+const POKAZ_ZAKLADKE_W_UZYCIU = false;
+
 // Props from Inertia
 const props = defineProps({
     auth: {
@@ -920,6 +934,7 @@ const props = defineProps({
         type: Object,
         default: () => ({
             ustawienia: '/ustawienia/',
+            uzycie: '/uzycie/',
             zwroty: '/zwroty/',
             zamowienia: '/zamowienia/',
             zapotrzebowania: '/zapotrzebowania/',
@@ -952,6 +967,9 @@ const pracownicy = ref([]);
 const faktury = ref([]);
 const zamowienia = ref([]);
 const usagesInUse = ref([]);
+// ID egzemplarzy aktualnie w użyciu — lekka alternatywa dla listy wydań, gdy zakładka
+// "Narzędzia aktualnie w użyciu" jest wyłączona (POKAZ_ZAKLADKE_W_UZYCIU=false).
+const egzemplarzeWUzyciuIds = ref([]);
 const toolInstances = ref([]);
 const toolHistory = ref([]);
 const locations = ref([]);
@@ -1102,6 +1120,10 @@ const openHelp = () => {
 const goToZapotrzebowania = () => { window.location.href = props.urls.zapotrzebowania + '?from=magazyn'; };
 const goToZamowienia = () => { window.location.href = props.urls.zamowienia; };
 const goToZwroty = () => { window.location.href = props.urls.zwroty; };
+const goToUzycie = () => {
+    const base = props.urls.uzycie || '/uzycie/';
+    window.location.href = props.trybProdukcja ? `${base}?tryb=produkcja` : base;
+};
 const goToZakupy = () => { window.location.href = props.urls.zakupy; };
 
 // Logout (tryb produkcja)
@@ -1167,7 +1189,10 @@ const filteredTools = computed(() => {
 });
 
 const inUseInstanceIds = computed(() => {
-    return new Set(usagesInUse.value.map(usage => usage.egzemplarz.id));
+    if (POKAZ_ZAKLADKE_W_UZYCIU) {
+        return new Set(usagesInUse.value.map(usage => usage.egzemplarz.id));
+    }
+    return new Set(egzemplarzeWUzyciuIds.value);
 });
 
 // Kontrola duplikatów numerów katalogowych — set kluczy (trim+lowercase) występujących >1 raz w tools.
@@ -2053,9 +2078,15 @@ const fetchInitialData = async () => {
     // Faza 2: dane pomocnicze (modale, zakładki, formularze) — w tle
     isLoadingUsages.value = true;
     try {
+        // Zakładka "w użyciu" wyłączona → zamiast pełnej listy wydań pobieramy same ID
+        // zajętych egzemplarzy (blokada "Pobierz" + sortowanie listy egzemplarzy).
+        const usagesRequest = POKAZ_ZAKLADKE_W_UZYCIU
+            ? axios.get(`${API_URL}/historia/?w_uzyciu=true&light=true`)
+            : axios.get(`${API_URL}/historia/egzemplarze_w_uzyciu/`);
+
         const [machinesRes, usagesRes, locationsRes, pracownicyRes, fakturyRes, zamowieniaRes] = await Promise.all([
             axios.get(`${API_URL}/maszyny/`),
-            axios.get(`${API_URL}/historia/?w_uzyciu=true&light=true`),
+            usagesRequest,
             axios.get(`${API_URL}/lokalizacje/`),
             axios.get(`${API_URL}/pracownicy/`),
             axios.get(`${API_URL}/faktury/`),
@@ -2063,7 +2094,11 @@ const fetchInitialData = async () => {
         ]);
 
         machines.value = machinesRes.data;
-        usagesInUse.value = usagesRes.data.results || usagesRes.data;
+        if (POKAZ_ZAKLADKE_W_UZYCIU) {
+            usagesInUse.value = usagesRes.data.results || usagesRes.data;
+        } else {
+            egzemplarzeWUzyciuIds.value = usagesRes.data.ids || [];
+        }
         locations.value = locationsRes.data;
 
         // Dodaj fullName do pracowników dla dropdown
