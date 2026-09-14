@@ -35,6 +35,17 @@
             <div class="orders-panel">
                 <div class="panel-header">
                     <h3 class="panel-title">Lista zamówień</h3>
+                    <!-- Licznik zalegających + przełącznik filtra. Widoczny tylko gdy jest co pokazać;
+                         po domknięciu wszystkich zamówień znika razem z filtrem. -->
+                    <Button
+                        v-if="zamowieniaDoDomkniecia.length > 0 || tylkoDoDomkniecia"
+                        class="p-button-sm btn-do-domkniecia"
+                        :class="{ 'filtr-aktywny': tylkoDoDomkniecia }"
+                        icon="pi pi-exclamation-triangle"
+                        :label="`${zamowieniaDoDomkniecia.length} do domknięcia`"
+                        :title="tylkoDoDomkniecia ? 'Pokaż wszystkie zamówienia' : `Pokaż tylko zamówienia wiszące ponad ${DNI_DO_DOMKNIECIA} dni`"
+                        @click="tylkoDoDomkniecia = !tylkoDoDomkniecia"
+                    />
                     <div class="search-box">
                         <input
                             type="text"
@@ -45,9 +56,14 @@
                     </div>
                 </div>
                 <div class="panel-body">
-                    <DataTable :value="sortedZamowienia" :scrollable="true" scrollHeight="flex" dataKey="id">
+                    <DataTable :value="sortedZamowienia" :scrollable="true" scrollHeight="flex" dataKey="id" :rowClass="rowClass">
                         <Column header="Numer">
                             <template #body="{ data }">
+                                <i
+                                    v-if="wymagaDomkniecia(data)"
+                                    class="pi pi-exclamation-triangle ikona-domkniecia"
+                                    :title="tytulDomkniecia(data)"
+                                ></i>
                                 <a href="#" @click.prevent="selectZamowienie(data)" class="order-link">
                                     <strong>{{ data.numer }}</strong>
                                 </a>
@@ -746,13 +762,45 @@ const saveZamowienie = async () => {
 // Widok "czystego" magazyniera (magazyn bez logistyki) — ograniczona lista i akcje
 const isMagazynierView = computed(() => props.auth?.isMagazyn && !props.auth?.isLogistyka);
 
+// --- Zamówienia "do domknięcia" ---------------------------------------------
+// Zamówienie wysłane do dostawcy, które po DNI_DO_DOMKNIECIA dniach nadal nie jest
+// w całości odebrane, najczęściej już nie zostanie zrealizowane — dostawca nie
+// dosłał resztówki. Taki rekord wisi na liście w nieskończoność, bo status
+// zmienia się na 'completed' dopiero po przyjęciu WSZYSTKICH pozycji.
+// Sygnalizujemy go, żeby logistyk odpisał brakujące pozycje przy realizacji
+// (pozycja wraca wtedy do generatora, a zamówienie się domyka).
+// Liczymy od daty UTWORZENIA — data wysłania bywa o kilkanaście dni późniejsza,
+// a zaleganie zaczyna się w momencie wygenerowania zamówienia.
+const DNI_DO_DOMKNIECIA = 30;
+const STATUSY_DO_DOMKNIECIA = ['sent', 'partially_received'];
+
+const wiekZamowieniaDni = (z) => {
+    if (!z?.data_utworzenia) return 0;
+    const utworzone = new Date(z.data_utworzenia);
+    if (Number.isNaN(utworzone.getTime())) return 0;
+    return Math.floor((Date.now() - utworzone.getTime()) / 86400000);
+};
+
+const wymagaDomkniecia = (z) =>
+    STATUSY_DO_DOMKNIECIA.includes(z?.status) && wiekZamowieniaDni(z) > DNI_DO_DOMKNIECIA;
+
+const tytulDomkniecia = (z) =>
+    `Wisi ${wiekZamowieniaDni(z)} dni — rozważ odpisanie brakujących pozycji przy realizacji`;
+
+// Przełącznik "pokaż tylko do domknięcia" (filtr listy)
+const tylkoDoDomkniecia = ref(false);
+
+// Klasa wiersza — podświetlenie zalegających zamówień
+const rowClass = (z) => (wymagaDomkniecia(z) ? 'row-do-domkniecia' : '');
+
 // Computed — filtrowanie po wyszukiwarce (Numer, Dostawca, Data utworzenia, Data wysłania)
 const filteredZamowienia = computed(() => {
     // Magazynier widzi zamówienia 'sent' (do realizacji), 'partially_received'
     // (częściowo odebrane — realizacja w toku) i 'completed' (historia)
-    const base = isMagazynierView.value
+    let base = isMagazynierView.value
         ? zamowienia.value.filter(z => ['sent', 'partially_received', 'completed'].includes(z.status))
         : zamowienia.value;
+    if (tylkoDoDomkniecia.value) base = base.filter(wymagaDomkniecia);
     const q = searchQuery.value.trim().toLowerCase();
     if (!q) return base;
     return base.filter(z => {
@@ -772,6 +820,15 @@ const sortedZamowienia = computed(() => {
         if (aDone !== bDone) return aDone - bDone;
         return (b.numer || '').localeCompare(a.numer || '');
     });
+});
+
+// Licznik zalegających — liczony z listy widocznej dla danej roli, ale PRZED filtrem
+// "tylko do domknięcia" i wyszukiwarką, żeby nie zerował się przy zawężaniu widoku.
+const zamowieniaDoDomkniecia = computed(() => {
+    const base = isMagazynierView.value
+        ? zamowienia.value.filter(z => ['sent', 'partially_received', 'completed'].includes(z.status))
+        : zamowienia.value;
+    return base.filter(wymagaDomkniecia);
 });
 
 // Computed — filtrowane zamówienia
@@ -1251,4 +1308,46 @@ onMounted(() => fetchInitialData());
 .unit-label { font-size: 0.8em; color: #868e96; margin-left: 4px; }
 
 :deep(.qty-input) { width: 70px !important; text-align: center; }
+
+/* --- Zamówienia zalegające ("do domknięcia", ponad 30 dni) ---------------- */
+/* Bursztyn, nie czerwień — to sygnał "zrób z tym porządek", nie błąd krytyczny.
+   Podświetlenie wiersza musi mieć !important, bo PrimeVue maluje tło wierszy
+   własnymi regułami o wyższej specyficzności (także na hover i w paskach zebra). */
+:deep(.row-do-domkniecia > td) {
+    background-color: rgba(217, 119, 6, 0.14) !important;
+}
+
+:deep(.row-do-domkniecia:hover > td) {
+    background-color: rgba(217, 119, 6, 0.22) !important;
+}
+
+.ikona-domkniecia {
+    color: #d97706;
+    margin-right: 6px;
+    cursor: help;
+}
+
+/* margin-left:auto dosuwa przycisk do wyszukiwarki po prawej — bez tego
+   .panel-header (justify-content: space-between) rozrzuciłby trzy elementy równomiernie */
+.btn-do-domkniecia {
+    margin-left: auto;
+    margin-right: 12px;
+    white-space: nowrap;
+    background: transparent;
+    border: 1px solid rgba(217, 119, 6, 0.6);
+    color: #d97706;
+}
+
+.btn-do-domkniecia:hover {
+    background: rgba(217, 119, 6, 0.15);
+    border-color: #d97706;
+    color: #d97706;
+}
+
+/* Filtr włączony — pełne wypełnienie, żeby było widać, że lista jest zawężona */
+.btn-do-domkniecia.filtr-aktywny {
+    background: #d97706;
+    border-color: #d97706;
+    color: #fff;
+}
 </style>

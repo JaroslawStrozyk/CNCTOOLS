@@ -82,7 +82,7 @@
                     >
                         <Column header="" style="width: 15px;">
                             <template #body="{ data }">
-                                <div :class="data.reczna_kontrola ? 'status-blue' : getStatusClass(data)" class="status-indicator"></div>
+                                <div :class="getStatusClass(data)" class="status-indicator" :title="getStatusTitle(data)"></div>
                             </template>
                         </Column>
                         <Column header="Kategoria / Podkategoria" style="width: 330px;">
@@ -506,18 +506,50 @@ const onKategoriaChange = () => {
     selectedPodkategoriaId.value = null;
 };
 
+// Pasek stanu odpowiada na jedno pytanie: CZY SYSTEM SAM TO DOKUPI.
+// Dlatego liczy tą samą miarą co generator zamówień (TOOLS/views.py) — ilością
+// NOWYCH, niewydanych sztuk — a nie stanem całkowitym. Narzędzie może mieć 12 szt.
+// w ewidencji i zero na półce, bo wszystko poszło na produkcję; stan całkowity
+// pokazywał wtedy zielony pasek przy pustym magazynie.
+//
+// Szary = generator tego narzędzia nie pilnuje. Trzy niezależne powody:
+//   • reczna_kontrola=True — zamawiane wyłącznie przez "Ręczne dodanie"
+//   • stan_minimalny = 0   — auto-zamawianie wyłączone
+//   • stan_maksymalny = 0  — brak celu uzupełnienia, generator pomija
+// Wcześniej przy max=0 warunek (calkowita >= 0) był zawsze prawdziwy, więc taki
+// wiersz świecił na zielono niezależnie od stanu — a dotyczy to 95% bazy.
 const getStatusClass = (tool) => {
-    const iloscCalkowita = tool.calkowita_ilosc;
-    const limitMin = tool.stan_minimalny !== undefined ? tool.stan_minimalny : 0;
-    const limitMax = tool.stan_maksymalny !== undefined ? tool.stan_maksymalny : 10;
+    const limitMin = tool.stan_minimalny || 0;
+    const limitMax = tool.stan_maksymalny || 0;
 
-    if (iloscCalkowita >= limitMax) {
+    if (tool.reczna_kontrola || limitMin <= 0 || limitMax <= 0) {
+        return 'status-grey';
+    }
+
+    const iloscNowych = tool.ilosc_nowych || 0;
+
+    if (iloscNowych >= limitMax) {
         return 'status-green';
-    } else if (iloscCalkowita > limitMin && iloscCalkowita < limitMax) {
+    } else if (iloscNowych >= limitMin) {
         return 'status-orange';
     } else {
         return 'status-red';
     }
+};
+
+// Tooltip paska — bez niego szary jest nieczytelny ("dobrze jest" czy "nikt tego nie pilnuje"?)
+const getStatusTitle = (tool) => {
+    const limitMin = tool.stan_minimalny || 0;
+    const limitMax = tool.stan_maksymalny || 0;
+    const iloscNowych = tool.ilosc_nowych || 0;
+
+    if (tool.reczna_kontrola) return 'Ręczna kontrola — generator nie zamawia automatycznie';
+    if (limitMin <= 0) return 'Auto-zamawianie wyłączone (limit minimalny = 0)';
+    if (limitMax <= 0) return 'Auto-zamawianie wyłączone (limit maksymalny = 0)';
+
+    if (iloscNowych >= limitMax) return `Stan pełny: ${iloscNowych} nowych (maks. ${limitMax})`;
+    if (iloscNowych >= limitMin) return `Poniżej maksimum: ${iloscNowych} nowych (min. ${limitMin}, maks. ${limitMax}) — generator uzupełni do ${limitMax}`;
+    return `Poniżej minimum: ${iloscNowych} nowych (min. ${limitMin}) — do zamówienia`;
 };
 
 const formatDateOnly = (dateString) => {
@@ -791,6 +823,9 @@ onBeforeUnmount(() => {
 .status-orange { background-color: #d97706; }
 .status-red { background-color: #dc3545; }
 .status-blue { background-color: #0d6efd; }
+/* Szary = poza kontrolą generatora (ręczna kontrola albo min/max = 0).
+   Celowo wyciszony — kolor niosą tylko narzędzia, które system faktycznie pilnuje. */
+.status-grey { background-color: #495057; }
 
 .zero-value { color: #6c757d !important; }
 /* Opis narzędzi, które mają historię zakupów — delikatny żółty (odróżnia od białego) */
@@ -955,6 +990,8 @@ onBeforeUnmount(() => {
 
 /* === Status indicator i etykiety pomocnicze === */
 .zakupy-app.light-theme .zero-value { color: #adb5bd !important; }
+/* Na jasnym tle ciemny szary paska bije po oczach mocniej niż kolory znaczące — rozjaśniamy */
+.zakupy-app.light-theme .status-grey { background-color: #ced4da; }
 /* Historia zakupów w motywie jasnym — ciemniejszy, czytelny gold na białym tle */
 .zakupy-app.light-theme .ma-historie-zakupow { color: #8a6d00 !important; }
 .zakupy-app.light-theme .control-auto {

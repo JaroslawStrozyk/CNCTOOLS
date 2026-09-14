@@ -327,11 +327,19 @@ def generator_zamowien_api(request):
 
     istniejace_narzedzia_ids = set(p.narzedzie_typ.id for p in istniejace_pozycje)
 
-    # Zbiorczy zestaw narzędzi z aktywnymi zamówieniami (1 zapytanie zamiast N)
+    # Zbiorczy zestaw narzędzi z aktywnymi zamówieniami (1 zapytanie zamiast N).
+    # UWAGA: liczą się WYŁĄCZNIE pozycje jeszcze NIEZREALIZOWANE (`zrealizowane=False`).
+    # Blokada ma znaczyć "ten towar jest w drodze, nie zamawiaj drugi raz" — a nie
+    # "zamówienie, w którym to narzędzie kiedyś było, nadal wisi". Bez tego warunku
+    # jedna niedostarczona pozycja trzymała całe zamówienie w 'partially_received'
+    # i blokowała WSZYSTKIE pozostałe narzędzia z tego zamówienia — także te odebrane
+    # w całości miesiące wcześniej (zgłoszenie z 09.2026: wiertła i frezy nieproponowane
+    # mimo stanu 0). Pozycja w pełni przyjęta nie jest już powodem blokady.
     aktywne_statusy = ['draft', 'pending_approval', 'verified', 'sent', 'partially_received']
     narzedzia_w_zamowieniach = set(
         PozycjaZamowienia.objects.filter(
-            zamowienie__status__in=aktywne_statusy
+            zamowienie__status__in=aktywne_statusy,
+            zrealizowane=False,
         ).values_list('narzedzie_typ_id', flat=True).distinct()
     )
 

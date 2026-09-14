@@ -1872,6 +1872,124 @@ class ZwrotRegeneracjaTestCase(APITestCase):
         self.assertNotEqual(egz.stan, 'uszkodzone_regeneracja')
 
 
+class BlokadaPozycjiZrealizowanychTestCase(APITestCase):
+    """
+    REGRESJA (zgłoszenie 09.2026): generator nie proponował narzędzi mimo stanu 0.
+
+    Przyczyna: filtr blokujący patrzył na STATUS ZAMÓWIENIA, nie na stan pozycji.
+    Jedna niedostarczona pozycja trzymała całe zamówienie w 'partially_received',
+    a wraz z nim blokowała WSZYSTKIE pozostałe narzędzia z tego zamówienia — także
+    odebrane w całości miesiące wcześniej. W praktyce wiertła i frezy o stanie 0
+    nie wracały do generatora przez dwa miesiące.
+
+    Reguła po poprawce: blokuje wyłącznie pozycja jeszcze NIEZREALIZOWANA
+    (towar realnie w drodze).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('logistyk2', 'log2@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+
+        # Tryb standardowy — reguła min/max po stanie całkowitym (niezależnie od
+        # app_settings.json maszyny deweloperskiej)
+        patcher = mock.patch('TOOLS.views.get_sposob_liczenia_zamowien', return_value='standardowa')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.kategoria = Kategoria.objects.create(nazwa="Wiertła")
+        self.podkategoria = Podkategoria.objects.create(nazwa="Płytkowe", kategoria=self.kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TESTB", nazwa_firmy="Blokada Sp. z o.o.")
+
+        # Narzędzie dostarczone w całości (pozycja zrealizowana), stan 0 → do zamówienia
+        self.narzedzie_dostarczone = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Wiertło dostarczone",
+            numer_katalogowy="DOSTARCZONE",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=1,
+            stan_maksymalny=5,
+            ostatni_dostawca=self.dostawca,
+        )
+
+        # Narzędzie, które realnie nie dotarło — ono ma dalej blokować
+        self.narzedzie_w_drodze = NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria,
+            opis="Wiertło w drodze",
+            numer_katalogowy="W-DRODZE",
+            opakowanie="szt",
+            ilosc_w_opakowaniu=1,
+            stan_minimalny=1,
+            stan_maksymalny=5,
+            ostatni_dostawca=self.dostawca,
+        )
+
+        # Zamówienie wiszące: jedna pozycja przyjęta w całości, druga wcale
+        self.zamowienie = Zamowienie.objects.create(
+            numer="2026/01/001",
+            dostawca=self.dostawca,
+            status='partially_received',
+        )
+        PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie,
+            narzedzie_typ=self.narzedzie_dostarczone,
+            narzedzie_opis=self.narzedzie_dostarczone.opis,
+            ilosc_zamowiona=4,
+            ilosc_dostarczona=4,
+            zrealizowane=True,
+        )
+        PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie,
+            narzedzie_typ=self.narzedzie_w_drodze,
+            narzedzie_opis=self.narzedzie_w_drodze.opis,
+            ilosc_zamowiona=10,
+            ilosc_dostarczona=0,
+            zrealizowane=False,
+        )
+
+    def _ids_w_generatorze(self):
+        response = self.client.get('/api/generator-zamowien/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return [p['id'] for p in response.data.get('pozycje', [])]
+
+    def test_pozycja_zrealizowana_nie_blokuje_generatora(self):
+        """Narzędzie odebrane w całości wraca do generatora, choć zamówienie wisi."""
+        self.assertIn(
+            self.narzedzie_dostarczone.id,
+            self._ids_w_generatorze(),
+            "Narzędzie z pozycją w pełni przyjętą musi wrócić do generatora, "
+            "nawet gdy zamówienie ma status 'partially_received' przez inną pozycję"
+        )
+
+    def test_pozycja_niezrealizowana_nadal_blokuje(self):
+        """Towar realnie w drodze dalej nie może być zamówiony drugi raz."""
+        self.assertNotIn(
+            self.narzedzie_w_drodze.id,
+            self._ids_w_generatorze(),
+            "Narzędzie z pozycją niedostarczoną musi pozostać zablokowane"
+        )
+
+    def test_blokada_dziala_dla_zamowienia_wyslanego(self):
+        """Ta sama reguła obowiązuje w statusie 'sent' — nic jeszcze nie przyjęto."""
+        self.zamowienie.status = 'sent'
+        self.zamowienie.save(update_fields=['status'])
+        PozycjaGeneratora.objects.all().delete()
+
+        ids = self._ids_w_generatorze()
+        self.assertNotIn(self.narzedzie_w_drodze.id, ids)
+        self.assertIn(self.narzedzie_dostarczone.id, ids)
+
+    def test_zamowienie_zakonczone_nie_blokuje_wcale(self):
+        """Kontrola negatywna: status 'completed' nigdy nie był blokadą."""
+        self.zamowienie.status = 'completed'
+        self.zamowienie.save(update_fields=['status'])
+        PozycjaGeneratora.objects.all().delete()
+
+        ids = self._ids_w_generatorze()
+        self.assertIn(self.narzedzie_dostarczone.id, ids)
+        self.assertIn(self.narzedzie_w_drodze.id, ids)
+
+
 class WartoscKompletuTestCase(TestCase):
     """
     Wartość pozycji/zamówienia dla narzędzi kupowanych w KOMPLETACH.

@@ -241,8 +241,8 @@ TECHNOLOG_PAGE_SIZE = 50
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.15.0g',
-        'MODYFIKACJA': '11.08.2026r.',
+        'WERSJA'     : '1.16.0g',
+        'MODYFIKACJA': '14.09.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',
