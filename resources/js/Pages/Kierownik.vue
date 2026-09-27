@@ -70,6 +70,8 @@
                         :loading="isLoadingTools"
                         :paginator="true"
                         :rows="pageSize"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
                         :scrollable="true"
                         scrollHeight="flex"
                         selectionMode="single"
@@ -176,8 +178,8 @@
                         scrollHeight="flex"
                         :paginator="true"
                         :rows="pageSize"
-                        :rowsPerPageOptions="[25, 50, 100, 200]"
-                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
                         currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                     >
@@ -256,8 +258,8 @@
                         scrollHeight="flex"
                         :paginator="true"
                         :rows="pageSize"
-                        :rowsPerPageOptions="[25, 50, 100, 200]"
-                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
                         currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                         stripedRows
@@ -348,8 +350,8 @@
                         scrollHeight="flex"
                         :paginator="true"
                         :rows="pageSize"
-                        :rowsPerPageOptions="[25, 50, 100, 200]"
-                        paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
                         currentPageReportTemplate="{first}–{last} z {totalRecords}"
                         class="tools-table"
                         stripedRows
@@ -745,6 +747,9 @@ import Tag from 'primevue/tag';
 import ProgressSpinner from 'primevue/progressspinner';
 import Badge from 'primevue/badge';
 import Chart from 'primevue/chart';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 const API_URL = '/api';
 
@@ -765,10 +770,6 @@ const props = defineProps({
     infoProgram: {
         type: Object,
         default: () => ({})
-    },
-    pageSize: {
-        type: Number,
-        default: 50
     }
 });
 

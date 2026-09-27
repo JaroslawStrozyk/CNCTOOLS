@@ -92,6 +92,10 @@ urlpatterns = [
     path('pomoc/zakupy/',
          login_required(TemplateView.as_view(template_name='help/zakupy.html')),
          name='pomoc-zakupy'),
+    # Pełna dokumentacja (suma powyższych) — dostępna z ekranu logowania, bez logowania
+    path('dokumentacja/',
+         TemplateView.as_view(template_name='help/dokumentacja.html'),
+         name='dokumentacja'),
 
     # ===== API =====
     # Zamówienia — custom endpointy (muszą być PRZED router.urls)

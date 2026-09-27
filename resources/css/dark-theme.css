@@ -881,6 +881,43 @@
     color: #fff !important;
 }
 
+/* Kompaktowy RowsPerPageDropdown + CurrentPageReport — motyw daje im 3rem wysokości,
+   co podbijało całą belkę paginatora. Wyrównane do wysokości przycisków (1.5rem). */
+.p-paginator .p-dropdown {
+    height: 1.5rem !important;
+    margin: 0 0 0 0.5rem !important;
+    align-items: center;
+    background: #2b3035 !important;
+    border-color: #6c757d !important;
+    border-radius: 4px !important;
+}
+
+.p-paginator .p-dropdown .p-dropdown-label {
+    padding: 0 0 0 6px !important;
+    font-size: 0.75rem !important;
+    line-height: 1.5rem !important;
+    color: #dee2e6 !important;
+}
+
+.p-paginator .p-dropdown .p-dropdown-trigger {
+    width: 1.4rem !important;
+}
+
+.p-paginator .p-dropdown .p-dropdown-trigger-icon {
+    font-size: 0.65rem !important;
+    width: 0.65rem !important;
+    height: 0.65rem !important;
+}
+
+.p-paginator .p-paginator-current {
+    height: 1.5rem !important;
+    min-width: 0 !important;
+    margin: 0 0 0 0.5rem !important;
+    padding: 0 !important;
+    font-size: 0.75rem !important;
+    color: #adb5bd !important;
+}
+
 /* === TABVIEW === */
 .p-tabview {
     background: transparent;

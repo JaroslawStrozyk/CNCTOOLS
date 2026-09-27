@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib import messages
 from django.conf import settings
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Count, F, Q, Sum, Prefetch
 from django.db import transaction, IntegrityError
 from django.utils import timezone
 from datetime import datetime
@@ -343,24 +343,17 @@ def generator_zamowien_api(request):
         ).values_list('narzedzie_typ_id', flat=True).distinct()
     )
 
-    # Zbiorczy słownik ostatnich cen (1 zapytanie zamiast N)
-    from django.db.models import Max, Subquery, OuterRef
-    ostatnie_ceny_qs = PozycjaZamowienia.objects.filter(
-        cena_jednostkowa__isnull=False,
-        cena_jednostkowa__gt=0,
-    ).values('narzedzie_typ_id').annotate(
-        ostatnia_data=Max('zamowienie__data_utworzenia')
-    )
-    ostatnie_ceny = {}
-    for row in ostatnie_ceny_qs:
-        poz = PozycjaZamowienia.objects.filter(
-            narzedzie_typ_id=row['narzedzie_typ_id'],
-            zamowienie__data_utworzenia=row['ostatnia_data'],
+    # Zbiorczy słownik ostatnich cen — 1 zapytanie (PostgreSQL DISTINCT ON).
+    # Per narzędzie: pozycja z najnowszego zamówienia; remis rozstrzyga domyślne
+    # sortowanie PozycjaZamowienia (zamowienie, id) — jak dawne .first() w pętli.
+    ostatnie_ceny = dict(
+        PozycjaZamowienia.objects.filter(
             cena_jednostkowa__isnull=False,
             cena_jednostkowa__gt=0,
-        ).first()
-        if poz:
-            ostatnie_ceny[row['narzedzie_typ_id']] = poz.cena_jednostkowa
+        ).order_by(
+            'narzedzie_typ_id', '-zamowienie__data_utworzenia', 'zamowienie', 'id'
+        ).distinct('narzedzie_typ_id').values_list('narzedzie_typ_id', 'cena_jednostkowa')
+    )
 
     # Pobierz narzędzia z annotowanym stanem (egzemplarze bez uszkodzonych).
     # UWAGA: liczymy SUMĘ ilosc_w_komplecie, NIE liczby egzemplarzy — zgodnie z Zakupy.
@@ -1588,6 +1581,40 @@ def sposob_liczenia_zamowien_view(request):
 
 # ========== API VIEWSETS ==========
 
+# Relacje zagnieżdżane przez NarzedzieMagazynoweSerializer / EgzemplarzNarzedziaSerializer.
+# Dołączane przez select_related wszędzie tam, gdzie narzędzie lub egzemplarz jest
+# serializowany jako obiekt podrzędny — bez tego każdy wiersz dociąga 3–5 zapytań (N+1).
+NARZEDZIE_RELACJE = ('podkategoria__kategoria', 'ostatni_dostawca', 'domyslna_lokalizacja')
+EGZEMPLARZ_RELACJE = ('lokalizacja', 'faktura_zakupu__dostawca') + tuple(
+    f'narzedzie_typ__{r}' for r in NARZEDZIE_RELACJE
+)
+
+
+def relacje(prefix, nazwy):
+    return [f'{prefix}__{n}' for n in nazwy]
+
+
+def prefetch_pozycji_zamowienia(lookup='pozycje'):
+    return Prefetch(lookup, queryset=PozycjaZamowienia.objects.select_related(
+        *relacje('narzedzie_typ', NARZEDZIE_RELACJE)
+    ))
+
+
+def prefetch_zamowienia(prefix=''):
+    """Prefetche dla ZamowienieSerializer (pozycje z narzędziem + źródłowe zapotrzebowania)."""
+    return [
+        prefetch_pozycji_zamowienia(f'{prefix}pozycje'),
+        Prefetch(f'{prefix}zrodlowe_zapotrzebowania',
+                 queryset=ZapotrzebowanieTechnologa.objects.select_related('technolog')),
+    ]
+
+
+def prefetch_pozycji_zapotrzebowania():
+    return Prefetch('pozycje', queryset=PozycjaZapotrzebowania.objects.select_related(
+        *relacje('narzedzie_typ', NARZEDZIE_RELACJE)
+    ))
+
+
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 100
     page_size_query_param = 'page_size'
@@ -1970,11 +1997,23 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """
         Usuwa egzemplarz narzędzia i loguje operację.
+        Egzemplarz wydany do użytku (wpis historii bez daty zwrotu) jest chroniony —
+        najpierw należy przyjąć zwrot.
         """
         egzemplarz = self.get_object()
+        user_name = get_user_display_name(request.user)
+
+        if egzemplarz.historia.filter(data_zwrotu__isnull=True).exists():
+            app_logger.warning(
+                user_name,
+                f"Odrzucono usunięcie egzemplarza w użyciu: {egzemplarz.narzedzie_typ.opis} (ID: {egzemplarz.id})"
+            )
+            return Response(
+                {'error': 'Egzemplarz jest wydany do użytku — przed usunięciem należy przyjąć jego zwrot.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Loguj usunięcie
-        user_name = get_user_display_name(request.user)
         opis = f"{egzemplarz.narzedzie_typ.opis} (ID: {egzemplarz.id}, stan: {egzemplarz.get_stan_display()})"
         app_logger.warning(user_name, f"Usunięto egzemplarz narzędzia: {opis}")
 
@@ -1986,7 +2025,7 @@ class EgzemplarzNarzedziaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
 class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
     queryset = HistoriaUzyciaNarzedzia.objects.select_related(
-        'egzemplarz__narzedzie_typ__podkategoria__kategoria',
+        *relacje('egzemplarz', EGZEMPLARZ_RELACJE),
         'maszyna',
         'pracownik__user',
         'pracownik_zwracajacy__user'
@@ -2308,9 +2347,8 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
 
 class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = Uszkodzenie.objects.select_related(
-        'egzemplarz__narzedzie_typ__podkategoria__kategoria',
-        'egzemplarz__lokalizacja',
-        'pracownik'
+        *relacje('egzemplarz', EGZEMPLARZ_RELACJE),
+        'pracownik__user'
     ).all()
     serializer_class = UszkodzenieSerializer
     log_name = 'uszkodzenie'
@@ -2327,11 +2365,16 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
         return f"{narzedzie} (ID: {instance.id})"
 
     def get_queryset(self):
-        # Prefetch historii pod fallbacki maszyny/pracownika w serializerze
-        # (dotyczy tylko kart z nieusuniętym egzemplarzem; eliminuje N+1).
+        # Prefetch historii (od najnowszej) pod fallbacki maszyny/pracownika w serializerze
+        # — atrybut `historia_od_najnowszej` czyta UszkodzenieSerializer (eliminuje N+1).
         return super().get_queryset().prefetch_related(
-            'egzemplarz__historia__maszyna',
-            'egzemplarz__historia__pracownik',
+            Prefetch(
+                'egzemplarz__historia',
+                queryset=HistoriaUzyciaNarzedzia.objects.select_related(
+                    'maszyna', 'pracownik__user'
+                ).order_by('-data_wydania'),
+                to_attr='historia_od_najnowszej',
+            ),
         ).order_by('-data_uszkodzenia')
 
     @action(detail=False, methods=['get'])
@@ -2508,7 +2551,7 @@ def _propaguj_status_zapotrzebowan(zamowienie):
 
 
 class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
-    queryset = Zamowienie.objects.select_related('dostawca').prefetch_related('pozycje').all()
+    queryset = Zamowienie.objects.select_related('dostawca').prefetch_related(*prefetch_zamowienia()).all()
     serializer_class = ZamowienieSerializer
     log_name = 'zamówienie'
 
@@ -2991,7 +3034,13 @@ class RealizacjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
     queryset = RealizacjaZamowienia.objects.select_related(
         'zamowienie__dostawca',
         'lokalizacja_domyslna'
-    ).prefetch_related('pozycje').all()
+    ).prefetch_related(
+        *prefetch_zamowienia('zamowienie__'),
+        Prefetch('pozycje', queryset=PozycjaRealizacji.objects.select_related(
+            'lokalizacja',
+            *relacje('pozycja_zamowienia__narzedzie_typ', NARZEDZIE_RELACJE),
+        )),
+    ).all()
     serializer_class = RealizacjaZamowieniaSerializer
     log_name = 'realizację zamówienia'
 
@@ -3117,7 +3166,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
     ViewSet dla zapotrzebowań technologów.
     Zawiera akcje customowe: moj_koszyk, wyslij, pdf.
     """
-    queryset = ZapotrzebowanieTechnologa.objects.select_related('technolog').prefetch_related('pozycje').all()
+    queryset = ZapotrzebowanieTechnologa.objects.select_related('technolog', 'zrealizowany_przez').prefetch_related(prefetch_pozycji_zapotrzebowania()).all()
     serializer_class = ZapotrzebowanieTechnologaSerializer
     log_name = 'zapotrzebowanie'
 
@@ -3156,7 +3205,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         koszyk = ZapotrzebowanieTechnologa.objects.filter(
             technolog=request.user,
             status='draft'
-        ).first()
+        ).select_related('technolog', 'zrealizowany_przez').prefetch_related(prefetch_pozycji_zapotrzebowania()).first()
 
         if not koszyk:
             koszyk = ZapotrzebowanieTechnologa.objects.create(
@@ -3224,7 +3273,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
             status='draft'
         ).filter(
             data_utworzenia__gte=data_od
-        ).select_related('technolog').prefetch_related('pozycje')
+        ).select_related('technolog', 'zrealizowany_przez').prefetch_related(prefetch_pozycji_zapotrzebowania())
 
         # Filtrowanie - własne lub wszystkie
         show_all = request.query_params.get('all', 'false').lower() == 'true'
@@ -3245,7 +3294,7 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
         """
         zapotrzebowania = ZapotrzebowanieTechnologa.objects.filter(
             status__in=['submitted', 'completed', 'ordered']
-        ).select_related('technolog', 'zrealizowany_przez').prefetch_related('pozycje').order_by('-data_wyslania')
+        ).select_related('technolog', 'zrealizowany_przez').prefetch_related(prefetch_pozycji_zapotrzebowania()).order_by('-data_wyslania')
 
         serializer = self.get_serializer(zapotrzebowania, many=True)
         return Response(serializer.data)
@@ -3383,7 +3432,7 @@ class PozycjaZapotrzebowaniaViewSet(LoggingMixin, viewsets.ModelViewSet):
     """
     queryset = PozycjaZapotrzebowania.objects.select_related(
         'zapotrzebowanie',
-        'narzedzie_typ__podkategoria__kategoria'
+        *relacje('narzedzie_typ', NARZEDZIE_RELACJE)
     ).all()
     serializer_class = PozycjaZapotrzebowaniaSerializer
     log_name = 'pozycję koszyka'

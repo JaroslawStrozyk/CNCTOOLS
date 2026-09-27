@@ -28,6 +28,10 @@
           <DataTable
             :value="zapotrzebowania"
             :loading="isLoadingZapotrzebowania"
+            :paginator="true"
+            :rows="pageSize"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            :paginatorTemplate="paginatorTemplate"
             :scrollable="true"
             scrollHeight="flex"
             v-model:expandedRows="expandedZapotrzebowania"
@@ -329,6 +333,9 @@ import InputText from 'primevue/inputtext';
 import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 axios.defaults.xsrfCookieName = 'csrftoken';
 axios.defaults.xsrfHeaderName = 'X-CSRFToken';

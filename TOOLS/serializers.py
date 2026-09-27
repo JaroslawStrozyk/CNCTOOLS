@@ -483,13 +483,22 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
             return f"{lok.szafa}/{lok.polka}/{lok.kolumna}"
         return None
 
+    @staticmethod
+    def _ostatnia_historia(egzemplarz):
+        # Prefetch z UszkodzenieViewSet (`historia_od_najnowszej`) — bez zapytania per wiersz.
+        # Brak prefetchu (np. odpowiedź po zapisie) → dawne zapytanie.
+        historia = getattr(egzemplarz, 'historia_od_najnowszej', None)
+        if historia is not None:
+            return historia[0] if historia else None
+        return egzemplarz.historia.order_by('-data_wydania').first()
+
     def get_maszyna_uszkodzenia(self, obj):
         # Najpierw sprawdź pole maszyna_nazwa (dla usuniętych)
         if obj.maszyna_nazwa:
             return obj.maszyna_nazwa
         # Potem sprawdź egzemplarz (dla nieusunietych)
         if obj.egzemplarz:
-            ostatnia_historia = obj.egzemplarz.historia.order_by('-data_wydania').first()
+            ostatnia_historia = self._ostatnia_historia(obj.egzemplarz)
             if ostatnia_historia and ostatnia_historia.maszyna:
                 return ostatnia_historia.maszyna.nazwa
         return None
@@ -506,7 +515,7 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
             return PracownikSerializer(obj.pracownik).data
         # Na koniec sprawdź ostatnią historię egzemplarza
         if obj.egzemplarz:
-            ostatnia_historia = obj.egzemplarz.historia.order_by('-data_wydania').first()
+            ostatnia_historia = self._ostatnia_historia(obj.egzemplarz)
             if ostatnia_historia and ostatnia_historia.pracownik:
                 return PracownikSerializer(ostatnia_historia.pracownik).data
         return None
@@ -588,7 +597,8 @@ class ZamowienieSerializer(serializers.ModelSerializer):
         jedynym źródłem prawdy — spójnym z propagacją statusu i odpisami pozycji.
         """
         result = []
-        for zap in obj.zrodlowe_zapotrzebowania.select_related('technolog').all():
+        # .all() (bez select_related) korzysta z prefetchu w ZamowienieViewSet.
+        for zap in obj.zrodlowe_zapotrzebowania.all():
             technolog = zap.technolog
             result.append({
                 'id': zap.id,

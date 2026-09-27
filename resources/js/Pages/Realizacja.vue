@@ -27,6 +27,11 @@
         <div class="card-body">
           <DataTable
             :value="realizacje"
+            :loading="isLoading"
+            :paginator="true"
+            :rows="pageSize"
+            :rowsPerPageOptions="rowsPerPageOptions"
+            :paginatorTemplate="paginatorTemplate"
             responsiveLayout="scroll"
             class="realizacje-table"
           >
@@ -206,6 +211,9 @@ import Dialog from 'primevue/dialog';
 import Menu from 'primevue/menu';
 import Tag from 'primevue/tag';
 import logoImage from '@images/cnc-logo.png';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 axios.defaults.xsrfCookieName = 'csrftoken';
 axios.defaults.xsrfHeaderName = 'X-CSRFToken';
@@ -229,6 +237,7 @@ const backUrl = computed(() => {
 
 // State
 const realizacje = ref([]);
+const isLoading = ref(false);
 const selectedRealizacja = ref(null);
 
 // Dialog visibility
@@ -264,11 +273,14 @@ const toggleUserMenu = (event) => {
 
 // Methods
 const fetchRealizacje = async () => {
+  isLoading.value = true;
   try {
     const response = await axios.get(`${API_URL}/realizacje/`);
     realizacje.value = response.data.results || response.data;
   } catch (error) {
     console.error("Błąd ładowania realizacji:", error);
+  } finally {
+    isLoading.value = false;
   }
 };
 

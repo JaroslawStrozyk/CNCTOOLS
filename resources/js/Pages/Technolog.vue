@@ -75,6 +75,8 @@
                         :loading="isLoadingTools"
                         :paginator="true"
                         :rows="pageSize"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
                         :scrollable="true"
                         scrollHeight="flex"
                         selectionMode="single"
@@ -181,6 +183,10 @@
                 <!-- Tabela historii -->
                 <DataTable
                     :value="historiaZamowien"
+                    :paginator="true"
+                    :rows="pageSize"
+                    :rowsPerPageOptions="rowsPerPageOptions"
+                    :paginatorTemplate="paginatorTemplate"
                     :scrollable="true"
                     scrollHeight="calc(80vh - 180px)"
                     dataKey="id"
@@ -596,6 +602,9 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 const API_URL = '/api';
 
@@ -618,10 +627,6 @@ const props = defineProps({
             zapotrzebowania: '/zapotrzebowania/',
             logout: '/logout/'
         })
-    },
-    pageSize: {
-        type: Number,
-        default: 50
     }
 });
 

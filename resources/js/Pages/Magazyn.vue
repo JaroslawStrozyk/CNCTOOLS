@@ -244,7 +244,13 @@
                                             <template #body="{ data }">
                                                 <div class="btn-group-inline">
                                                     <Button icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="openInstanceModal('edit', data)" title="Edytuj" />
-                                                    <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteInstanceModal(data)" title="Usuń" />
+                                                    <Button
+                                                        icon="pi pi-trash"
+                                                        class="p-button-danger p-button-sm"
+                                                        :disabled="inUseInstanceIds.has(data.id)"
+                                                        :title="inUseInstanceIds.has(data.id) ? 'Egzemplarz jest wydany — usunięcie możliwe po zwrocie' : 'Usuń'"
+                                                        @click="openDeleteInstanceModal(data)"
+                                                    />
                                                 </div>
                                             </template>
                                         </Column>
@@ -2051,7 +2057,7 @@ const confirmDeleteInstance = async () => {
     } catch (error) {
         console.error("Błąd usuwania egzemplarza:", error.response?.data || error.message);
         deleteInstanceModalVisible.value = false;
-        alert('Nie można usunąć egzemplarza. Sprawdź, czy nie jest aktualnie w użyciu lub nie ma powiązanej historii.');
+        alert(error.response?.data?.error || 'Nie można usunąć egzemplarza.');
     }
 };
 

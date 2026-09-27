@@ -54,8 +54,8 @@
                 scrollHeight="flex"
                 :paginator="true"
                 :rows="pageSize"
-                :rowsPerPageOptions="[25, 50, 100, 200]"
-                paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                :rowsPerPageOptions="rowsPerPageOptions"
+                :paginatorTemplate="paginatorTemplate"
               >
                 <Column header="Nr karty" style="width: 100px;">
                   <template #body="{ data }">
@@ -147,8 +147,8 @@
                   scrollHeight="flex"
                   :paginator="true"
                   :rows="pageSize"
-                  :rowsPerPageOptions="[25, 50, 100, 200]"
-                  paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown CurrentPageReport"
+                  :rowsPerPageOptions="rowsPerPageOptions"
+                  :paginatorTemplate="paginatorTemplate"
                 >
                   <Column header="Nr karty" style="width: 100px;">
                     <template #body="{ data }">
@@ -293,6 +293,7 @@ import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
+import { usePaginacja } from '../paginacja';
 
 axios.defaults.xsrfCookieName = 'csrftoken';
 axios.defaults.xsrfHeaderName = 'X-CSRFToken';
@@ -307,7 +308,7 @@ const props = defineProps({
 
 // State
 const damages = ref([]);
-const pageSize = ref(50);
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 const isLoading = ref(false);
 const activeTab = ref(0);
 const searchQuery = ref('');

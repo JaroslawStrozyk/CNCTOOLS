@@ -68,8 +68,9 @@
                                 :scrollable="true"
                                 scrollHeight="flex"
                                 :paginator="true"
-                                :rows="50"
-                                :rowsPerPageOptions="[25, 50, 100]"
+                                :rows="pageSize"
+                                :rowsPerPageOptions="rowsPerPageOptions"
+                                :paginatorTemplate="paginatorTemplate"
                                 class="logi-table"
                             >
                                 <Column field="data" header="Data" style="width: 120px;">
@@ -182,8 +183,9 @@
                                     :scrollable="true"
                                     scrollHeight="flex"
                                     :paginator="true"
-                                    :rows="50"
-                                    :rowsPerPageOptions="[25, 50, 100]"
+                                    :rows="pageSize"
+                                    :rowsPerPageOptions="rowsPerPageOptions"
+                                    :paginatorTemplate="paginatorTemplate"
                                     class="logi-table"
                                 >
                                     <Column field="data" header="Data" style="width: 120px;">
@@ -255,6 +257,9 @@ import Dropdown from 'primevue/dropdown';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
 import ProgressSpinner from 'primevue/progressspinner';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 const API_URL = '/api';
 

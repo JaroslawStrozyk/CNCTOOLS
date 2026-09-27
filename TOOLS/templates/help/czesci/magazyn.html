@@ -1,0 +1,564 @@
+<div class="dok-czesc dok-magazyn" id="mag">
+
+    <header class="page-head">
+        <h1>Pomoc — Magazyn</h1>
+        <div class="subtitle">Praktyczny przewodnik po module magazynu narzędzi: katalog typów, egzemplarze, wydawanie, zwroty, uszkodzenia i historia.</div>
+        <div class="subtitle">Stan na: wrzesień 2026 · wersja 1.16</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#mag-wstep">Do czego służy moduł Magazyn</a></li>
+            <li><a href="#mag-przeplyw">Życie narzędzia — od wejścia do magazynu po zwrot</a></li>
+            <li><a href="#mag-belka">Górna belka</a></li>
+            <li><a href="#mag-typy">Tabela „Lista typów narzędzi”</a></li>
+            <li><a href="#mag-typ-edycja">Dodawanie i edycja typu narzędzia</a></li>
+            <li><a href="#mag-szczegoly">Zakładka „Szczegóły” — egzemplarze wybranego narzędzia</a></li>
+            <li><a href="#mag-egz-edycja">Dodawanie, edycja i usuwanie egzemplarza</a></li>
+            <li><a href="#mag-wydawanie">Wydawanie narzędzia (Pobierz)</a></li>
+            <li><a href="#mag-w-uzyciu">Strona „Narzędzia aktualnie w użyciu”</a></li>
+            <li><a href="#mag-zwroty">Zwrot narzędzia</a></li>
+            <li><a href="#mag-uszkodzenia">Karta uszkodzenia i moduł Zwroty</a></li>
+            <li><a href="#mag-stany">Stany techniczne egzemplarzy</a></li>
+            <li><a href="#mag-komplety">Komplety i sztuki</a></li>
+            <li><a href="#mag-historia">Zakładka „Historia użycia”</a></li>
+            <li><a href="#mag-etykiety">Oznaczenia i etykiety DXF</a></li>
+            <li><a href="#mag-tryb-prod">Tryb produkcyjny</a></li>
+            <li><a href="#mag-logowanie">Logowanie i uprawnienia</a></li>
+            <li><a href="#mag-faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="mag-wstep">1. Do czego służy moduł Magazyn</h2>
+    <p>
+        Moduł <strong>Magazyn</strong> jest podstawą systemu CNC Tools. Prowadzi się w nim katalog wszystkich narzędzi.
+        Widać tu, ile jest sztuk każdego typu, w jakim są stanie, kto je pobrał, na jaką maszynę i kiedy.
+        Z magazynu wydaje się narzędzia pracownikom i przyjmuje się je z powrotem.
+    </p>
+    <p>Magazyn rozróżnia dwa pojęcia, których nie należy mylić:</p>
+    <ul>
+        <li><strong>Typ narzędzia</strong> — opis modelu (np. „Frez walcowy ⌀12 HSS”, numer katalogowy, kategoria). Typ występuje w katalogu jeden raz.</li>
+        <li><strong>Egzemplarz</strong> — fizyczna sztuka (lub komplet) danego typu, leżąca w konkretnej lokalizacji, z własnym oznaczeniem. Jeden typ może mieć wiele egzemplarzy.</li>
+    </ul>
+    <div class="tip">
+        <strong>W skrócie:</strong> typ narzędzia mówi, „co to jest”. Egzemplarz mówi, „która to sztuka, gdzie leży i w jakim jest stanie”.
+    </div>
+
+    <h2 id="mag-przeplyw">2. Życie narzędzia</h2>
+    <p>Poniżej pokazano typowy cykl życia narzędzia — od wpisania go do katalogu do chwili, gdy wraca z hali.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 480" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="mag-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Typ narzędzia -->
+            <rect class="box" x="20" y="20" width="200" height="80"/>
+            <text class="label" x="120" y="48" text-anchor="middle">1. Typ narzędzia</text>
+            <text class="label-small" x="120" y="68" text-anchor="middle">kategoria, opis, nr kat.</text>
+            <text class="label-small" x="120" y="85" text-anchor="middle">jednostka: sztuka / komplet</text>
+
+            <path class="arrow" d="M220,60 L290,60" marker-end="url(#mag-arrow)"/>
+
+            <!-- 2. Egzemplarz -->
+            <rect class="box" x="290" y="20" width="200" height="80"/>
+            <text class="label" x="390" y="48" text-anchor="middle">2. Egzemplarz</text>
+            <text class="label-small" x="390" y="68" text-anchor="middle">lokalizacja, oznaczenie</text>
+            <text class="label-small" x="390" y="85" text-anchor="middle">stan: Nowe / Używane</text>
+
+            <path class="arrow" d="M490,60 L560,60" marker-end="url(#mag-arrow)"/>
+
+            <!-- 3. Wydanie -->
+            <rect class="box-soft" x="560" y="20" width="200" height="80"/>
+            <text class="label" x="660" y="48" text-anchor="middle">3. Wydanie (Pobierz)</text>
+            <text class="label-small" x="660" y="68" text-anchor="middle">→ pracownik + maszyna</text>
+            <text class="label-small" x="660" y="85" text-anchor="middle">+ nr zlecenia</text>
+
+            <path class="arrow" d="M660,100 L660,140" marker-end="url(#mag-arrow)"/>
+
+            <!-- 4. W użyciu -->
+            <rect class="box-soft" x="560" y="145" width="200" height="80"/>
+            <text class="label" x="660" y="173" text-anchor="middle">4. W użyciu</text>
+            <text class="label-small" x="660" y="193" text-anchor="middle">na hali, na maszynie</text>
+            <text class="label-small" x="660" y="210" text-anchor="middle">widoczne na stronie W użyciu</text>
+
+            <path class="arrow" d="M560,185 L490,185" marker-end="url(#mag-arrow)"/>
+
+            <!-- 5. Zwrot -->
+            <rect class="box-soft" x="290" y="145" width="200" height="80"/>
+            <text class="label" x="390" y="173" text-anchor="middle">5. Zwrot</text>
+            <text class="label-small" x="390" y="193" text-anchor="middle">stan: Nowym / Dobrym /</text>
+            <text class="label-small" x="390" y="210" text-anchor="middle">Uszkodzonym / Zużytym</text>
+
+            <path class="arrow" d="M290,185 L220,185" marker-end="url(#mag-arrow)"/>
+
+            <!-- 6a. Powrót na półkę -->
+            <rect class="box" x="20" y="145" width="200" height="80"/>
+            <text class="label" x="120" y="173" text-anchor="middle">6a. Z powrotem na półkę</text>
+            <text class="label-small" x="120" y="195" text-anchor="middle">jako Nowe lub Używane,</text>
+            <text class="label-small" x="120" y="210" text-anchor="middle">gotowe do kolejnego wydania</text>
+
+            <!-- 6b. Uszkodzone / Zużyte -->
+            <rect class="box-soft" x="290" y="270" width="200" height="80"/>
+            <text class="label" x="390" y="298" text-anchor="middle">6b. Uszkodzone / Zużyte</text>
+            <text class="label-small" x="390" y="318" text-anchor="middle">znika z magazynu,</text>
+            <text class="label-small" x="390" y="335" text-anchor="middle">karta trafia do modułu Zwroty</text>
+
+            <path class="arrow" d="M390,225 L390,270" marker-end="url(#mag-arrow)"/>
+
+            <!-- powrót do puli -->
+            <path class="arrow" d="M120,225 L120,265 L250,265 L250,80" marker-end="url(#mag-arrow)" stroke-dasharray="4,3"/>
+            <text class="label-small" x="155" y="260">cykl się powtarza</text>
+        </svg>
+        <div class="diagram-caption">Cykl pracy z egzemplarzem narzędzia. Linia przerywana oznacza, że ten sam egzemplarz wraca do puli.</div>
+    </div>
+
+    <h2 id="mag-belka">3. Górna belka</h2>
+    <p>W zwykłym trybie magazynu belka zawiera następujące przyciski (od lewej):</p>
+    <ul>
+        <li><span class="btn-demo purple">Logi</span> — widoczny tylko dla administratora. Dziennik zdarzeń systemu.</li>
+        <li><span class="btn-demo info">Pomoc</span> — otwiera ten przewodnik w osobnym oknie.</li>
+        <li><span class="btn-demo success">Zapotrzebowania</span> — przejście do zgłoszeń zapotrzebowania od technologów.</li>
+        <li><span class="btn-demo success">Zamówienia</span> — przejście do zamówień u dostawców.</li>
+        <li><span class="btn-demo primary">W użyciu</span> — przejście na stronę „Narzędzia aktualnie w użyciu” (patrz <a href="#mag-w-uzyciu">sekcja 9</a>). Tam wykonuje się zwroty.</li>
+        <li><span class="btn-demo primary">Zwroty</span> — przejście do modułu Zwroty: karty uszkodzeń i narzędzia zużyte (patrz <a href="#mag-uszkodzenia">sekcja 11</a>).</li>
+        <li><span class="btn-demo primary">Zakupy</span> — widoczny tylko dla działu logistyki i administratora.</li>
+        <li><span class="btn-demo danger">Imię i nazwisko</span> — menu konta zalogowanej osoby: <strong>Ustawienia</strong>, <strong>O programie</strong>, <strong>Wyjście</strong>.</li>
+    </ul>
+    <p>W trybie produkcyjnym belka jest uproszczona — patrz sekcja <a href="#mag-tryb-prod">Tryb produkcyjny</a>.</p>
+
+    <h2 id="mag-typy">4. Tabela „Lista typów narzędzi”</h2>
+    <p>To główna tabela w górnej części ekranu. Pokazuje wszystkie typy narzędzi z katalogu oraz liczbę sztuk w podziale na stany.</p>
+    <p>Tabela nie jest dzielona na strony. Wszystkie pozycje przegląda się, przewijając listę kółkiem myszy lub paskiem przewijania.</p>
+
+    <h3>Wyszukiwanie i filtry</h3>
+    <ul>
+        <li><strong>Pole „Szukaj...”</strong> — należy wpisać fragment nazwy kategorii, podkategorii, opisu lub numeru katalogowego. Lista zawęża się samoczynnie.</li>
+        <li><strong>Filtr kategorii</strong> (domyślnie „Wszystkie kategorie”) — rozwijana lista kategorii.</li>
+        <li><strong>Filtr podkategorii</strong> (domyślnie „Wszystkie podkategorie”) — działa dopiero po wybraniu kategorii i pokazuje jej podkategorie.</li>
+    </ul>
+
+    <h3>Kolumny</h3>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — miejsce narzędzia w drzewie katalogu. Gdy typ nie ma kategorii, pojawia się napis „Brak kategorii”.</li>
+        <li><strong>Opis / Specyfikacja</strong> — pełna nazwa modelu (np. „Frez walcowy ⌀12 mm HSS”).</li>
+        <li><strong>Nr katalogowy</strong> — numer producenta lub własny. Gdy pole jest puste, pojawia się szary znak „<code>-</code>”. Numer wyświetlony <strong>na czerwono</strong> oznacza, że ten sam numer katalogowy ma więcej niż jeden typ narzędzia (podpowiedź: „Numer katalogowy zduplikowany w bazie”). Takie pozycje należy sprawdzić i poprawić.</li>
+        <li><strong>Nowe</strong> — sztuki nowe, leżące w magazynie (niewydane).</li>
+        <li><strong>Używane</strong> — sztuki, które już pracowały, wróciły sprawne i leżą w magazynie gotowe do ponownego wydania.</li>
+        <li><strong>W użyciu</strong> — sztuki wydane na halę.</li>
+        <li><strong>Razem</strong> — suma kolumn Nowe, Używane i W użyciu.</li>
+    </ul>
+    <p>Liczby w tych kolumnach to <strong>sztuki</strong>, a nie opakowania. Komplet 10 płytek liczy się jako 10. Wartość 0 jest wyszarzona.</p>
+
+    <h3>Praca z tabelą</h3>
+    <ul>
+        <li><strong>Kliknięcie wiersza</strong> — wiersz zostaje podświetlony, a w dolnej części ekranu, w zakładce „Szczegóły”, pojawiają się egzemplarze tego narzędzia.</li>
+        <li><strong>Przyciski w ostatniej kolumnie</strong> (niedostępne w trybie produkcyjnym):
+            <ul>
+                <li><span class="btn-demo success">+</span> w nagłówku kolumny — dodaje nowy typ narzędzia.</li>
+                <li><span class="btn-demo secondary">✎</span> przy wierszu — otwiera edycję typu.</li>
+            </ul>
+        </li>
+    </ul>
+    <div class="warn">
+        W module Magazyn nie ma przycisku usuwania typu narzędzia. Typ pozostaje w katalogu na stałe.
+    </div>
+
+    <h2 id="mag-typ-edycja">5. Dodawanie i edycja typu narzędzia</h2>
+    <p>Okno „Dodaj nowy typ narzędzia” otwiera się przyciskiem <span class="btn-demo success">+</span> w nagłówku tabeli. Okno „Edytuj typ narzędzia” otwiera się ołówkiem <span class="btn-demo secondary">✎</span> przy wierszu.</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — wybór z listy. Pozostawienie pustego pola oznacza „Brak (Główne)”, czyli typ bez kategorii.</li>
+        <li><strong>Opis / Specyfikacja</strong> — pole wymagane. To główna nazwa, po której narzędzie rozpoznaje się w tabelach.</li>
+        <li><strong>Numer katalogowy</strong> — pole opcjonalne.</li>
+        <li><strong>Domyślna lokalizacja</strong> — szafa / półka / kolumna, którą system podpowiada przy dodawaniu nowych egzemplarzy tego typu. Dla każdego egzemplarza można ją później zmienić.</li>
+        <li><strong>Obraz narzędzia</strong> — pole opcjonalne. Po wybraniu pliku pojawia się podgląd. Obraz jest widoczny w zakładce „Szczegóły” obok listy egzemplarzy.</li>
+    </ul>
+
+    <h4>Sekcja „Zakup” — pole „Jednostka zakupu”</h4>
+    <ul>
+        <li><strong>Sztuka</strong> — narzędzie kupuje się pojedynczo (np. frez).</li>
+        <li><strong>Komplet</strong> — narzędzie kupuje się w opakowaniu (np. 10 płytek skrawających). Po wybraniu tej opcji pojawia się pole <strong>„Ilość sztuk w komplecie”</strong> — należy wpisać, ile sztuk zawiera jedno opakowanie (co najmniej 2).</li>
+    </ul>
+
+    <h4>Sekcja „Wydawanie” — pole „Możliwość wydawania” (tylko dla kompletów)</h4>
+    <ul>
+        <li><strong>Tylko całe komplety</strong> — pracownik zawsze dostaje całe opakowanie.</li>
+        <li><strong>Komplet lub pojedyncze sztuki</strong> — pracownik może dostać cały komplet albo wskazaną liczbę sztuk z opakowania.</li>
+    </ul>
+    <p>Zapis następuje przyciskiem <strong>Dodaj</strong> (nowy typ) lub <strong>Zapisz</strong> (edycja).</p>
+
+    <div class="tip">
+        <strong>Przykład:</strong> płytki skrawające kupuje się po 10 sztuk w opakowaniu, a operatorom wydaje się je pojedynczo. Należy wybrać „Komplet”, wpisać 10 w polu „Ilość sztuk w komplecie” i zaznaczyć „Komplet lub pojedyncze sztuki”.
+    </div>
+
+    <h2 id="mag-szczegoly">6. Zakładka „Szczegóły”</h2>
+    <p>Zakładka „Szczegóły” pokazuje egzemplarze narzędzia klikniętego w górnej tabeli. Dopóki żaden wiersz nie jest zaznaczony, widać komunikat „Kliknij na narzędzie w tabeli powyżej, aby zobaczyć jego egzemplarze.”. Obok nazwy zakładki wyświetla się opis wybranego narzędzia.</p>
+    <p>Na górze listy są najnowsze egzemplarze. Egzemplarze wydane na halę trafiają na koniec listy.</p>
+
+    <h4>Kolumny</h4>
+    <ul>
+        <li><strong>Lokalizacja</strong> — adres w formacie <code>szafa/półka/kolumna</code>. Po najechaniu myszą pojawia się numer faktury zakupu, jeśli egzemplarz jest z nią powiązany.</li>
+        <li><strong>Data</strong> — data ostatniej zmiany egzemplarza.</li>
+        <li><strong>Oznaczenie</strong> — np. numer seryjny, numer partii lub oznaczenie nadane przez system. Przy nowych wpisach obok pojawia się ikona <span class="btn-demo info">🏷</span> do pobrania etykiety (patrz <a href="#mag-etykiety">Oznaczenia i etykiety DXF</a>).</li>
+        <li><strong>Opakowanie</strong> — „Komplet (N szt.)”, „N z kompletu” (luźne sztuki z otwartego opakowania) albo „Sztuka”.</li>
+        <li><strong>Stan</strong> — kolorowy znacznik stanu technicznego (patrz <a href="#mag-stany">Stany techniczne egzemplarzy</a>).</li>
+        <li><strong>Akcja</strong> — niebieski przycisk ze strzałką w dół (<strong>Pobierz</strong>) otwiera okno wydawania. Przycisk jest szary i nieaktywny, gdy egzemplarz jest już w użyciu (podpowiedź: „Egzemplarz jest aktualnie w użyciu”). Przy egzemplarzu uszkodzonym przycisku nie ma.</li>
+        <li><strong>Ostatnia kolumna</strong> (niedostępna w trybie produkcyjnym) — <span class="btn-demo success">+</span> w nagłówku dodaje nowy egzemplarz, <span class="btn-demo secondary">✎</span> otwiera edycję, <span class="btn-demo danger">🗑</span> usuwa egzemplarz.</li>
+    </ul>
+    <p>Wiersz podświetlony na brązowo to <strong>nowy wpis</strong> — egzemplarz z oznaczeniem nadanym przez system, dla którego nie pobrano jeszcze etykiety.</p>
+
+    <h4>Obraz narzędzia</h4>
+    <p>Po prawej stronie zakładki widać zdjęcie narzędzia (jeśli dodano je w typie) albo obrazek zastępczy. Służy on wyłącznie do szybkiego rozpoznania narzędzia.</p>
+
+    <h2 id="mag-egz-edycja">7. Dodawanie, edycja i usuwanie egzemplarza</h2>
+    <p>Okno „Dodaj nowy egzemplarz” otwiera się przyciskiem <span class="btn-demo success">+</span> w nagłówku ostatniej kolumny zakładki „Szczegóły”. Okno edycji otwiera się ołówkiem <span class="btn-demo secondary">✎</span> przy egzemplarzu.</p>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Typ Narzędzia</strong> — wypełniany automatycznie na podstawie wiersza zaznaczonego w górnej tabeli. Nie można go zmienić.</li>
+        <li><strong>Stan Techniczny</strong> — Nowe / Używane / Uszkodzone. Przy dodawaniu domyślnie „Nowe”.</li>
+        <li><strong>Lokalizacja</strong> — miejsce, w którym egzemplarz fizycznie leży. Lista ma wyszukiwarkę. System podpowiada domyślną lokalizację typu, a gdy jej brak — lokalizację ostatniego egzemplarza.</li>
+        <li><strong>Oznaczenie</strong> — własne oznaczenie egzemplarza (numer seryjny, partia, kod). Przy dodawaniu egzemplarzy narzędzia kupowanego na sztuki tego pola nie ma — system nadaje oznaczenie sam (patrz <a href="#mag-etykiety">sekcja 15</a>).</li>
+        <li><strong>Zamówienie</strong> (tylko przy dodawaniu) — pozwala powiązać egzemplarz z zamówieniem u dostawcy. Domyślnie „-- Brak --”.</li>
+        <li><strong>Ilość</strong> (tylko przy dodawaniu) — liczba dodawanych egzemplarzy. Dla kompletów pole nazywa się „Ilość kompletów”, a pod nim system pokazuje łączną liczbę sztuk.</li>
+    </ul>
+
+    <h4>Pole „Typ dodawania” — tylko dla kompletów z opcją „Komplet lub pojedyncze sztuki”</h4>
+    <ul>
+        <li><strong>Pełny komplet</strong> — dodaje się całe opakowania. Pod polem widać, ile sztuk zawiera komplet.</li>
+        <li><strong>Luźne sztuki</strong> — dodaje się pojedyncze sztuki z otwartego opakowania. W polu „Ilość sztuk” można wpisać najwyżej o jedną sztukę mniej niż pełny komplet.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Kiedy to się przydaje:</strong> z otwartego opakowania zostały 4 płytki. Dodaje się je jako „Luźne sztuki” w ilości 4, a nie jako kolejny komplet.
+    </div>
+    <p>Zapis następuje przyciskiem <strong>Zapisz</strong>. W trakcie zapisu przycisk zmienia się na „Zapisywanie...”.</p>
+
+    <h4>Usuwanie egzemplarza</h4>
+    <ol>
+        <li>Należy kliknąć <span class="btn-demo danger">🗑</span> przy egzemplarzu.</li>
+        <li>W oknie „Potwierdź usunięcie” należy sprawdzić nazwę narzędzia.</li>
+        <li>Należy kliknąć <strong>Tak, usuń</strong>. Operacji nie można cofnąć.</li>
+    </ol>
+    <div class="danger-box">
+        Usunięcie egzemplarza usuwa również jego wpisy w zakładce „Historia użycia”. Egzemplarza wydanego do użytku nie można usunąć — przycisk <span class="btn-demo danger">🗑</span> jest wtedy nieaktywny, a usunięcie staje się możliwe dopiero po przyjęciu zwrotu. Aby zdjąć narzędzie ze stanu po uszkodzeniu, należy wykonać zwrot ze stanem „Uszkodzonym” lub „Zużytym” (patrz <a href="#mag-zwroty">Zwrot narzędzia</a>).
+    </div>
+
+    <h2 id="mag-wydawanie">8. Wydawanie narzędzia (Pobierz)</h2>
+    <ol>
+        <li>W górnej tabeli należy kliknąć wiersz narzędzia.</li>
+        <li>W zakładce „Szczegóły” należy kliknąć niebieską strzałkę w dół przy wybranym egzemplarzu. Otwiera się okno „Pobierz egzemplarz”.</li>
+        <li>Należy uzupełnić pola (opis poniżej).</li>
+        <li>Należy kliknąć <strong>Pobierz</strong>.</li>
+    </ol>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Narzędzie</strong> — wypełnione automatycznie. Pod nim widać, czy to komplet, czy określona liczba sztuk.</li>
+        <li><strong>Typ wydania</strong> (tylko dla kompletów z opcją „Komplet lub pojedyncze sztuki”, gdy egzemplarz ma więcej niż 1 sztukę) — „Cały komplet” albo „Wybrane sztuki”. Domyślnie wybrane są „Wybrane sztuki”.</li>
+        <li><strong>Ilość sztuk do wydania</strong> (tylko przy „Wybrane sztuki”) — liczba wydawanych sztuk. Pod polem system pokazuje, ile sztuk zostanie w magazynie.</li>
+        <li><strong>Wybierz maszynę</strong> — system od razu podpowiada pierwszą maszynę z listy. Należy wybrać właściwą.</li>
+        <li><strong>Wybierz pracownika</strong> — pole wymagane. Lista ma wyszukiwarkę i zawiera tylko osoby uprawnione do pobierania narzędzi. Nazwisko zakończone wielokropkiem „...” oznacza pracownika bez konta w systemie.</li>
+        <li><strong>Nr zlecenia</strong> — pole opcjonalne. Pozwala później powiązać użycie narzędzia z konkretną pracą.</li>
+    </ul>
+
+    <p>Po kliknięciu „Pobierz”:</p>
+    <ol>
+        <li>Egzemplarz trafia na listę „Narzędzia aktualnie w użyciu”, a jego przycisk „Pobierz” staje się nieaktywny.</li>
+        <li>Liczniki w górnej tabeli przeliczają się (maleje „Nowe” lub „Używane”, rośnie „W użyciu”).</li>
+        <li>W zakładce „Historia użycia” pojawia się nowy wpis.</li>
+    </ol>
+    <p>Przy wydaniu części sztuk z kompletu system dzieli egzemplarz: wydane sztuki stają się osobnym egzemplarzem, a reszta zostaje w magazynie.</p>
+
+    <h2 id="mag-w-uzyciu">9. Strona „Narzędzia aktualnie w użyciu”</h2>
+    <p>
+        Lista wszystkich narzędzi, które są <em>w tej chwili</em> wydane na halę. Jest to osobna strona (nie zakładka Magazynu).
+        Otwiera się ją przyciskiem <span class="btn-demo primary">W użyciu</span> na górnej belce Magazynu.
+        Powrót do Magazynu umożliwia przycisk <span class="btn-demo success">Magazyn</span>.
+    </p>
+    <p>Liczba w kolorowym znaczku obok tytułu „Narzędzia aktualnie w użyciu” to łączna liczba aktywnych wydań. Listę przegląda się, przewijając ją (bez podziału na strony).</p>
+
+    <h4>Kolumny</h4>
+    <p>Narzędzie, Maszyna, Pracownik, Data pobrania, Oznaczenie, Opakowanie, Nr zlecenia, Akcje.</p>
+
+    <h4>Wyszukiwanie i filtry</h4>
+    <ul>
+        <li><strong>Pole „Szukaj...”</strong> — przeszukuje nazwę narzędzia (kategorię, podkategorię, opis), pracownika, oznaczenie i numer zlecenia.</li>
+        <li><strong>Filtruj po maszynie</strong> — pokazuje tylko narzędzia wydane na wybraną maszynę.</li>
+        <li><strong>Filtruj po narzędziu</strong> — lista par „Kategoria / Podkategoria” zbudowana tylko z narzędzi, które są aktualnie wydane. Jeśli nikt nie ma w użyciu np. frezów walcowych, taka pozycja się nie pojawi.</li>
+    </ul>
+    <p>Filtry działają łącznie — można np. wyświetlić tylko frezy wydane na jedną maszynę.</p>
+
+    <h4>Akcje</h4>
+    <p>Przy każdym wierszu zielony przycisk <span class="btn-demo success">↶</span> (podpowiedź „Zwróć”) uruchamia <a href="#mag-zwroty">zwrot narzędzia</a>. W trybie produkcyjnym tej kolumny nie ma.</p>
+
+    <h2 id="mag-zwroty">10. Zwrot narzędzia</h2>
+    <ol>
+        <li>Na górnej belce Magazynu należy kliknąć <span class="btn-demo primary">W użyciu</span>.</li>
+        <li>Należy odszukać narzędzie (np. wpisując oznaczenie lub nazwisko w polu „Szukaj...”).</li>
+        <li>Należy kliknąć zielony przycisk <span class="btn-demo success">↶</span> w kolumnie „Akcje”. Otwiera się okno „Zwrot narzędzia”.</li>
+        <li>Należy uzupełnić pola (opis poniżej).</li>
+        <li>Należy kliknąć <strong>Potwierdź zwrot</strong>.</li>
+    </ol>
+
+    <h4>Pola</h4>
+    <ul>
+        <li><strong>Narzędzie</strong> — wypełnione automatycznie, z liczbą sztuk.</li>
+        <li><strong>Pracownik zwracający</strong> — pole wymagane. System podpowiada osobę, która pobrała narzędzie. Można wybrać inną osobę.</li>
+        <li><strong>„Ile zwracasz?”</strong> (tylko gdy wydano więcej niż 1 sztukę) — „Całość” albo „Tylko część”.</li>
+        <li><strong>Ilość sztuk do zwrotu</strong> (tylko przy „Tylko część”) — liczba oddawanych sztuk. Pod polem widać, ile sztuk pozostanie w użyciu.</li>
+        <li><strong>„W jakim stanie technicznym zwracasz narzędzie?”</strong> — domyślnie zaznaczony jest stan „Dobrym”:
+            <ul>
+                <li><strong>Nowym</strong> (nie używane) — narzędzie nie było użyte. Wraca do magazynu jako „Nowe”.</li>
+                <li><strong>Dobrym</strong> (jako używane) — narzędzie pracowało, ale jest sprawne. Wraca jako „Używane”.</li>
+                <li><strong>Uszkodzonym</strong> — po kliknięciu „Potwierdź zwrot” otwiera się <a href="#mag-uszkodzenia">Karta uszkodzenia</a>. Zwrot kończy się dopiero po zatwierdzeniu karty.</li>
+                <li><strong>Zużytym</strong> — narzędzie nadaje się do regeneracji (np. ostrzenia). Zwrot wykonuje się od razu, bez karty do wypełnienia.</li>
+            </ul>
+        </li>
+    </ul>
+
+    <div class="warn">
+        <strong>Ważne:</strong> narzędzie zwrócone jako <strong>„Uszkodzonym”</strong> lub <strong>„Zużytym”</strong> nie wraca na półkę. System usuwa je ze stanu magazynu i zakłada dla niego kartę w module <strong>Zwroty</strong> (patrz <a href="#mag-uszkodzenia">sekcja 11</a>). Wcześniejsza historia użycia tego egzemplarza zostaje usunięta — najważniejsze informacje o ostatnim użyciu (maszyna, operator, data) pozostają zapisane na karcie.
+    </div>
+    <p>Sztuki z kompletu zwrócone w stanie „Nowym” lub „Dobrym” system w miarę możliwości łączy z powrotem z opakowaniem, z którego zostały wydane.</p>
+
+    <h2 id="mag-uszkodzenia">11. Karta uszkodzenia i moduł Zwroty</h2>
+
+    <h3>Karta uszkodzenia</h3>
+    <p>Okno „Karta uszkodzenia” otwiera się automatycznie przy zwrocie ze stanem „Uszkodzonym”. Jest to formalna dokumentacja zdarzenia.</p>
+
+    <h4>Pola wypełniane automatycznie</h4>
+    <p>„Nr karty” (w formacie rok/numer, np. <code>2026/015</code>), „Data wystawienia”, „Maszyna”, „Uszkodzone narzędzie”, „Nazwisko zgłaszającego”.</p>
+
+    <h4>Pola do uzupełnienia</h4>
+    <ul>
+        <li><strong>Kto zgłasza uszkodzenie?</strong> — „Osoba pobierająca” albo „Osoba zwracająca”. Pole „Nazwisko zgłaszającego” zmienia się samoczynnie zgodnie z wyborem.</li>
+        <li><strong>Przyczyna uszkodzenia</strong> — krótki, konkretny opis (np. „uderzenie w uchwyt podczas pozycjonowania”).</li>
+        <li><strong>Uwagi</strong> — dodatkowe informacje, jeśli są istotne.</li>
+        <li><strong>Stracony czas na maszynach</strong> — orientacyjny czas postoju, np. „45 min”.</li>
+    </ul>
+    <p>Przycisk <strong>Wróć</strong> zamyka kartę i przywraca okno zwrotu (zwrot nie zostaje wykonany). Przycisk <strong>Zatwierdź kartę</strong> zapisuje kartę i kończy zwrot.</p>
+
+    <h3>Moduł Zwroty</h3>
+    <p>Moduł otwiera się przyciskiem <span class="btn-demo primary">Zwroty</span> na górnej belce Magazynu. Ma dwie zakładki:</p>
+    <ul>
+        <li><strong>Uszkodzone elementy</strong> — karty narzędzi zwróconych jako „Uszkodzonym”. Kolumny: Nr karty, Data uszkodzenia, Ostatnia maszyna, Zgłaszający, Narzędzie, Nr kat., Przyczyna uszkodzenia, Stracony czas, Uwagi, Akcje.</li>
+        <li><strong>Zużyte</strong> — narzędzia zwrócone jako „Zużytym”, przeznaczone do regeneracji. Numer karty ma na końcu literę „R” (np. <code>2026/007R</code>). Kolumny: Nr karty, Data uszkodzenia, Ostatnia maszyna, Ostatni użytkownik, Narzędzie, Nr kat., Ostatnia lokalizacja, Opis uszkodzenia, Akcje.</li>
+    </ul>
+    <p>W obu zakładkach dostępne są: pole „Szukaj...”, podział listy na strony oraz przyciski w kolumnie „Akcje”:</p>
+    <ul>
+        <li><span class="btn-demo purple">PDF</span> „Drukuj” — otwiera podgląd karty do wydruku („Podgląd karty uszkodzenia”).</li>
+        <li><span class="btn-demo secondary">✎</span> „Edytuj” — pozwala poprawić zgłaszającego, przyczynę, stracony czas i uwagi.</li>
+        <li><span class="btn-demo danger">🗑</span> „Usuń” — usuwa wpis po potwierdzeniu. Operacji nie można cofnąć.</li>
+    </ul>
+    <p>Przycisk <strong>„Drukuj listę”</strong> (ikona PDF obok pola wyszukiwania) przygotowuje wydruk całej listy z bieżącej zakładki.</p>
+
+    <h2 id="mag-stany">12. Stany techniczne egzemplarzy</h2>
+    <table class="status-table">
+        <tr><th>Stan</th><th>Co oznacza</th><th>Co można zrobić</th></tr>
+        <tr>
+            <td><span class="tag nowe">Nowe</span></td>
+            <td>Egzemplarz nowy, jeszcze nieużywany.</td>
+            <td>Wydać pracownikowi, edytować, usunąć.</td>
+        </tr>
+        <tr>
+            <td><span class="tag uzywane">Używane</span></td>
+            <td>Egzemplarz wrócił z hali sprawny.</td>
+            <td>Wydać ponownie, edytować, usunąć.</td>
+        </tr>
+        <tr>
+            <td><span class="tag uszkodzone">Uszkodzone</span></td>
+            <td>Stan ustawiony ręcznie w oknie edycji egzemplarza.</td>
+            <td>Wydać się nie da (brak przycisku „Pobierz”). Można edytować lub usunąć.</td>
+        </tr>
+    </table>
+    <div class="tip">
+        Narzędzia zwrócone jako „Uszkodzonym” lub „Zużytym” nie są już widoczne w Magazynie. Ich karty znajdują się w module <strong>Zwroty</strong>, w zakładkach „Uszkodzone elementy” i „Zużyte”.
+    </div>
+
+    <h2 id="mag-komplety">13. Komplety i sztuki</h2>
+    <ul>
+        <li><strong>Sztuka</strong> — najprostszy wariant. Kupuje się po jednej sztuce i wydaje po jednej.</li>
+        <li><strong>Komplet, „Tylko całe komplety”</strong> — kupuje się opakowanie i wydaje całe opakowanie (np. zestaw kluczy).</li>
+        <li><strong>Komplet, „Komplet lub pojedyncze sztuki”</strong> — kupuje się opakowanie, a wydać można cały komplet albo dowolną liczbę sztuk. Reszta zostaje w magazynie.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Co widać w kolumnie „Opakowanie”:</strong>
+        <br>• <em>Komplet (10 szt.)</em> — całe opakowanie.
+        <br>• <em>3 z kompletu</em> — 3 luźne sztuki z otwartego opakowania.
+        <br>• <em>Sztuka</em> — narzędzie kupowane na sztuki.
+    </div>
+
+    <h2 id="mag-historia">14. Zakładka „Historia użycia”</h2>
+    <p>Zakładka jest widoczna tylko w zwykłym trybie magazynu. Pokazuje wydania i zwroty narzędzia zaznaczonego w górnej tabeli, od najnowszych.</p>
+    <p>Kolumny: Pracownik, Maszyna, Data pobrania, Data zwrotu, Zwrócił, Stan, Opakowanie, Oznaczenie, Nr zlecenia, Uwagi.</p>
+    <p>Gdy narzędzie nie zostało jeszcze zwrócone, w kolumnie „Data zwrotu” widnieje czerwony znacznik „W użyciu”. Kolumna „Stan” pokazuje stan, w jakim narzędzie zwrócono.</p>
+    <p>Wpisy powstają samoczynnie przy każdym wydaniu i zwrocie. Nie wpisuje się ich ręcznie.</p>
+
+    <h2 id="mag-etykiety">15. Oznaczenia i etykiety DXF</h2>
+    <h4>Oznaczenie nadawane przez system</h4>
+    <p>
+        Dla narzędzi kupowanych na sztuki (z przypisaną kategorią) system sam nadaje oznaczenie każdemu nowemu egzemplarzowi.
+        Dzieje się tak przy dodawaniu egzemplarza w zakładce „Szczegóły” oraz przy przyjęciu dostawy.
+        Oznaczenie ma postać <code>XX-MMRR-NN</code>:
+    </p>
+    <ul>
+        <li><code>XX</code> — pierwsze litery słów z nazwy kategorii i podkategorii,</li>
+        <li><code>MMRR</code> — miesiąc i rok dodania (np. <code>0926</code> = wrzesień 2026),</li>
+        <li><code>NN</code> — kolejny numer w danym miesiącu.</li>
+    </ul>
+
+    <h4>Pobieranie etykiety</h4>
+    <ol>
+        <li>W zakładce „Szczegóły” należy odszukać egzemplarz podświetlony na brązowo (nowy wpis).</li>
+        <li>Należy kliknąć ikonę <span class="btn-demo info">🏷</span> obok oznaczenia (podpowiedź „Pobierz etykietę DXF”).</li>
+        <li>Należy wskazać miejsce zapisu pliku <code>.dxf</code> (nazwa pliku to oznaczenie egzemplarza). W niektórych przeglądarkach plik zapisuje się od razu w folderze pobranych plików.</li>
+    </ol>
+    <p>Plik zawiera sam napis z oznaczeniem egzemplarza (wysokość znaków 1,6 mm, bez ramki). Po pobraniu etykiety ikona znika, a wiersz przestaje być podświetlony.</p>
+    <div class="tip">
+        <strong>Do czego to służy:</strong> plik DXF otwiera się w programie grawerki i wykonuje trwałe oznaczenie na narzędziu lub szufladzie. Ułatwia to szybkie rozpoznanie egzemplarza.
+    </div>
+
+    <h2 id="mag-tryb-prod">16. Tryb produkcyjny</h2>
+    <p>
+        Tryb produkcyjny to uproszczony widok magazynu dla pracowników hali. Otwiera się go z ekranu <strong>PRODUKCJA</strong> przyciskiem
+        <span class="btn-demo info">Narzędzia</span>. Przycisk ten widzą tylko brygadziści i tokarze.
+    </p>
+
+    <h4>Ekran PRODUKCJA</h4>
+    <ul>
+        <li>Górna tabela „Lista typów narzędzi” — podgląd stanów (Nowe, Używane, W użyciu, Razem). Liczbę w kolumnie „W użyciu” można kliknąć — otwiera się okno z listą osób, które mają to narzędzie (kolumny: Narzędzie, Maszyna, Pracownik, Oznaczenie, Data pobrania).</li>
+        <li>Zakładka <strong>„Moje narzędzia w użyciu”</strong> — narzędzia pobrane przez zalogowaną osobę. Kolumny: Narzędzie, Maszyna, Oznaczenie, Data pobrania.</li>
+        <li>Przyciski na belce: <span class="btn-demo info">Narzędzia</span> (tylko brygadzista i tokarz) oraz <span class="btn-demo danger">Wyjście</span>.</li>
+    </ul>
+
+    <h4>Magazyn w trybie produkcyjnym</h4>
+    <ul>
+        <li>Tytuł zmienia się z „MAGAZYN” na „NARZĘDZIA”.</li>
+        <li>Na środku belki widać imię i nazwisko zalogowanej osoby.</li>
+        <li>Na belce są tylko trzy przyciski: <strong>W użyciu</strong>, <strong>Wróć do Produkcji</strong> i <strong>Wyjście</strong>.</li>
+        <li>Zakładka „Historia użycia” jest ukryta.</li>
+        <li>Nie ma przycisków dodawania, edycji ani usuwania typów i egzemplarzy.</li>
+        <li>Można tylko <strong>pobierać</strong> narzędzia. W oknie „Pobierz egzemplarz” system od razu podpowiada zalogowaną osobę jako pracownika.</li>
+        <li>Przycisk <strong>W użyciu</strong> otwiera listę wydanych narzędzi tylko do podglądu — bez przycisku zwrotu. Powrót umożliwia przycisk <strong>Wróć do Narzędzi</strong>.</li>
+    </ul>
+    <div class="warn">
+        <strong>Zwrotów nie wykonuje się w trybie produkcyjnym.</strong> Narzędzie należy oddać do magazynu — zwrot rejestruje magazynier na stronie „Narzędzia aktualnie w użyciu”.
+    </div>
+
+    <h4>Automatyczne wylogowanie</h4>
+    <p>
+        Osoby z grup produkcyjnych (produkcja, frezer, ślusarz, brygadzista, tokarz) są wylogowywane samoczynnie po okresie bezczynności — obecnie po <strong>2 minutach</strong> bez ruchu myszą, dotyku ekranu ani użycia klawiatury.
+        Dotyczy to ekranów PRODUKCJA, NARZĘDZIA i NARZĘDZIA W UŻYCIU. Chroni to przed pobraniem narzędzia „na cudze konto” na wspólnym stanowisku.
+    </p>
+
+    <h2 id="mag-logowanie">17. Logowanie i uprawnienia</h2>
+
+    <h4>Logowanie</h4>
+    <p>Na ekranie logowania można zalogować się na dwa sposoby:</p>
+    <ol>
+        <li><strong>Nazwą użytkownika i hasłem</strong> — należy wpisać dane w polach „Nazwa użytkownika” i „Hasło”, a następnie kliknąć <strong>Zaloguj</strong>.</li>
+        <li><strong>Kartą zbliżeniową</strong> — należy przyłożyć kartę pracowniczą do czytnika (podpowiedź na ekranie: „lub przyłóż kartę do czytnika”). Podczas odczytu pojawia się napis „Odczytywanie karty...”, a po udanym logowaniu powitanie z imieniem. Nie trzeba niczego klikać.</li>
+    </ol>
+    <p>Gdy karta nie jest przypisana do żadnego aktywnego konta, pojawia się komunikat „Karta nie jest zarejestrowana w systemie”. W takim przypadku należy zgłosić się do administratora.</p>
+
+    <h4>Kto co widzi po zalogowaniu</h4>
+    <table class="status-table">
+        <tr><th>Grupa</th><th>Ekran startowy</th><th>Dostęp do narzędzi</th></tr>
+        <tr>
+            <td>magazyn</td>
+            <td>MAGAZYN (pełny tryb)</td>
+            <td>Pełna obsługa: katalog, egzemplarze, wydawanie, zwroty, historia.</td>
+        </tr>
+        <tr>
+            <td>logistyka</td>
+            <td>Zakupy</td>
+            <td>W Magazynie dodatkowo przycisk „Zakupy”.</td>
+        </tr>
+        <tr>
+            <td>administrator</td>
+            <td>MAGAZYN</td>
+            <td>Jak magazyn oraz przyciski „Logi” i „Zakupy”.</td>
+        </tr>
+        <tr>
+            <td>kierownik</td>
+            <td>Panel kierownika</td>
+            <td>Podgląd stanów magazynowych.</td>
+        </tr>
+        <tr>
+            <td>technologia</td>
+            <td>Panel technologa</td>
+            <td>Podgląd.</td>
+        </tr>
+        <tr>
+            <td>brygadzista</td>
+            <td>PRODUKCJA</td>
+            <td>Podgląd oraz przycisk „Narzędzia” (pobieranie w trybie produkcyjnym). Widzi wszystkie narzędzia.</td>
+        </tr>
+        <tr>
+            <td>tokarz</td>
+            <td>PRODUKCJA</td>
+            <td>Podgląd oraz przycisk „Narzędzia” (pobieranie w trybie produkcyjnym). Widzi tylko narzędzia z kategorii przypisanych do swojego stanowiska.</td>
+        </tr>
+        <tr>
+            <td>frezer, ślusarz</td>
+            <td>PRODUKCJA</td>
+            <td>Tylko podgląd, bez przycisku „Narzędzia”. Widzi tylko narzędzia z kategorii przypisanych do swojego stanowiska.</td>
+        </tr>
+        <tr>
+            <td>produkcja</td>
+            <td>PRODUKCJA</td>
+            <td>Tylko podgląd, bez przycisku „Narzędzia”. Widzi wszystkie narzędzia.</td>
+        </tr>
+    </table>
+    <p>Konto bez przypisanej grupy otwiera się na ekranie MAGAZYN.</p>
+
+    <h2 id="mag-faq">18. Najczęstsze pytania</h2>
+
+    <h4>Jak usunąć typ narzędzia?</h4>
+    <p>W module Magazyn nie ma takiej możliwości — przy typach dostępne są tylko przyciski dodawania i edycji. W razie potrzeby należy zgłosić sprawę administratorowi.</p>
+
+    <h4>Przy wydaniu wybrano złą maszynę. Co zrobić?</h4>
+    <p>Należy zwrócić egzemplarz (ze stanem „Nowym” lub „Dobrym”) i wydać go ponownie z poprawnymi danymi. W historii pozostaną dwa wpisy — to nie jest błąd.</p>
+
+    <h4>Pracownik oddał narzędzie tępe, nadające się do ostrzenia.</h4>
+    <p>Przy zwrocie należy zaznaczyć stan „Zużytym”. Egzemplarz zniknie ze stanu magazynu, a w module Zwroty, w zakładce „Zużyte”, pojawi się jego karta z numerem zakończonym literą „R”. Kartę można wydrukować przyciskiem „Drukuj”.</p>
+
+    <h4>Narzędzie wróciło z regeneracji. Jak przywrócić je na stan?</h4>
+    <p>Należy dodać je jako nowy egzemplarz w zakładce „Szczegóły” (przycisk <span class="btn-demo success">+</span>), ze stanem „Używane”. Wpis na liście „Zużyte” w module Zwroty nie przywraca narzędzia na stan.</p>
+
+    <h4>Nie ma jeszcze typu narzędzia, które trzeba dodać.</h4>
+    <p>Najpierw należy dodać typ przyciskiem <span class="btn-demo success">+</span> w nagłówku górnej tabeli (kategoria, opis, numer katalogowy, jednostka zakupu). Następnie należy kliknąć ten typ w tabeli i w zakładce „Szczegóły” dodać fizyczne egzemplarze.</p>
+
+    <h4>Jak rozróżnić dwa identyczne egzemplarze tego samego typu?</h4>
+    <p>Po <strong>oznaczeniu</strong>. Dla narzędzi kupowanych na sztuki system nadaje je sam. Dla kompletów należy wpisać własne oznaczenie (np. numer seryjny, partię). Dla nowych wpisów można pobrać etykietę DXF i oznaczyć narzędzie fizycznie.</p>
+
+    <h4>Wydano cały komplet, a pracownik oddaje część sztuk dobrych i część zużytych.</h4>
+    <p>Należy wykonać dwa zwroty. W pierwszym należy wybrać „Tylko część”, wpisać liczbę sztuk dobrych i zaznaczyć „Dobrym”. W drugim należy zwrócić pozostałe sztuki (już jako „Całość”) ze stanem „Zużytym”.</p>
+
+    <h4>Przycisk „Pobierz” jest szary.</h4>
+    <p>Egzemplarz jest już wydany. Należy wybrać inny egzemplarz albo najpierw zarejestrować zwrot na stronie „Narzędzia aktualnie w użyciu”.</p>
+
+    <h4>Numer katalogowy w tabeli jest czerwony.</h4>
+    <p>Ten sam numer katalogowy ma więcej niż jeden typ narzędzia. Należy sprawdzić, czy to nie jest zdublowany wpis, i poprawić numer w edycji typu.</p>
+
+    <h4>Czy w trybie produkcyjnym można dodać egzemplarz albo zwrócić narzędzie?</h4>
+    <p>Nie. Tryb produkcyjny pozwala tylko pobierać narzędzia, aby na hali nikt przypadkowo nie zmienił katalogu. Dodawanie, edycja i zwroty są dostępne wyłącznie w pełnym trybie magazynu.</p>
+
+    <h4>System sam wylogował użytkownika.</h4>
+    <p>To zamierzone działanie dla grup produkcyjnych — po 2 minutach bezczynności następuje wylogowanie. Należy zalogować się ponownie, np. przykładając kartę do czytnika.</p>
+</div>

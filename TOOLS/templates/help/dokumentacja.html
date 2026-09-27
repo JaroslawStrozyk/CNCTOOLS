@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dokumentacja — CNC Tools</title>
+    {% include 'help/czesci/styl.html' %}
+</head>
+<body>
+<div class="wrap">
+
+    <header class="page-head dok-okladka" id="spis">
+        <h1>Dokumentacja CNC Tools</h1>
+        <div class="subtitle">Kompletny przewodnik użytkownika systemu zarządzania narzędziami CNC: magazyn, zakupy, zamówienia i przyjęcie towaru.</div>
+        <div class="subtitle">Stan dokumentu: wrzesień 2026 / wersja 1.16</div>
+    </header>
+
+    <div class="toc">
+        <strong>Części dokumentacji</strong>
+        <ol class="dok-czesci-lista">
+            <li>
+                <a href="#mag">Magazyn</a>
+                <span class="opis">Katalog narzędzi, egzemplarze, wydawanie i zwroty, karty uszkodzeń, ekran Produkcji, logowanie i uprawnienia.</span>
+            </li>
+            <li>
+                <a href="#zak">Zakupy</a>
+                <span class="opis">Kontrola stanów, limity minimalne i maksymalne, sposób liczenia zamówień, ceny.</span>
+            </li>
+            <li>
+                <a href="#zam">Zamówienia i Generator</a>
+                <span class="opis">Generator zamówień, zatwierdzanie, wysyłka do dostawcy, przyjęcie towaru, statusy zamówień.</span>
+            </li>
+        </ol>
+    </div>
+    <p>
+        Każda część odpowiada przyciskowi <strong>Pomoc</strong> w danym module aplikacji — ta sama treść jest dostępna bezpośrednio z poziomu modułu.
+    </p>
+
+    <div class="dok-separator"><a href="#spis">↑ Części dokumentacji</a></div>
+    {% include 'help/czesci/magazyn.html' %}
+
+    <div class="dok-separator"><a href="#spis">↑ Części dokumentacji</a></div>
+    {% include 'help/czesci/zakupy.html' %}
+
+    <div class="dok-separator"><a href="#spis">↑ Części dokumentacji</a></div>
+    {% include 'help/czesci/zamowienia.html' %}
+
+    <footer>
+        Dokumentacja CNC Tools — stan dokumentu: wrzesień 2026 / wersja 1.16.
+        <br>Po zakończeniu lektury należy zamknąć to okno.
+    </footer>
+
+</div>
+</body>
+</html>

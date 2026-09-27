@@ -237,7 +237,8 @@ except (FileNotFoundError, ValueError):
 
 # Auto-wylogowanie po bezczynności (minuty) — dotyczy grup produkcja / produkcja-magazyn
 AUTO_LOGOUT_IDLE_MINUTES = 2
-TECHNOLOG_PAGE_SIZE = 50
+# Globalny limit wierszy na stronę we wszystkich tabelach z paginacją (front: resources/js/paginacja.js)
+PAGE_SIZE = 25
 
 INFO_PROGRAM = [
     {
@@ -371,6 +372,10 @@ JAZZMIN_SETTINGS = {
 
     # Custom CSS - naprawki stylów
     "custom_css": "css/jazzmin-fixes.css",
+
+    # Czcionka Source Sans Pro z lokalnych plików (jazzmin-fixes.css) — bez Google Fonts,
+    # panel działa w sieci bez dostępu do Internetu
+    "use_google_fonts_cdn": False,
 
     # Link do powrotu do aplikacji
     "welcome_sign": "Panel administracyjny CNC Tools",

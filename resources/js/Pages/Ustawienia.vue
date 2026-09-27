@@ -88,7 +88,7 @@
                             </button>
                         </div>
                         <div class="panel-body">
-                            <DataTable :value="machines" :scrollable="true" scrollHeight="flex">
+                            <DataTable :value="machines" :scrollable="true" scrollHeight="flex" :paginator="machines.length > pageSize" :rows="pageSize" :rowsPerPageOptions="rowsPerPageOptions" :paginatorTemplate="paginatorTemplate">
                                 <Column field="nazwa" header="Nazwa" />
                                 <Column header="Akcje" style="width: 120px; text-align: center;">
                                     <template #body="{ data }">
@@ -120,7 +120,7 @@
                             </div>
                         </div>
                         <div class="panel-body">
-                            <DataTable :value="locations" :scrollable="true" scrollHeight="flex">
+                            <DataTable :value="locations" :scrollable="true" scrollHeight="flex" :paginator="locations.length > pageSize" :rows="pageSize" :rowsPerPageOptions="rowsPerPageOptions" :paginatorTemplate="paginatorTemplate">
                                 <Column field="szafa" header="Szafa" />
                                 <Column field="polka" header="Półka" />
                                 <Column field="kolumna" header="Kolumna" />
@@ -149,7 +149,7 @@
                             </button>
                         </div>
                         <div class="panel-body">
-                            <DataTable :value="suppliers" :scrollable="true" scrollHeight="flex">
+                            <DataTable :value="suppliers" :scrollable="true" scrollHeight="flex" :paginator="suppliers.length > pageSize" :rows="pageSize" :rowsPerPageOptions="rowsPerPageOptions" :paginatorTemplate="paginatorTemplate">
                                 <Column field="kod_dostawcy" header="Kod" />
                                 <Column field="nazwa_firmy" header="Nazwa Firmy" />
                                 <Column field="nip" header="NIP" />
@@ -193,6 +193,10 @@
                             <div class="mappings-master">
                                 <DataTable
                                     :value="suppliers"
+                                    :paginator="suppliers.length > pageSize"
+                                    :rows="pageSize"
+                                    :rowsPerPageOptions="rowsPerPageOptions"
+                                    :paginatorTemplate="paginatorTemplate"
                                     :scrollable="true"
                                     scrollHeight="flex"
                                     selectionMode="single"
@@ -211,6 +215,10 @@
                                 <DataTable
                                     v-else
                                     :value="mappings"
+                                    :paginator="mappings.length > pageSize"
+                                    :rows="pageSize"
+                                    :rowsPerPageOptions="rowsPerPageOptions"
+                                    :paginatorTemplate="paginatorTemplate"
                                     :scrollable="true"
                                     scrollHeight="flex"
                                     :loading="mappingsLoading"
@@ -338,7 +346,7 @@
                             </div>
                         </div>
                         <div class="panel-body">
-                            <DataTable :value="filteredUsers" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="filteredUsers.length > 25" :rows="25">
+                            <DataTable :value="filteredUsers" :loading="isLoadingUsers" :scrollable="true" scrollHeight="flex" dataKey="id" :paginator="filteredUsers.length > pageSize" :rows="pageSize" :rowsPerPageOptions="rowsPerPageOptions" :paginatorTemplate="paginatorTemplate">
                                 <Column field="username" header="Login" style="width: 160px;" />
                                 <Column header="Imię i nazwisko" style="width: 220px;">
                                     <template #body="{ data }">
@@ -856,6 +864,9 @@ import Divider from 'primevue/divider';
 import ProgressSpinner from 'primevue/progressspinner';
 import Checkbox from 'primevue/checkbox';
 import InputSwitch from 'primevue/inputswitch';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 const API_URL = '/api';
 

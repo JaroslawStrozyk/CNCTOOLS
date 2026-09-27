@@ -1,6 +1,11 @@
 <template>
     <div class="login-container" :style="{ backgroundImage: `url(${tlo})` }">
         <div class="login-card">
+            <!-- Dokumentacja (nowe okno) -->
+            <a href="/dokumentacja/" class="admin-btn docs-btn" title="Dokumentacja" @click.prevent="openDokumentacja">
+                <i class="pi pi-book"></i>
+            </a>
+
             <!-- Admin button -->
             <a href="/admin/" class="admin-btn" title="Panel administracyjny">
                 <i class="pi pi-cog"></i>
@@ -92,6 +97,12 @@ const props = defineProps({
         default: () => ({})
     }
 });
+
+// Pełna dokumentacja w osobnym oknie (jak przyciski Pomoc w modułach)
+const openDokumentacja = () => {
+    const features = 'noopener,noreferrer,width=1100,height=860,resizable=yes,scrollbars=yes';
+    window.open('/dokumentacja/', 'dokumentacja', features);
+};
 
 const form = useForm({
     username: '',
@@ -277,6 +288,11 @@ const submit = () => {
     text-decoration: none;
     transition: all 0.2s ease;
     opacity: 0.6;
+}
+
+/* Dokumentacja — ten sam dyskretny styl, na lewo od przycisku administracyjnego */
+.admin-btn.docs-btn {
+    right: 44px;
 }
 
 .admin-btn:hover {

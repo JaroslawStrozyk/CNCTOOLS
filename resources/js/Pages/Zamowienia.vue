@@ -56,7 +56,8 @@
                     </div>
                 </div>
                 <div class="panel-body">
-                    <DataTable :value="sortedZamowienia" :scrollable="true" scrollHeight="flex" dataKey="id" :rowClass="rowClass">
+                    <DataTable :value="sortedZamowienia" :loading="isLoading" :scrollable="true" scrollHeight="flex" dataKey="id" :rowClass="rowClass"
+                        :paginator="true" :rows="pageSize" :rowsPerPageOptions="rowsPerPageOptions" :paginatorTemplate="paginatorTemplate">
                         <Column header="Numer">
                             <template #body="{ data }">
                                 <i
@@ -542,6 +543,9 @@ import Tag from 'primevue/tag';
 import Message from 'primevue/message';
 import Menu from 'primevue/menu';
 import Divider from 'primevue/divider';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
 const API_URL = '/api';
 
@@ -554,6 +558,7 @@ const props = defineProps({
 
 // Data
 const zamowienia = ref([]);
+const isLoading = ref(false);
 const dostawcy = ref([]);
 const selectedZamowienie = ref(null);
 const selectedUwagiZamowienie = ref(null);
@@ -1176,6 +1181,7 @@ const fetchZamowienia = async () => {
 };
 
 const fetchInitialData = async () => {
+    isLoading.value = true;
     try {
         const [zamRes, dosRes, emailRes] = await Promise.all([
             axios.get(`${API_URL}/zamowienia/`),
@@ -1189,6 +1195,8 @@ const fetchInitialData = async () => {
         emailSzef.value = emailRes.data.email_szef || '';
     } catch (error) {
         console.error("Błąd ładowania danych:", error);
+    } finally {
+        isLoading.value = false;
     }
 };
 

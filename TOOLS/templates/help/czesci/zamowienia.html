@@ -1,0 +1,595 @@
+<div class="dok-czesc dok-zamowienia" id="zam">
+
+    <header class="page-head">
+        <h1>Pomoc — Zamówienia i Generator</h1>
+        <div class="subtitle">Praktyczny przewodnik po module zakupów: od wykrycia braku do przyjęcia towaru na magazyn.</div>
+        <div class="subtitle">Stan dokumentu: wrzesień 2026 / wersja 1.16</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#zam-wstep">Do czego służy moduł</a></li>
+            <li><a href="#zam-przeplyw">Schemat przepływu — od braku do magazynu</a></li>
+            <li><a href="#zam-generator">Generator zamówień (krok 1)</a></li>
+            <li><a href="#zam-sposob">Sposób liczenia zamówień — kiedy generator proponuje narzędzie</a></li>
+            <li><a href="#zam-zamowienia">Lista zamówień (krok 2 i dalej)</a></li>
+            <li><a href="#zam-realizacja">Przyjęcie towaru (realizacja)</a></li>
+            <li><a href="#zam-statusy">Statusy zamówień — co oznaczają</a></li>
+            <li><a href="#zam-szukanie">Wyszukiwanie, sortowanie i stronicowanie listy</a></li>
+            <li><a href="#zam-ceny">Cena jednostkowa i wartość zamówienia</a></li>
+            <li><a href="#zam-faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="zam-wstep">1. Do czego służy moduł</h2>
+    <p>
+        Moduł <strong>Zamówienia</strong> i <strong>Generator</strong> tworzą jedną całość, która pomaga kontrolować zaopatrzenie warsztatu.
+        Aplikacja sama obserwuje stany magazynowe i podpowiada, czego należy dokupić. Użytkownik decyduje, co faktycznie zamówić,
+        przekazuje zamówienia do akceptacji, wysyła je do dostawców, a po dostawie oznacza przyjęcie towaru.
+    </p>
+    <div class="tip">
+        <strong>Najkrócej:</strong> Generator pokazuje, czego brakuje. Lista zamówień pokazuje, co się z tym dzieje. Status mówi, na jakim etapie jest dane zamówienie.
+    </div>
+
+    <h2 id="zam-przeplyw">2. Schemat przepływu</h2>
+    <p>Poniżej przedstawiono drogę pojedynczego zamówienia — od wykrycia braku narzędzia do przyjęcia towaru na półkę.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="zam-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Magazyn -->
+            <rect class="box-soft" x="20" y="20" width="180" height="70"/>
+            <text class="label" x="110" y="48" text-anchor="middle">Magazyn</text>
+            <text class="label-small" x="110" y="68" text-anchor="middle">stan poniżej maksimum</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M110,90 L110,130" marker-end="url(#zam-arrow)"/>
+
+            <!-- 2. Generator -->
+            <rect class="box" x="20" y="135" width="180" height="80"/>
+            <text class="label" x="110" y="163" text-anchor="middle">Generator</text>
+            <text class="label-small" x="110" y="183" text-anchor="middle">propozycja zamówień</text>
+            <text class="label-small" x="110" y="200" text-anchor="middle">edycja: ilość, cena, dostawca</text>
+
+            <!-- arrow right -->
+            <path class="arrow" d="M200,175 L290,175" marker-end="url(#zam-arrow)"/>
+
+            <!-- 3. draft -->
+            <rect class="box-soft" x="290" y="135" width="180" height="80"/>
+            <text class="label" x="380" y="163" text-anchor="middle">Wersja robocza</text>
+            <text class="label-small" x="380" y="183" text-anchor="middle">jedno zamówienie na dostawcę</text>
+            <text class="label-small" x="380" y="200" text-anchor="middle">można edytować pozycje</text>
+
+            <!-- arrow right -->
+            <path class="arrow" d="M470,175 L560,175" marker-end="url(#zam-arrow)"/>
+
+            <!-- 4. pending -->
+            <rect class="box-soft" x="560" y="135" width="180" height="80"/>
+            <text class="label" x="650" y="163" text-anchor="middle">Oczekuje na</text>
+            <text class="label" x="650" y="180" text-anchor="middle">zatwierdzenie</text>
+            <text class="label-small" x="650" y="200" text-anchor="middle">e-mail do szefa</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M650,215 L650,255" marker-end="url(#zam-arrow)"/>
+
+            <!-- 5. verified -->
+            <rect class="box-soft" x="560" y="260" width="180" height="80"/>
+            <text class="label" x="650" y="288" text-anchor="middle">Zatwierdzone</text>
+            <text class="label-small" x="650" y="308" text-anchor="middle">gotowe do wysyłki</text>
+            <text class="label-small" x="650" y="324" text-anchor="middle">do dostawcy</text>
+
+            <!-- arrow left -->
+            <path class="arrow" d="M560,300 L470,300" marker-end="url(#zam-arrow)"/>
+
+            <!-- 6. sent -->
+            <rect class="box-soft" x="290" y="260" width="180" height="80"/>
+            <text class="label" x="380" y="288" text-anchor="middle">Wysłane</text>
+            <text class="label-small" x="380" y="308" text-anchor="middle">e-mail do dostawcy,</text>
+            <text class="label-small" x="380" y="324" text-anchor="middle">oczekiwanie na towar</text>
+
+            <!-- arrow left -->
+            <path class="arrow" d="M290,300 L200,300" marker-end="url(#zam-arrow)"/>
+
+            <!-- 7. partial / completed -->
+            <rect class="box" x="20" y="260" width="180" height="80"/>
+            <text class="label" x="110" y="288" text-anchor="middle">Realizacja</text>
+            <text class="label-small" x="110" y="308" text-anchor="middle">częściowa lub pełna</text>
+            <text class="label-small" x="110" y="324" text-anchor="middle">→ przyjęcie na magazyn</text>
+
+            <!-- arrow down -->
+            <path class="arrow" d="M110,340 L110,380" marker-end="url(#zam-arrow)"/>
+
+            <!-- 8. magazyn end -->
+            <rect class="box-soft" x="20" y="385" width="180" height="55"/>
+            <text class="label" x="110" y="412" text-anchor="middle">Magazyn</text>
+            <text class="label-small" x="110" y="430" text-anchor="middle">stany uzupełnione</text>
+        </svg>
+        <div class="diagram-caption">Przepływ zamówienia od wykrycia braku do uzupełnienia magazynu.</div>
+    </div>
+
+    <h2 id="zam-generator">3. Generator zamówień</h2>
+    <p>
+        Generator otwiera się z listy zamówień przyciskiem <span class="btn-demo success">Generuj nowe</span> na górnej belce.
+        W generatorze aplikacja pokazuje propozycję: co warto zamówić. Przycisk widzą wyłącznie osoby z grupy <strong>logistyka</strong>
+        lub <strong>administrator</strong> oraz administratorzy systemu.
+    </p>
+
+    <h3>Skąd biorą się pozycje</h3>
+    <ul>
+        <li><strong>Z magazynu (automatycznie)</strong> — narzędzia, których stan spadł poniżej <em>stanu maksymalnego</em>.
+            To, jak liczony jest stan, zależy od ustawienia „Sposób liczenia zamówień” (opis w <a href="#zam-sposob" style="color: var(--accent);">rozdziale 4</a>).
+            W kolumnie <strong>Źródło</strong> taka pozycja ma opis <strong>Auto (stany)</strong>.</li>
+        <li><strong>Z zapotrzebowań</strong> — pozycje zgłoszone przez technologa w zapotrzebowaniu. W kolumnie <strong>Źródło</strong> pojawia się numer zapotrzebowania, np. <code>ZAM-0012</code>.
+            Jeżeli to samo narzędzie jest już na liście, ilość z zapotrzebowania zostaje do niej doliczona.</li>
+        <li><strong>Ręcznie</strong> — dowolną pozycję można dodać przyciskiem <span class="btn-demo success">+</span> w nagłówku panelu. W kolumnie <strong>Źródło</strong> ma opis <strong>Dodane ręcznie</strong>.</li>
+        <li><strong>Z ręcznej kontroli</strong> — narzędzie, które w Zakupach ma zaznaczoną „Ręczną kontrolę zamówień”, nie jest zamawiane automatycznie.
+            Trafia do generatora tylko wtedy, gdy w Zakupach wpisano ilość w polu „Ręczne dodanie”. Po otwarciu generatora ta ilość jest przenoszona na listę (z opisem <strong>Dodane ręcznie</strong>), a pole w Zakupach wraca do zera.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Pozycje dodane ręcznie są zawsze widoczne.</strong> Pozycja z opisem <strong>Dodane ręcznie</strong> pozostaje na liście i trafia do zamówienia,
+        nawet jeśli to samo narzędzie jest już w innym, jeszcze niezakończonym zamówieniu. Jest to świadoma decyzja użytkownika, więc aplikacja jej nie ukrywa.
+    </div>
+
+    <div class="warn">
+        <strong>Kiedy narzędzie nie jest proponowane automatycznie:</strong>
+        <ul style="margin-bottom: 0;">
+            <li>narzędzie ma w jakimś zamówieniu pozycję, która <em>nie została jeszcze w całości przyjęta</em> (towar jest w drodze). Dotyczy zamówień w statusach od <span class="tag draft">Wersja robocza</span> do <span class="tag partial">Częściowo odebrane</span>;</li>
+            <li>stan maksymalny narzędzia wynosi <strong>0</strong> — takie narzędzie nigdy nie jest zamawiane automatycznie;</li>
+            <li>narzędzie ma włączoną ręczną kontrolę zamówień (patrz wyżej);</li>
+            <li>w trybie „według nowych elementów” — stan minimalny wynosi <strong>0</strong>.</li>
+        </ul>
+        Pozycja w pełni przyjęta nie blokuje już generatora. Jeżeli w jednym zamówieniu część pozycji dotarła, a część nie, generator ponownie bierze pod uwagę narzędzia z pozycji przyjętych w całości.
+    </div>
+
+    <div class="warn">
+        <strong>Dobrze wiedzieć:</strong> Jeżeli stan narzędzia osiągnie stan maksymalny (np. po przyjęciu dostawy), wcześniejsza pozycja z opisem <strong>Auto (stany)</strong>
+        <strong>zniknie sama</strong> przy kolejnym otwarciu generatora. Pozycje dodane ręcznie lub pochodzące z zapotrzebowań nie są usuwane automatycznie.
+    </div>
+
+    <h3>Tabela „Narzędzia do zamówienia”</h3>
+    <p>Nad tabelą widoczna jest liczba pozycji („Pozycji do zamówienia”). Kolumny tabeli:</p>
+    <ul>
+        <li><strong>pole zaznaczenia</strong> — służy do usuwania wielu pozycji naraz;</li>
+        <li><strong>Dostawca</strong> — firma, do której trafi pozycja; standardowo ostatni dostawca tego narzędzia;</li>
+        <li><strong>Element</strong> — kategoria / podkategoria i nazwa narzędzia;</li>
+        <li><strong>Nr Katalogowy</strong>;</li>
+        <li><strong>Ilość</strong> — ilość do zamówienia (w sztukach albo w kompletach, zależnie od kolumny <strong>Rodzaj</strong>);</li>
+        <li><strong>Rodzaj</strong> — <code>szt.</code> albo <code>kompl. (N szt.)</code>, czyli komplet zawierający N sztuk;</li>
+        <li><strong>Cena jednostkowa</strong> — cena za jedną sztukę;</li>
+        <li><strong>Źródło</strong> — skąd pochodzi pozycja (<strong>Auto (stany)</strong>, <strong>Dodane ręcznie</strong> albo numer zapotrzebowania);</li>
+        <li>ostatnia kolumna — przyciski działań (opis niżej).</li>
+    </ul>
+    <p>Gdy nie ma nic do zamówienia, zamiast tabeli pojawia się komunikat „Wszystkie narzędzia są na odpowiednim poziomie - Nie ma nic do zamówienia.”</p>
+
+    <h3>Okno „Dodaj ręcznie pozycję do zamówienia”</h3>
+    <p>
+        Okno otwiera się przyciskiem <span class="btn-demo success">+</span>. Na górze wybiera się <strong>tryb dodawania</strong>:
+    </p>
+    <ul>
+        <li><strong>Z listy narzędzi</strong> (domyślny) — narzędzie wybiera się z listy rozwijanej <strong>Narzędzie</strong>, w której można wyszukiwać po nazwie lub numerze katalogowym.
+            Po wyborze pola <strong>Kategoria</strong> i <strong>Podkategoria</strong> wypełniają się same (tylko do podglądu), a <strong>Dostawca</strong> i <strong>Cena jednostkowa (zł)</strong> podpowiadają się z karty narzędzia (ostatni dostawca i cena z Zakupów) — obie wartości można zmienić.
+            Następnie należy podać <strong>Ilość do zamówienia</strong> (w nawiasie widać, czy chodzi o sztuki, czy komplety).
+            Narzędzia, które już jest w generatorze, nie można dodać drugi raz — aplikacja wyświetli komunikat „To narzędzie jest już w generatorze”.</li>
+        <li><strong>Nowe narzędzie</strong> — tworzy <em>nowy wpis w katalogu</em> narzędzi i jednocześnie dodaje go do generatora. Przydatne, gdy zamawia się coś, czego jeszcze nie było w magazynie.
+            <ul>
+                <li>Przy polach <strong>Kategoria</strong> i <strong>Podkategoria</strong> znajduje się przycisk „+”, który pozwala wpisać <em>nową</em> nazwę. Przycisk „×” wraca do wyboru z listy. Wybranie nowej kategorii wymaga też podania nowej podkategorii.</li>
+                <li>Należy wypełnić: <strong>Opis / nazwa narzędzia</strong> (wymagane), <strong>Numer katalogowy</strong> (opcjonalnie), <strong>Jednostka zakupu</strong> (Sztuka / Komplet), <strong>Ilość w opakowaniu</strong> (dla kompletu musi być większa niż 1), <strong>Stan minimalny</strong> i <strong>Stan maksymalny</strong>.</li>
+                <li>Po kliknięciu <span class="btn-demo success">Dodaj</span> powstaje nowe narzędzie oraz pozycja w generatorze. Kategoria i podkategoria są tworzone tylko wtedy, gdy jeszcze nie istnieją.</li>
+            </ul>
+        </li>
+    </ul>
+    <div class="warn">
+        <strong>Ważne:</strong> Jeśli w generatorze utworzono „nowe narzędzie”, a później <strong>usunięto powstałe zamówienie</strong> (przed przyjęciem dostawy), to nowe narzędzie zostanie <em>również usunięte</em> jako wpis dodany przez pomyłkę.
+        Utworzona przy tej okazji kategoria i podkategoria <strong>pozostają</strong>. Jeżeli w międzyczasie przyjęto dostawę i w magazynie są egzemplarze tego narzędzia — narzędzie NIE jest usuwane.
+    </div>
+    <div class="tip">
+        <strong>Stan maksymalny 0 wyłącza automatyczne zamawianie.</strong> Przy zakładaniu nowego narzędzia warto od razu wpisać właściwy stan minimalny i maksymalny.
+        Z wartościami domyślnymi (0 i 0) narzędzie zostanie zamówione tylko ten jeden raz — później generator nie będzie go proponował.
+    </div>
+
+    <h3>Możliwe działania na pozycji</h3>
+    <ul>
+        <li><span class="btn-demo secondary">✎</span> <strong>Edytuj</strong> — zmiana <strong>dostawcy</strong>, <strong>nr katalogowego</strong>, <strong>ilości</strong> lub <strong>ceny jednostkowej (zł)</strong>. Zmiany zatwierdza się przyciskiem <strong>Zapisz zmiany</strong>.
+            Zmiana dostawcy ustawia go też jako ostatniego dostawcę narzędzia, a zmiana nr katalogowego zapisuje się w karcie narzędzia.</li>
+        <li><span class="btn-demo danger">🗑</span> <strong>Usuń</strong> — usuwa pojedynczą pozycję z listy. Limity stanów narzędzia <strong>nie są zmieniane</strong>.
+            Pozycja automatyczna lub pochodząca z zapotrzebowania może pojawić się ponownie przy następnym otwarciu generatora, jeżeli brak nadal występuje.</li>
+        <li><span class="btn-demo danger">🗑 Kas. seryjne</span> — przycisk w nagłówku ostatniej kolumny. Usuwa naraz wszystkie pozycje zaznaczone w pierwszej kolumnie.
+            Przycisk jest aktywny dopiero po zaznaczeniu co najmniej jednej pozycji. Aplikacja pokazuje liczbę pozycji do usunięcia i prosi o potwierdzenie przyciskiem <strong>Usuń zaznaczone (N)</strong>.</li>
+    </ul>
+    <div class="warn">
+        <strong>Uwaga:</strong> W oknie potwierdzenia usunięcia pojedynczej pozycji widnieje zdanie „Zostanie ustawiony limit maksymalny równy aktualnemu stanowi”. Jest ono nieaktualne — usunięcie pozycji nie zmienia żadnych limitów narzędzia.
+    </div>
+
+    <h3>Panel „Pozycje zapotrzebowań bez powiązanego narzędzia”</h3>
+    <p>
+        Jeśli technolog wpisał w zapotrzebowaniu coś, czego nie ma w katalogu narzędzi, pozycja pojawia się w dolnym, brązowym panelu
+        (z dopiskiem „wymagają ręcznego przetworzenia”). Widać w nim numer zapotrzebowania, technologa, kategorię, specyfikację, nr katalogowy, ilość i uwagi.
+        Przy każdej pozycji dostępne są dwa przyciski:
+    </p>
+    <ul>
+        <li><span class="btn-demo success">🔗</span> <strong>Przypisz narzędzie</strong> — otwiera okno, w którym wybiera się kolejno <strong>Kategoria</strong>, <strong>Podkategoria</strong> i <strong>Narzędzie</strong>, a następnie klika <strong>Przypisz</strong>.
+            Pozycja trafia wtedy do głównej listy generatora. Jeżeli pasującego narzędzia nie ma w katalogu, należy je najpierw dodać w module <strong>Zakupy</strong>, a potem wrócić do generatora.</li>
+        <li><span class="btn-demo danger">✕</span> <strong>Odrzuć pozycję</strong> — po potwierdzeniu przyciskiem <strong>Odrzuć</strong> pozycja znika z panelu i nie trafia do żadnego zamówienia.</li>
+    </ul>
+
+    <h3>Zakończenie pracy w generatorze</h3>
+    <ol>
+        <li>Należy sprawdzić listę: dostawców, ilości i ceny.</li>
+        <li>Kliknąć <span class="btn-demo success">✓ Zamówienie gotowe</span> na górnej belce.</li>
+        <li>W oknie potwierdzenia kliknąć <span class="btn-demo success">Generuj zamówienia</span>.</li>
+    </ol>
+    <p>
+        Aplikacja tworzy <strong>jedno zamówienie na każdego dostawcę</strong> (np. przy pozycjach od 3 różnych dostawców powstaną 3 zamówienia) i przechodzi do listy zamówień.
+        Zamówienia otrzymują numery w postaci <code>RRRR/MM/NNN</code>, np. <code>2026/09/004</code>.
+    </p>
+    <ul>
+        <li>Pozycje <strong>bez dostawcy</strong> oraz pozycje z ilością <strong>0</strong> nie trafiają do zamówienia — pozostają w generatorze do uzupełnienia lub usunięcia.</li>
+        <li>Pozostałe pozycje znikają z generatora.</li>
+    </ul>
+    <p>Przycisk <span class="btn-demo danger">Wyjście</span> zamyka generator bez tworzenia zamówień. Pozycje zostają zachowane do następnego otwarcia.</p>
+
+    <div class="warn">
+        <strong>Uwaga:</strong> Po kliknięciu „Generuj zamówienia” nie ma cofnięcia — pozycje znikają z generatora. Powstałe zamówienia mają jednak status <span class="tag draft">Wersja robocza</span> i można je nadal swobodnie edytować lub usunąć.
+    </div>
+
+    <h2 id="zam-sposob">4. Sposób liczenia zamówień — kiedy generator proponuje narzędzie</h2>
+    <p>
+        Sposób, w jaki generator oblicza braki, ustawia się w <strong>Ustawienia → Inne → Sposób liczenia zamówień</strong>.
+        Do wyboru są dwie metody: <strong>standardowa</strong> oraz <strong>według nowych elementów</strong>. Zmianę trzeba potwierdzić przyciskiem <strong>Zapisz</strong>; każda zmiana jest zapisywana w logu systemowym.
+    </p>
+
+    <table class="status-table">
+        <tr><th>Metoda</th><th>Co jest liczone jako stan</th><th>Kiedy narzędzie trafia do generatora</th><th>Ile jest proponowane</th></tr>
+        <tr>
+            <td><strong>standardowa</strong></td>
+            <td>Wszystkie sztuki narzędzia w magazynie (także używane i wydane), z wyjątkiem egzemplarzy uszkodzonych.</td>
+            <td>Gdy stan jest <strong>niższy od stanu maksymalnego</strong>. Stan minimalny w tej metodzie nie ma wpływu na generator.</td>
+            <td>Tyle, ile brakuje do stanu maksymalnego.</td>
+        </tr>
+        <tr>
+            <td><strong>według nowych elementów</strong></td>
+            <td>Tylko <strong>nowe</strong> egzemplarze, które nie są aktualnie wydane na produkcję.</td>
+            <td>Gdy stan minimalny jest większy od 0, stan maksymalny jest większy od 0, a liczba nowych sztuk jest <strong>niższa od stanu maksymalnego</strong>.</td>
+            <td>Tyle, ile brakuje do stanu maksymalnego.</td>
+        </tr>
+    </table>
+
+    <div class="warn">
+        <strong>Metoda „według nowych elementów” — jak czytać stany:</strong>
+        <ul style="margin-bottom: 0;">
+            <li><strong>Stan minimalny działa jak włącznik.</strong> Wartość większa od 0 włącza automatyczne zamawianie, wartość 0 je wyłącza. Sama liczba nie jest progiem.</li>
+            <li><strong>Stan maksymalny jest jednocześnie progiem i celem.</strong> Pozycja wraca do generatora przy <em>każdym</em> spadku poniżej maksimum, a nie dopiero po spadku poniżej minimum.</li>
+            <li>Przykład: minimum 5, maksimum 5. Gdy w magazynie zostały 4 nowe sztuki, generator zaproponuje 1 sztukę.</li>
+        </ul>
+    </div>
+
+    <ul>
+        <li><strong>Stan maksymalny 0</strong> oznacza w obu metodach, że narzędzie <strong>nie jest zamawiane automatycznie</strong>. Można je zamówić tylko przez ręczne dodanie.</li>
+        <li><strong>Komplety:</strong> brak jest liczony w sztukach i przeliczany na komplety z zaokrągleniem do najbliższej pełnej liczby (połowa i więcej — w górę). Zawsze proponowany jest co najmniej 1 komplet.
+            Przykład: komplet ma 10 sztuk; brakuje 6 sztuk → 1 komplet; brakuje 15 sztuk → 2 komplety.</li>
+        <li>Po zmianie metody pozycje z opisem <strong>Auto (stany)</strong> są usuwane z generatora i przy następnym otwarciu wyliczane od nowa. Pozycje dodane ręcznie i pochodzące z zapotrzebowań pozostają.</li>
+    </ul>
+
+    <h2 id="zam-zamowienia">5. Lista zamówień</h2>
+    <p>To główny ekran roboczy modułu. Widoczne są tu zamówienia oraz etap, na którym się znajdują.</p>
+
+    <h3>Górna belka</h3>
+    <ul>
+        <li><span class="btn-demo info">Pomoc</span> — otwiera ten przewodnik.</li>
+        <li><span class="btn-demo success">Generuj nowe</span> — przejście do generatora (tylko grupy logistyka i administrator).</li>
+        <li><span class="btn-demo success">Wyślij do zatwierdzenia</span> — widoczny tylko wtedy, gdy na liście są zamówienia w statusie <span class="tag draft">Wersja robocza</span>. Nie jest dostępny dla osób z grupy magazyn.</li>
+        <li><span class="btn-demo primary">Magazyn</span> — przejście do modułu Magazyn.</li>
+        <li><span class="btn-demo primary">Zakupy</span> — przejście do modułu Zakupy (tylko grupa logistyka).</li>
+        <li><strong>Imię i nazwisko</strong> użytkownika — menu z pozycjami <strong>Ustawienia</strong>, <strong>O programie</strong> i <strong>Wyjście</strong>.</li>
+    </ul>
+
+    <h3>Tabela zamówień — kolumny</h3>
+    <ul>
+        <li><strong>Numer</strong> — numer zamówienia. Kliknięcie otwiera okno szczegółów. Obok numeru może być widoczny niebieski znacznik z <strong>numerem oferty dostawcy</strong> (widzi go tylko grupa logistyka).
+            Przed numerem może pojawić się ikona ostrzeżenia — patrz „Zamówienia do domknięcia”.</li>
+        <li><strong>Dostawca</strong> — firma, do której kierowane jest zamówienie.</li>
+        <li><strong>Data utworzenia</strong> / <strong>Data wysłania</strong> — kiedy zamówienie powstało i kiedy wysłano e-mail do dostawcy.</li>
+        <li><strong>Status</strong> — etap zamówienia (tabela statusów w <a href="#zam-statusy" style="color: var(--accent);">rozdziale 7</a>).</li>
+        <li><strong>Pozycje</strong> — liczba pozycji w zamówieniu.</li>
+        <li><strong>Uwagi</strong> — ikona pojawia się tylko wtedy, gdy zamówienie ma uwagi. Kliknięcie ikony wyświetla ich treść.</li>
+        <li><strong>Akcje</strong> — przyciski zależne od statusu (opis niżej).</li>
+    </ul>
+    <p>Podczas wczytywania danych tabela pokazuje wskaźnik ładowania. Lista jest podzielona na strony — szczegóły w <a href="#zam-szukanie" style="color: var(--accent);">rozdziale 8</a>.</p>
+
+    <h3>Akcje przy każdym wierszu</h3>
+    <table class="status-table">
+        <tr><th>Przycisk</th><th>Kiedy widoczny</th><th>Działanie</th></tr>
+        <tr><td><span class="btn-demo success">✉</span></td><td>status <span class="tag verified">Zatwierdzone</span></td><td><strong>Wyślij e-mail do dostawcy.</strong> Wysyła zamówienie e-mailem do dostawcy (po potwierdzeniu).</td></tr>
+        <tr><td><span class="btn-demo success">✓</span></td><td>status <span class="tag pending">Oczekuje na zatwierdzenie</span></td><td><strong>Zatwierdź zamówienie</strong> (po zgodzie szefa).</td></tr>
+        <tr><td><span class="btn-demo secondary">↶</span></td><td>status <span class="tag pending">Oczekuje na zatwierdzenie</span></td><td><strong>Cofnij do wersji roboczej.</strong></td></tr>
+        <tr><td><span class="btn-demo info">📦</span></td><td>status <span class="tag sent">Wysłane</span></td><td><strong>Rozpocznij realizację</strong> — otwiera okno przyjęcia towaru.</td></tr>
+        <tr><td><span class="btn-demo warn">📦</span></td><td>status <span class="tag partial">Częściowo odebrane</span></td><td><strong>Kontynuuj realizację</strong> — przyjęcie kolejnej dostawy.</td></tr>
+        <tr><td><span class="btn-demo" style="background:#fd7e14; color:#fff;">↺</span></td><td>status <span class="tag sent">Wysłane</span> (niewidoczny dla osób z samej grupy magazyn)</td><td><strong>Cofnij do „Zatwierdzone”.</strong> Przydaje się, gdy dostawca przeciąga realizację i trzeba zmienić dostawcę. Data wysłania zostaje wyczyszczona. Operacja jest zablokowana, jeśli rozpoczęto już przyjmowanie towaru.</td></tr>
+        <tr><td><span class="btn-demo" style="background:#9c6ade; color:#fff;">🚚</span></td><td>statusy: Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone</td><td><strong>Zmień dostawcę.</strong> Otwiera okno z listą dostawców (z wyszukiwaniem). Po zmianie adres e-mail zamówienia jest automatycznie ustawiany na adres nowego dostawcy.</td></tr>
+        <tr><td><span class="btn-demo secondary">✎</span></td><td>statusy: Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone</td><td><strong>Edytuj pozycje</strong> — otwiera okno szczegółów.</td></tr>
+        <tr><td><span class="btn-demo danger">🗑</span></td><td>statusy: Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone</td><td><strong>Usuń</strong> całe zamówienie (po potwierdzeniu przyciskiem <strong>Usuń zamówienie</strong>). Operacja jest nieodwracalna.</td></tr>
+    </table>
+
+    <h3>Zamówienia do domknięcia</h3>
+    <p>
+        Zamówienie w statusie <span class="tag sent">Wysłane</span> lub <span class="tag partial">Częściowo odebrane</span>, które powstało <strong>ponad 30 dni temu</strong>
+        (liczone od daty utworzenia), jest oznaczane jako „do domknięcia”. Najczęściej oznacza to, że dostawca nie dośle już brakującej części towaru.
+    </p>
+    <ul>
+        <li>Wiersz takiego zamówienia ma <strong style="color:#d97706;">bursztynowe tło</strong>.</li>
+        <li>Przed numerem pojawia się <strong style="color:#d97706;">ikona ostrzeżenia ⚠</strong>. Po najechaniu na nią kursorem wyświetla się liczba dni, od kiedy zamówienie czeka, np. „Wisi 45 dni — rozważ odpisanie brakujących pozycji przy realizacji”.</li>
+        <li>Obok pola wyszukiwania pojawia się przycisk-licznik <span class="btn-demo" style="background:transparent; border:1px solid #d97706; color:#d97706;">⚠ N do domknięcia</span>.
+            Kliknięcie pokazuje tylko zamówienia do domknięcia; ponowne kliknięcie przywraca pełną listę. Przycisk znika, gdy nie ma już takich zamówień.</li>
+    </ul>
+    <div class="tip">
+        <strong>Jak domknąć takie zamówienie:</strong> należy otworzyć realizację (📦), przyjąć to, co faktycznie dotarło, a brakujące pozycje oznaczyć w kolumnie <strong>Odpisz</strong> i zatwierdzić.
+        Zamówienie przejdzie wtedy do statusu <span class="tag completed">Zrealizowane</span>, a odpisane narzędzia mogą ponownie pojawić się w generatorze. Szczegóły w <a href="#zam-realizacja" style="color: var(--accent);">rozdziale 6</a>.
+    </div>
+
+    <h3>Typowy scenariusz: zmiana dostawcy przy opóźnieniu</h3>
+    <ol>
+        <li>Zamówienie ma status <span class="tag sent">Wysłane</span>, ale dostawca przeciąga realizację (nic jeszcze nie przyjęto).</li>
+        <li>Należy kliknąć pomarańczowy przycisk <strong>↺ Cofnij do „Zatwierdzone”</strong> i potwierdzić. Zamówienie wraca do statusu <span class="tag verified">Zatwierdzone</span>.</li>
+        <li>Kliknąć fioletowy przycisk <strong>🚚 Zmień dostawcę</strong>, wybrać nowego dostawcę z listy i kliknąć <strong>Zmień dostawcę</strong>. Adres e-mail aktualizuje się automatycznie.</li>
+        <li>(Opcjonalnie) kliknąć <span class="btn-demo secondary">✎</span> i poprawić pozycje lub ceny.</li>
+        <li>Kliknąć zielony przycisk <span class="btn-demo success">✉</span> — e-mail trafi do nowego dostawcy.</li>
+    </ol>
+
+    <h3>Okno „Szczegóły zamówienia”</h3>
+    <p>Okno otwiera się kliknięciem numeru zamówienia <em>lub</em> przycisku ołówka. W oknie:</p>
+    <ul>
+        <li>widoczne są: dostawca, data utworzenia, data wysłania, status, <strong>wartość</strong> zamówienia i adres e-mail, na który trafi zamówienie;</li>
+        <li>grupa logistyka widzi i może wpisać <strong>Nr oferty dostawcy</strong> (edycja w statusach Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone);</li>
+        <li>tabela pozycji zawiera kolumny: <strong>Kategoria</strong>, <strong>Podkategoria</strong>, <strong>Narzędzie</strong>, <strong>Nr katalogowy</strong>, <strong>Ilość</strong>, <strong>Jednostka</strong>, <strong>Cena jedn.</strong> i <strong>Wartość</strong>;</li>
+        <li>można zmieniać <strong>ilość</strong> — tylko w statusach Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone;</li>
+        <li>można zmieniać <strong>cenę jednostkową</strong> w <strong>każdym</strong> statusie — to ważne dla historii cen (rozdział 9);</li>
+        <li>można usunąć pozycję z zamówienia (przycisk kosza) — tylko w statusach Wersja robocza i Oczekuje na zatwierdzenie;</li>
+        <li>jeżeli zamówienie ma uwagi, są wyświetlane pod tabelą pozycji;</li>
+        <li>zmiany zatwierdza się przyciskiem <span class="btn-demo success">💾 Zapisz zmiany</span> — okno zamyka się samo. Przycisk <strong>Zamknij</strong> zamyka okno bez zapisu.</li>
+    </ul>
+
+    <h4>Powiązane zapotrzebowania</h4>
+    <p>
+        Jeżeli zamówienie powstało (w całości lub w części) z zapotrzebowań technologów, pod tabelą pozycji pojawia się sekcja <strong>Powiązane zapotrzebowania</strong>
+        z kolumnami <strong>Numer</strong>, <strong>Technolog</strong>, <strong>Data wysłania</strong> i <strong>Status</strong>.
+        Wyświetlane są wyłącznie zapotrzebowania, z których faktycznie pochodzą pozycje tego zamówienia. Pozycje dodane ręcznie nie tworzą takiego powiązania, nawet jeśli dotyczą tego samego narzędzia.
+    </p>
+    <p>Gdy wszystkie zamówienia powiązane z danym zapotrzebowaniem zostaną zrealizowane, zapotrzebowanie automatycznie otrzymuje status zrealizowanego.</p>
+
+    <h3>Wysyłka do zatwierdzenia</h3>
+    <ol>
+        <li>Kliknąć <span class="btn-demo success">Wyślij do zatwierdzenia</span> na górnej belce.</li>
+        <li>W oknie pojawia się lista zamówień w statusie <span class="tag draft">Wersja robocza</span> (kolumny: Numer, Dostawca, Pozycji, Wartość). Domyślnie zaznaczone są wszystkie — zbędne można odznaczyć.</li>
+        <li>Pod listą widać liczbę wybranych zamówień i ich <strong>łączną wartość</strong>.</li>
+        <li>Kliknąć <span class="btn-demo warn">Wyślij do zatwierdzenia</span> w oknie.</li>
+    </ol>
+    <p>
+        Aplikacja wysyła <strong>jeden zbiorczy e-mail</strong> do szefa z listą pozycji, cenami i sumą (kwoty netto). Kopia wiadomości trafia na adres <strong>DW 2 (szef)</strong>, jeżeli jest ustawiony.
+        Wybrane zamówienia otrzymują status <span class="tag pending">Oczekuje na zatwierdzenie</span>.
+    </p>
+    <div class="warn">
+        Jeżeli adres szefa nie jest ustawiony, okno wyświetla ostrzeżenie „Brak adresu email szefa!”, a przycisk wysyłki jest nieaktywny.
+        Adresy używane przez moduł (<strong>Adres Szefa</strong>, <strong>Adres DW 1 (dostawca)</strong>, <strong>Adres DW 2 (szef)</strong>) są widoczne w <strong>Ustawienia → Poczta</strong>; ich zmianę wprowadza administrator.
+    </div>
+
+    <div class="tip">
+        <strong>Dobra praktyka:</strong> Po zgodzie szefa należy przy każdym zamówieniu kliknąć zielony przycisk <strong>✓</strong>. Status zmienia się na <span class="tag verified">Zatwierdzone</span> i dopiero wtedy przy wierszu pojawia się koperta wysyłki do dostawcy.
+    </div>
+
+    <h3>Wysyłka do dostawcy</h3>
+    <ol>
+        <li>Przy zamówieniu w statusie <span class="tag verified">Zatwierdzone</span> kliknąć kopertę <span class="btn-demo success">✉</span>.</li>
+        <li>W oknie „Potwierdzenie wysyłki e-mail” sprawdzić numer, dostawcę i adres e-mail.</li>
+        <li>Kliknąć <span class="btn-demo success">Wyślij e-mail</span>.</li>
+    </ol>
+    <p>Po udanej wysyłce status zmienia się na <span class="tag sent">Wysłane</span>, a w kolumnie <strong>Data wysłania</strong> pojawia się data. Wiadomość do dostawcy:</p>
+    <ul>
+        <li>zawiera tabelę pozycji z ceną jednostkową i wartością (kwoty netto);</li>
+        <li>jeżeli dla dostawcy zapisano jego własne numery katalogowe (Ustawienia → „Dostawcy — tabele”), wiadomość zawiera dodatkową kolumnę „Nr u dostawcy”;</li>
+        <li>jeżeli dostawca ma włączoną opcję „Generuj plik XLSX (załącznik do emaila zamówienia)” (kolumna <strong>XLSX</strong> = TAK w Ustawienia → Dostawcy), do wiadomości dołączany jest arkusz Excel z pozycjami zamówienia;</li>
+        <li>kopia wiadomości trafia na adres <strong>DW 1 (dostawca)</strong>, jeżeli jest ustawiony.</li>
+    </ul>
+    <p>Wysyłka jest niemożliwa, jeśli dostawca nie ma przypisanego adresu e-mail — aplikacja wyświetli komunikat o błędzie.</p>
+
+    <div class="warn">
+        <strong>Tryb testowy:</strong> Jeśli w <strong>Ustawienia → Poczta</strong> włączone są „Zamówienia testowe”, e-mail zamiast do dostawcy trafia na adres testowy.
+        Okno potwierdzenia pokazuje wtedy wyraźny komunikat „TRYB TESTOWY”, a jako adres widnieje adres testowy.
+    </div>
+
+    <h3>Widok dla grupy magazyn</h3>
+    <p>
+        Osoby z grupy magazyn (bez grupy logistyka) widzą na liście tylko zamówienia w statusach <span class="tag sent">Wysłane</span>, <span class="tag partial">Częściowo odebrane</span>
+        i <span class="tag completed">Zrealizowane</span>. Ich głównym zadaniem jest przyjmowanie towaru.
+    </p>
+
+    <h2 id="zam-realizacja">6. Przyjęcie towaru (realizacja)</h2>
+    <p>Po dostawie należy kliknąć przy zamówieniu ikonę paczki (📦). Otwiera się okno realizacji z kolumnami:</p>
+    <ul>
+        <li><strong>Narzędzie</strong>, <strong>Nr katalogowy</strong>;</li>
+        <li><strong>Zamówiono</strong> — zamówiona ilość z jednostką (szt. albo kompl.);</li>
+        <li><strong>Przyjęto</strong> — pole, w którym wpisuje się, ile przyjmuje się <em>teraz</em>. Domyślnie jest tam 0; nie można wpisać więcej, niż pozostało.
+            Jeżeli część towaru przyjęto wcześniej, pod polem widać dopisek „już przyjęto: N”. Pozycja przyjęta w całości pokazuje liczbę ze znakiem ✓;</li>
+        <li><strong>Pozostało</strong> — ile jeszcze brakuje (pomarańczowo) albo 0 (zielono);</li>
+        <li><strong>Odpisz</strong> — pole zaznaczenia; usuwa brakującą pozycję z zamówienia (opis niżej);</li>
+        <li><strong>Cena jedn.</strong> — <strong>tylko do podglądu</strong>. Cenę zmienia się w oknie „Szczegóły zamówienia”;</li>
+        <li><strong>Lokalizacja</strong> — domyślne miejsce narzędzia w magazynie (szafa/półka/kolumna) albo „Brak domyślnej”.</li>
+    </ul>
+
+    <h3>Przyjęcie pełne lub częściowe — krok po kroku</h3>
+    <ol>
+        <li>Kliknąć 📦 przy zamówieniu.</li>
+        <li>Przy pełnej dostawie zaznaczyć <strong>Zaznacz wszystkie (pełna realizacja)</strong> — w kolumnie <strong>Przyjęto</strong> wpisze się cała pozostała ilość.</li>
+        <li>Przy dostawie częściowej wpisać w kolumnie <strong>Przyjęto</strong> ilości, które faktycznie dotarły (pozostałe pozycje zostawić z 0).</li>
+        <li>Kliknąć <span class="btn-demo success">✓ Zatwierdź</span>.</li>
+    </ol>
+    <p>Po zatwierdzeniu aplikacja:</p>
+    <ol>
+        <li>tworzy egzemplarze narzędzi w magazynie (ze stanem „nowe”) w lokalizacji domyślnej narzędzia;</li>
+        <li>dolicza przyjęte ilości do pozycji zamówienia;</li>
+        <li>ustawia status zamówienia: gdy przyjęto wszystko → <span class="tag completed">Zrealizowane</span>; gdy część → <span class="tag partial">Częściowo odebrane</span>;</li>
+        <li>wyświetla okno „Przyjęcie potwierdzone” z listą przyjętych narzędzi, ilością i lokalizacją.</li>
+    </ol>
+    <p>Gdy przyjedzie reszta towaru, należy ponownie kliknąć paczkę przy zamówieniu i powtórzyć przyjęcie dla pozostałych pozycji.</p>
+    <div class="tip">
+        <strong>Komplety:</strong> w kolumnie <strong>Przyjęto</strong> wpisuje się liczbę kompletów, tak jak w kolumnie <strong>Zamówiono</strong>. Każdy przyjęty komplet trafia do magazynu jako jeden egzemplarz z odpowiednią liczbą sztuk.
+    </div>
+
+    <h3>Odpisanie pozycji, której dostawca nie dostarczy</h3>
+    <ol>
+        <li>W oknie realizacji zaznaczyć pole w kolumnie <strong>Odpisz</strong> przy brakującej pozycji (ilość do przyjęcia dla tej pozycji zeruje się automatycznie).</li>
+        <li>Ewentualnie wpisać ilości dla pozycji, które dotarły.</li>
+        <li>Kliknąć <span class="btn-demo success">✓ Zatwierdź</span>.</li>
+    </ol>
+    <p>
+        Odpisana pozycja zostaje <strong>usunięta z zamówienia</strong>, a wartość zamówienia przeliczona. Jeżeli wszystkie pozostałe pozycje są przyjęte w całości, zamówienie otrzymuje status
+        <span class="tag completed">Zrealizowane</span>. Odpisane narzędzie przestaje być traktowane jako „w drodze” i może ponownie pojawić się w generatorze
+        (jeśli nadal go brakuje albo pochodziło z zapotrzebowania technologa).
+    </p>
+    <div class="danger-box">
+        <strong>Uwaga:</strong> odpisania nie można cofnąć. Przyjęcia towaru również nie cofa się z poziomu tego okna — przed kliknięciem „Zatwierdź” należy sprawdzić wpisane ilości.
+    </div>
+
+    <h2 id="zam-statusy">7. Statusy zamówień</h2>
+    <table class="status-table">
+        <tr><th>Status</th><th>Znaczenie</th><th>Możliwe działania</th></tr>
+        <tr>
+            <td><span class="tag draft">Wersja robocza</span></td>
+            <td>Zamówienie świeżo utworzone w generatorze. Nikt go jeszcze nie zaakceptował.</td>
+            <td>Edycja pozycji, zmiana dostawcy, usunięcie, wysyłka do zatwierdzenia.</td>
+        </tr>
+        <tr>
+            <td><span class="tag pending">Oczekuje na zatwierdzenie</span></td>
+            <td>Zbiorczy e-mail trafił do szefa (wysyłany tylko raz). Oczekiwanie na zgodę.</td>
+            <td>
+                Po zgodzie szefa: ✓ <strong>Zatwierdź</strong>.
+                Jeśli szef zgłasza poprawki — należy otworzyć szczegóły, poprawić ilość, cenę lub usunąć pozycję, zapisać, a dopiero potem zatwierdzić.
+                Cofnięcie ↶ jest potrzebne tylko przy dopisywaniu nowej pozycji (przez generator).
+            </td>
+        </tr>
+        <tr>
+            <td><span class="tag verified">Zatwierdzone</span></td>
+            <td>Szef zaakceptował zamówienie — można je wysłać do dostawcy.</td>
+            <td>Wysyłka e-maila do dostawcy, edycja ilości i cen, zmiana dostawcy, usunięcie.</td>
+        </tr>
+        <tr>
+            <td><span class="tag sent">Wysłane</span></td>
+            <td>E-mail trafił do dostawcy. Oczekiwanie na towar.</td>
+            <td>Przyjęcie towaru (realizacja), cofnięcie do „Zatwierdzone” (dopóki nic nie przyjęto). W szczegółach (otwieranych kliknięciem numeru) można zmieniać już tylko cenę.</td>
+        </tr>
+        <tr>
+            <td><span class="tag partial">Częściowo odebrane</span></td>
+            <td>Część towaru dotarła, reszta jest w drodze.</td>
+            <td>Kontynuacja realizacji — przyjęcie kolejnej dostawy lub odpisanie brakujących pozycji.</td>
+        </tr>
+        <tr>
+            <td><span class="tag completed">Zrealizowane</span></td>
+            <td>Wszystkie pozostałe pozycje przyjęte. Zamówienie zamknięte.</td>
+            <td>Podgląd szczegółów (kliknięcie numeru). Cenę można poprawić nawet teraz (historia cen).</td>
+        </tr>
+    </table>
+    <p>Zamówienia w statusie <span class="tag sent">Wysłane</span> i <span class="tag partial">Częściowo odebrane</span> starsze niż 30 dni są dodatkowo oznaczane jako „do domknięcia” (rozdział 5).</p>
+
+    <h2 id="zam-szukanie">8. Wyszukiwanie, sortowanie i stronicowanie listy</h2>
+    <p>
+        Nad tabelą znajduje się pole <strong>Szukaj...</strong>. Filtruje ono listę po
+        <strong>numerze zamówienia</strong>, <strong>nazwie dostawcy</strong>, <strong>dacie utworzenia</strong> i <strong>dacie wysłania</strong>
+        (np. wpisanie <code>2026-04</code> pokaże zamówienia utworzone lub wysłane w kwietniu 2026). Wyszukiwanie działa także razem z filtrem „do domknięcia”.
+    </p>
+    <p>Sortowanie jest automatyczne:</p>
+    <ul>
+        <li>na górze są zamówienia <strong>niezakończone</strong> (Wersja robocza, Oczekuje na zatwierdzenie, Zatwierdzone, Wysłane, Częściowo odebrane);</li>
+        <li>na dole są zamówienia <strong>Zrealizowane</strong>;</li>
+        <li>w obrębie każdej grupy zamówienia są ułożone według numeru malejąco — nowsze wyżej.</li>
+    </ul>
+    <p>
+        Lista jest podzielona na strony. Domyślnie wyświetla się <strong>25</strong> zamówień na stronie; pod tabelą można wybrać <strong>25, 50, 100 lub 200</strong>
+        i przechodzić między stronami przyciskami nawigacji.
+    </p>
+
+    <h2 id="zam-ceny">9. Cena jednostkowa i wartość zamówienia</h2>
+    <p><strong>Cena jednostkowa zawsze dotyczy jednej sztuki</strong>, także przy narzędziach kupowanych w kompletach. Cena pojawia się w trzech miejscach:</p>
+    <ol>
+        <li><strong>Generator</strong> — cena podpowiada się z ostatniego zamówienia tego narzędzia. Jeżeli narzędzie nigdy nie było zamawiane, używana jest cena wpisana w module Zakupy. Cenę można tu zmienić.</li>
+        <li><strong>Szczegóły zamówienia</strong> — cenę można poprawić w <em>każdej chwili</em>, niezależnie od statusu. Cena jest zapisana przy tym konkretnym zamówieniu, więc tworzy historię cen narzędzia.</li>
+        <li><strong>Realizacja</strong> — cena jest <em>tylko do odczytu</em>. Jeśli cena na fakturze jest inna, należy ją poprawić w oknie „Szczegóły zamówienia”.</li>
+    </ol>
+
+    <h3>Jak liczona jest wartość</h3>
+    <ul>
+        <li>Pozycja w sztukach: <strong>wartość = ilość × cena jednostkowa</strong>.</li>
+        <li>Pozycja w kompletach: <strong>wartość = ilość kompletów × liczba sztuk w komplecie × cena za sztukę</strong>.
+            Przykład: 2 komplety po 10 sztuk, cena 5,00 zł za sztukę → 2 × 10 × 5,00 = 100,00 zł.</li>
+        <li>Wartość zamówienia to suma wartości wszystkich pozycji. Przelicza się automatycznie po zmianie ilości, ceny, usunięciu lub odpisaniu pozycji.</li>
+        <li>W kolumnie <strong>Jednostka</strong> okna szczegółów komplet jest opisany jako <code>kompl. (N szt.)</code>.</li>
+    </ul>
+    <div class="tip">
+        <strong>Dlaczego tak?</strong> Każde zamówienie zachowuje cenę z chwili zakupu. Dzięki temu generator podpowiada najświeższy znany koszt narzędzia, a księgowość ma ślad historyczny.
+    </div>
+
+    <h2 id="zam-faq">10. Najczęstsze pytania</h2>
+
+    <h4>Pomyłka przy generowaniu — co należy zrobić?</h4>
+    <p>Świeżo utworzone zamówienia mają status <span class="tag draft">Wersja robocza</span>. Należy otworzyć „Szczegóły zamówienia”, poprawić ilości lub ceny albo usunąć zbędne pozycje. Można też usunąć całe zamówienie i wygenerować je ponownie.</p>
+
+    <h4>Zamówienie wysłano do zatwierdzenia, ale szef chce coś zmienić.</h4>
+    <p>
+        E-mail do szefa wysyła się <strong>tylko raz</strong> — nie trzeba cofać zamówienia do wersji roboczej i wysyłać go ponownie. Należy postąpić tak:
+    </p>
+    <ol>
+        <li>Otworzyć <strong>Szczegóły zamówienia</strong> (kliknięcie numeru lub ołówka przy wierszu).</li>
+        <li>W statusie <span class="tag pending">Oczekuje na zatwierdzenie</span> można nadal zmieniać ilość i cenę oraz usuwać pozycje. Po wprowadzeniu zmian kliknąć <span class="btn-demo success">💾 Zapisz zmiany</span>.</li>
+        <li>Na liście kliknąć ✓ przy wierszu — status zmieni się na <span class="tag verified">Zatwierdzone</span>.</li>
+        <li>Kliknąć kopertę i wysłać e-mail do dostawcy — status zmieni się na <span class="tag sent">Wysłane</span>.</li>
+    </ol>
+    <p>
+        Przycisk ↶ <strong>Cofnij do wersji roboczej</strong> przydaje się tylko wtedy, gdy szef chce <em>dopisać nową pozycję</em>, której w zamówieniu nie było.
+        Nowe pozycje dodaje się wyłącznie w generatorze, dlatego należy: cofnąć zamówienie, dodać pozycję w generatorze, wygenerować zamówienia i ponownie wysłać je do zatwierdzenia.
+    </p>
+
+    <h4>Dostawca przysłał tylko część zamówienia.</h4>
+    <p>Należy otworzyć realizację (📦) i w kolumnie <strong>Przyjęto</strong> wpisać ilości tylko dla tych pozycji, które faktycznie dotarły. Status zmieni się na <span class="tag partial">Częściowo odebrane</span>. Po dostawie reszty okno otwiera się ponownie.</p>
+
+    <h4>Dostawca nie dośle reszty towaru. Jak zamknąć zamówienie?</h4>
+    <p>Należy otworzyć realizację (📦), zaznaczyć brakujące pozycje w kolumnie <strong>Odpisz</strong> i kliknąć <strong>Zatwierdź</strong>. Zamówienie przejdzie do statusu <span class="tag completed">Zrealizowane</span>, a brakujące narzędzia mogą wrócić do generatora i trafić do nowego zamówienia, np. u innego dostawcy.</p>
+
+    <h4>Cena na fakturze jest inna niż w zamówieniu.</h4>
+    <p>Należy otworzyć „Szczegóły zamówienia”, poprawić cenę w kolumnie <strong>Cena jedn.</strong> i kliknąć <strong>Zapisz zmiany</strong>. Wartość zamówienia przeliczy się automatycznie. Można to zrobić także po zrealizowaniu zamówienia — historia cen narzędzia będzie wtedy dokładna.</p>
+
+    <h4>Narzędzia brakuje w magazynie, a generator go nie proponuje.</h4>
+    <p>Należy sprawdzić kolejno:</p>
+    <ol>
+        <li>Czy stan maksymalny narzędzia jest większy od 0? Przy maksimum 0 narzędzie nie jest zamawiane automatycznie.</li>
+        <li>W metodzie „według nowych elementów”: czy stan minimalny jest większy od 0?</li>
+        <li>Czy narzędzie nie ma w Zakupach włączonej ręcznej kontroli zamówień?</li>
+        <li>Czy narzędzie nie jest w innym zamówieniu, w którym jego pozycja nie została jeszcze w całości przyjęta? Wtedy aplikacja uznaje, że towar jest w drodze. Jeżeli ta dostawa nie dotrze, należy odpisać pozycję przy realizacji.</li>
+        <li>W metodzie standardowej liczą się wszystkie sztuki, także używane i wydane na produkcję. Stan może więc być wystarczający, mimo że brakuje nowych sztuk.</li>
+    </ol>
+    <p>W każdej z tych sytuacji narzędzie można zamówić, dodając je ręcznie przyciskiem <span class="btn-demo success">+</span> w generatorze.</p>
+
+    <h4>Brak przycisku „Generuj nowe”.</h4>
+    <p>Generator jest dostępny tylko dla osób z grupy <strong>logistyka</strong> lub <strong>administrator</strong> oraz dla administratorów systemu. W razie potrzeby dostępu należy zwrócić się do administratora.</p>
+
+    <h4>E-mail do dostawcy trafił na inny adres niż oczekiwany.</h4>
+    <p>Najprawdopodobniej w <strong>Ustawienia → Poczta</strong> włączone są <strong>Zamówienia testowe</strong>. Wszystkie e-maile z zamówieniami trafiają wtedy na adres testowy, niezależnie od adresu w zamówieniu. Tryb wyłącza się w tym samym miejscu.</p>
+
+    <h4>Czy można usunąć zamówienie po wysłaniu do dostawcy?</h4>
+    <p>
+        Nie bezpośrednio — w statusie <span class="tag sent">Wysłane</span> przycisk kosza nie jest dostępny. To zabezpieczenie przed usunięciem zamówienia, na które dostawca już pracuje.
+        Jeżeli zamówienie zostało uzgodnione z dostawcą jako anulowane i nic z niego nie przyjęto, można je cofnąć przyciskiem ↺ do statusu <span class="tag verified">Zatwierdzone</span>, a następnie usunąć.
+        Jeżeli część towaru już przyjęto, brakujące pozycje należy odpisać przy realizacji.
+    </p>
+</div>

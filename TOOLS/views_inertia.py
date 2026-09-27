@@ -73,6 +73,9 @@ def get_info_program():
     info['PDF_INWENTURA_WERSJA'] = getattr(settings, 'PDF_INWENTURA_WERSJA', 1)
     info['PDF_INWENTURA_DATA'] = getattr(settings, 'PDF_INWENTURA_DATA', '')
 
+    # Globalny limit wierszy na stronę dla tabel z paginacją
+    info['PAGE_SIZE'] = getattr(settings, 'PAGE_SIZE', 25)
+
     return info
 
 
@@ -311,7 +314,6 @@ def kierownik_view(request):
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
-        'pageSize': getattr(settings, 'TECHNOLOG_PAGE_SIZE', 50),
     })
 
 
@@ -322,7 +324,6 @@ def technologia_view(request):
         'auth': get_auth_data(request),
         'urls': get_common_urls(),
         'infoProgram': get_info_program(),
-        'pageSize': getattr(settings, 'TECHNOLOG_PAGE_SIZE', 50),
     })
 
 

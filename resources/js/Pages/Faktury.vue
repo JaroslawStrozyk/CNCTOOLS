@@ -234,6 +234,9 @@ import Message from 'primevue/message';
 import Paginator from 'primevue/paginator';
 import ProgressSpinner from 'primevue/progressspinner';
 import Menu from 'primevue/menu';
+import { usePaginacja } from '../paginacja';
+
+const { pageSize } = usePaginacja();
 
 axios.defaults.xsrfCookieName = 'csrftoken';
 axios.defaults.xsrfHeaderName = 'X-CSRFToken';
@@ -274,7 +277,7 @@ const pagination = ref({
   previous: null,
   currentPage: 1,
   totalPages: 1,
-  pageSize: 100
+  pageSize
 });
 
 // File input ref

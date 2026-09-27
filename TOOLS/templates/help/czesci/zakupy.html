@@ -1,0 +1,397 @@
+<div class="dok-czesc dok-zakupy" id="zak">
+
+    <header class="page-head">
+        <h1>Pomoc — Zakupy</h1>
+        <div class="subtitle">Praktyczny przewodnik po module Zakupów: limity zaopatrzenia, kontrola stanów, historia cen.</div>
+        <div class="subtitle">Wersja 1.16 · wrzesień 2026</div>
+    </header>
+
+    <div class="toc">
+        <strong>Spis treści</strong>
+        <ol>
+            <li><a href="#zak-wstep">Do czego służy moduł Zakupy</a></li>
+            <li><a href="#zak-przeplyw">Jak działa kontrola zaopatrzenia</a></li>
+            <li><a href="#zak-belka">Górna belka</a></li>
+            <li><a href="#zak-lista">Tabela „Lista narzędzi”</a></li>
+            <li><a href="#zak-kropki">Kolorowy pasek stanu — co oznacza</a></li>
+            <li><a href="#zak-filtrowanie">Wyszukiwanie i filtry</a></li>
+            <li><a href="#zak-edycja">Dodawanie i edycja narzędzia</a></li>
+            <li><a href="#zak-kontrola">Kontrola Auto i Ręczna</a></li>
+            <li><a href="#zak-sposob">Sposób liczenia zamówień</a></li>
+            <li><a href="#zak-pomijanie">Kiedy Generator pomija narzędzie</a></li>
+            <li><a href="#zak-zamowienia">Zakładka „Zamówienia” — historia zakupów</a></li>
+            <li><a href="#zak-cena">Cena jednostkowa — skąd się bierze i jak ją czytać</a></li>
+            <li><a href="#zak-faq">Najczęstsze pytania</a></li>
+        </ol>
+    </div>
+
+    <h2 id="zak-wstep">1. Do czego służy moduł Zakupy</h2>
+    <p>
+        Moduł <strong>Zakupy</strong> jest stanowiskiem pracy <strong>zaopatrzenia (logistyki)</strong>. Jego zadaniem jest pilnowanie, aby na hali nie zabrakło narzędzi i materiałów eksploatacyjnych.
+        Magazyn wydaje sztuki, technolodzy zgłaszają zapotrzebowania, a w Zakupach ustala się <em>limity zaopatrzenia</em>, na podstawie których system sam podpowiada, co należy zamówić.
+    </p>
+    <p>Na tym ekranie wykonuje się dwie czynności:</p>
+    <ul>
+        <li><strong>Ustawianie zasad zaopatrzenia</strong> dla każdego typu narzędzia — limit minimalny, limit maksymalny, sposób kontroli (Auto albo Ręczna) oraz cenę jednostkową.</li>
+        <li><strong>Przegląd historii zakupów</strong> wybranego narzędzia — w których zamówieniach było, u którego dostawcy, w jakim statusie i po jakiej cenie.</li>
+    </ul>
+    <div class="tip">
+        <strong>W skrócie:</strong> w Zakupach nie składa się zamówień. Tutaj ustawia się zasady, według których <strong>Generator zamówień</strong> (w module Zamówienia) przygotowuje propozycje zakupu.
+    </div>
+
+    <h2 id="zak-przeplyw">2. Jak działa kontrola zaopatrzenia</h2>
+    <p>Mechanizm zaopatrzenia opiera się na dwóch liczbach ustawianych dla każdego typu narzędzia: <strong>limicie minimalnym</strong> i <strong>limicie maksymalnym</strong>. Sposób, w jaki system z nich korzysta, zależy od ustawienia <a href="#zak-sposob">„Sposób liczenia zamówień”</a>.</p>
+
+    <div class="diagram">
+        <svg viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <marker id="zak-arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+                    <path d="M0,0 L10,5 L0,10 Z" fill="#ffc107"/>
+                </marker>
+                <style>
+                    .box { fill: #343a40; stroke: #ffc107; stroke-width: 2; rx: 8; }
+                    .box-soft { fill: #2d3238; stroke: #495057; stroke-width: 1.5; rx: 8; }
+                    .label { fill: #fff; font-family: sans-serif; font-size: 14px; font-weight: 600; }
+                    .label-small { fill: #adb5bd; font-family: sans-serif; font-size: 11px; }
+                    .arrow { stroke: #ffc107; stroke-width: 2; fill: none; }
+                </style>
+            </defs>
+
+            <!-- 1. Limity -->
+            <rect class="box" x="20" y="20" width="200" height="80"/>
+            <text class="label" x="120" y="48" text-anchor="middle">1. Zaopatrzenie ustawia</text>
+            <text class="label" x="120" y="65" text-anchor="middle">limity</text>
+            <text class="label-small" x="120" y="85" text-anchor="middle">min, max, Auto/Ręczna</text>
+
+            <path class="arrow" d="M220,60 L290,60" marker-end="url(#zak-arrow)"/>
+
+            <!-- 2. Magazyn -->
+            <rect class="box-soft" x="290" y="20" width="200" height="80"/>
+            <text class="label" x="390" y="48" text-anchor="middle">2. Magazyn</text>
+            <text class="label-small" x="390" y="68" text-anchor="middle">stany się zmieniają</text>
+            <text class="label-small" x="390" y="85" text-anchor="middle">(wydania, zwroty)</text>
+
+            <path class="arrow" d="M490,60 L560,60" marker-end="url(#zak-arrow)"/>
+
+            <!-- 3. System wykrywa brak -->
+            <rect class="box-soft" x="560" y="20" width="200" height="80"/>
+            <text class="label" x="660" y="48" text-anchor="middle">3. Stan &lt; maksimum</text>
+            <text class="label-small" x="660" y="68" text-anchor="middle">pasek pomarańczowy</text>
+            <text class="label-small" x="660" y="85" text-anchor="middle">lub czerwony</text>
+
+            <path class="arrow" d="M660,100 L660,140" marker-end="url(#zak-arrow)"/>
+
+            <!-- 4. Generator -->
+            <rect class="box" x="560" y="145" width="200" height="80"/>
+            <text class="label" x="660" y="173" text-anchor="middle">4. Generator</text>
+            <text class="label-small" x="660" y="193" text-anchor="middle">propozycja zamówienia</text>
+            <text class="label-small" x="660" y="210" text-anchor="middle">(brakuje do maksimum)</text>
+
+            <path class="arrow" d="M560,185 L490,185" marker-end="url(#zak-arrow)"/>
+
+            <!-- 5. Zamowienie -->
+            <rect class="box-soft" x="290" y="145" width="200" height="80"/>
+            <text class="label" x="390" y="173" text-anchor="middle">5. Zamówienie</text>
+            <text class="label-small" x="390" y="193" text-anchor="middle">zatwierdzenie, wysyłka</text>
+            <text class="label-small" x="390" y="210" text-anchor="middle">do dostawcy</text>
+
+            <path class="arrow" d="M290,185 L220,185" marker-end="url(#zak-arrow)"/>
+
+            <!-- 6. Realizacja -->
+            <rect class="box" x="20" y="145" width="200" height="80"/>
+            <text class="label" x="120" y="173" text-anchor="middle">6. Realizacja</text>
+            <text class="label-small" x="120" y="193" text-anchor="middle">towar przyjeżdża,</text>
+            <text class="label-small" x="120" y="210" text-anchor="middle">trafia na półkę</text>
+
+            <path class="arrow" d="M120,225 L120,265" marker-end="url(#zak-arrow)"/>
+
+            <!-- 7. Ponownie magazyn -->
+            <rect class="box-soft" x="20" y="270" width="200" height="55"/>
+            <text class="label" x="120" y="297" text-anchor="middle">7. Magazyn</text>
+            <text class="label-small" x="120" y="315" text-anchor="middle">stan uzupełniony</text>
+
+            <!-- back arrow -->
+            <path class="arrow" d="M220,297 L390,297 L390,225" marker-end="url(#zak-arrow)" stroke-dasharray="4,3"/>
+            <text class="label-small" x="240" y="290">cykl się powtarza</text>
+
+            <!-- side note about ceny -->
+            <rect class="box-soft" x="560" y="270" width="200" height="80"/>
+            <text class="label" x="660" y="297" text-anchor="middle">Zakładka Zamówienia</text>
+            <text class="label-small" x="660" y="315" text-anchor="middle">historia cen i dostawców</text>
+            <text class="label-small" x="660" y="332" text-anchor="middle">dla wybranego narzędzia</text>
+        </svg>
+        <div class="diagram-caption">Cykl kontroli zaopatrzenia. Pasek po lewej stronie tabeli zmienia kolor zależnie od liczby nowych sztuk i ustawionych limitów.</div>
+    </div>
+
+    <h2 id="zak-belka">3. Górna belka</h2>
+    <ul>
+        <li><span class="btn-demo info">Pomoc</span> — otwiera ten przewodnik w osobnym oknie.</li>
+        <li><span class="btn-demo success">Zapotrzebowania</span> — przejście do zgłoszeń od technologów.</li>
+        <li><span class="btn-demo success">Zamówienia</span> — przejście do modułu Zamówień (tam znajduje się Generator zamówień).</li>
+        <li><span class="btn-demo primary">Magazyn</span> — przejście do Magazynu.</li>
+        <li><span class="btn-demo primary">Statystyka</span> — otwiera <strong>Panel kierownika</strong> z podglądem stanów i statystyk. Po wejściu tą drogą w Panelu kierownika pojawia się zielony przycisk <span class="btn-demo success">Zakupy</span>, który prowadzi z powrotem do tego ekranu.</li>
+        <li><span class="btn-demo danger">Imię i nazwisko</span> — menu konta zalogowanej osoby: <strong>Ustawienia</strong>, <strong>O programie</strong>, <strong>Wyjście</strong>.</li>
+    </ul>
+
+    <h2 id="zak-lista">4. Tabela „Lista narzędzi”</h2>
+    <p>To główna tabela ekranu. Pokazuje wszystkie typy narzędzi z katalogu wraz z aktualnym stanem zaopatrzenia. Tabela nie jest podzielona na strony — całą listę przegląda się, przewijając ją w dół.</p>
+
+    <h3>Kolumny</h3>
+    <ul>
+        <li><strong>Pasek stanu</strong> (skrajna lewa kolumna, bez nagłówka) — kolorowy wskaźnik zaopatrzenia. Po najechaniu kursorem pojawia się podpowiedź z wyjaśnieniem. Szczegóły w sekcji <a href="#zak-kropki">Kolorowy pasek stanu</a>.</li>
+        <li><strong>Kategoria / Podkategoria</strong> — położenie narzędzia w katalogu. Gdy narzędzie nie ma przypisanej kategorii, widoczny jest napis „Brak kategorii”.</li>
+        <li><strong>Opis</strong> — pełna nazwa narzędzia. Opis wyświetlony <span class="opis-hist">żółtym kolorem</span> oznacza, że narzędzie było już kiedykolwiek zamawiane (ma historię zakupów). Opis w kolorze białym oznacza, że narzędzie nie wystąpiło jeszcze w żadnym zamówieniu.</li>
+        <li><strong>Nr katalogowy</strong> — numer producenta lub numer własny.</li>
+        <li><strong>Cena jednostkowa</strong> — ostatnia znana cena jednej sztuki (więcej w sekcji <a href="#zak-cena">Cena jednostkowa</a>). Brak ceny wyświetla się jako szare „0,00 zł”.</li>
+        <li><strong>Ilość nowych</strong> — liczba nowych sztuk, które leżą w magazynie i nie zostały wydane. <strong>To ta liczba decyduje o kolorze paska stanu.</strong></li>
+        <li><strong>Ilość całkowita</strong> — wszystkie sztuki tego narzędzia: nowe na półce, używane na półce oraz wydane na produkcję. Sztuki uszkodzone nie są wliczane.</li>
+        <li><strong>Limit minimalny</strong> i <strong>Limit maksymalny</strong> — wartości opisane w sekcjach <a href="#zak-kontrola">Kontrola Auto i Ręczna</a> oraz <a href="#zak-sposob">Sposób liczenia zamówień</a>.</li>
+        <li><strong>Kontrola</strong> — <span class="btn-demo secondary">Auto</span> albo <span class="btn-demo info">Ręczna</span>.</li>
+        <li><strong>Ręczne dodanie</strong> — liczba sztuk, którą Generator doda przy ręcznej kontroli. Przy kontroli Auto widoczna jest kreska „-”.</li>
+        <li><strong>Ostatnia kolumna</strong> — przycisk <span class="btn-demo success">+</span> w nagłówku dodaje nowy typ narzędzia, przycisk z ołówkiem <span class="btn-demo secondary">✎</span> w wierszu otwiera edycję.</li>
+    </ul>
+    <p>Wartości równe zero w kolumnach liczbowych i w cenie wyświetlane są na szaro.</p>
+
+    <h3>Kliknięcie wiersza</h3>
+    <p>
+        Kliknięcie wiersza zaznacza narzędzie. W dolnej części ekranu, w zakładce <strong>Zamówienia</strong>, pojawia się wtedy lista wszystkich zamówień, w których to narzędzie wystąpiło.
+        Ponowne kliknięcie zaznaczonego wiersza usuwa zaznaczenie.
+    </p>
+
+    <h2 id="zak-kropki">5. Kolorowy pasek stanu — co oznacza</h2>
+    <p>
+        Pasek odpowiada na jedno pytanie: <strong>czy system sam zamówi to narzędzie i jak pilna jest potrzeba</strong>.
+        Kolor jest liczony na podstawie kolumny <strong>Ilość nowych</strong>, a nie ilości całkowitej. Narzędzie może mieć w ewidencji 12 sztuk, a na półce żadnej nowej, bo wszystkie zostały wydane na produkcję — wtedy pasek pokaże brak.
+    </p>
+    <table class="status-table">
+        <tr><th>Pasek</th><th>Co oznacza</th><th>Kiedy się pojawia</th></tr>
+        <tr>
+            <td><span class="dot green"></span> Zielony</td>
+            <td>Stan pełny — nowych sztuk jest tyle, ile wynosi limit maksymalny, lub więcej.</td>
+            <td>ilość nowych ≥ limit maksymalny</td>
+        </tr>
+        <tr>
+            <td><span class="dot orange"></span> Pomarańczowy</td>
+            <td>Stan poniżej maksimum, ale nie niższy niż minimum. Generator uzupełni ilość do limitu maksymalnego.</td>
+            <td>limit minimalny ≤ ilość nowych &lt; limit maksymalny</td>
+        </tr>
+        <tr>
+            <td><span class="dot red"></span> Czerwony</td>
+            <td>Stan poniżej minimum — narzędzie wymaga zamówienia.</td>
+            <td>ilość nowych &lt; limit minimalny</td>
+        </tr>
+        <tr>
+            <td><span class="dot grey"></span> Szary</td>
+            <td>Narzędzie <strong>nie jest zamawiane automatycznie</strong>. Szary nie oznacza, że stan jest dobry — oznacza, że system tego narzędzia nie pilnuje.</td>
+            <td>ręczna kontrola <strong>albo</strong> limit minimalny = 0 <strong>albo</strong> limit maksymalny = 0</td>
+        </tr>
+    </table>
+
+    <h3>Podpowiedź po najechaniu kursorem</h3>
+    <p>Po najechaniu kursorem na pasek pojawia się jeden z komunikatów:</p>
+    <ul>
+        <li>„Stan pełny: … nowych (maks. …)”</li>
+        <li>„Poniżej maksimum: … nowych (min. …, maks. …) — generator uzupełni do …”</li>
+        <li>„Poniżej minimum: … nowych (min. …) — do zamówienia”</li>
+        <li>„Ręczna kontrola — generator nie zamawia automatycznie”</li>
+        <li>„Auto-zamawianie wyłączone (limit minimalny = 0)”</li>
+        <li>„Auto-zamawianie wyłączone (limit maksymalny = 0)”</li>
+    </ul>
+    <div class="tip">
+        <strong>Rzut oka na tabelę:</strong> dużo czerwonych i pomarańczowych pasków oznacza, że w Generatorze zamówień czekają propozycje zakupu. Szare paski należy przejrzeć — wśród nich mogą być narzędzia, które powinny być zamawiane, a przez zerowy limit nie są.
+    </div>
+    <div class="warn">
+        <strong>Uwaga:</strong> pasek jest zawsze liczony według zasad trybu „według nowych elementów” (patrz <a href="#zak-sposob">sekcja 9</a>). Jeżeli w systemie ustawiony jest tryb „standardowa”, Generator liczy inaczej i jego propozycje mogą nie pokrywać się z kolorem paska.
+    </div>
+
+    <h2 id="zak-filtrowanie">6. Wyszukiwanie i filtry</h2>
+    <ul>
+        <li><strong>Pole „Szukaj...”</strong> (lewa strona nagłówka tabeli) — należy wpisać fragment nazwy kategorii, podkategorii, opisu lub numeru katalogowego. Lista zawęża się po chwili od zakończenia pisania.</li>
+        <li><strong>„Wszystkie kategorie”</strong> — rozwijana lista kategorii.</li>
+        <li><strong>„Wszystkie podkategorie”</strong> — lista staje się aktywna dopiero po wybraniu kategorii. Zmiana kategorii czyści wybór podkategorii.</li>
+    </ul>
+    <p>Filtry i wyszukiwanie można łączyć. Tabela jest zawsze uporządkowana alfabetycznie według kategorii, a następnie podkategorii.</p>
+
+    <h2 id="zak-edycja">7. Dodawanie i edycja narzędzia</h2>
+    <h4>Dodawanie nowego typu narzędzia</h4>
+    <ol>
+        <li>Kliknąć przycisk <span class="btn-demo success">+</span> w nagłówku ostatniej kolumny tabeli.</li>
+        <li>W oknie „Dodaj nowy typ narzędzia” uzupełnić pola (opis poniżej).</li>
+        <li>Kliknąć <span class="btn-demo primary">Dodaj typ</span>.</li>
+    </ol>
+    <h4>Edycja istniejącego narzędzia</h4>
+    <ol>
+        <li>Kliknąć przycisk z ołówkiem <span class="btn-demo secondary">✎</span> w wierszu narzędzia.</li>
+        <li>W oknie „Edytuj typ narzędzia” zmienić potrzebne wartości.</li>
+        <li>Kliknąć <span class="btn-demo primary">Zapisz zmiany</span>. Przycisk <strong>Anuluj</strong> zamyka okno bez zapisu.</li>
+    </ol>
+
+    <h4>Pola okna</h4>
+    <ul>
+        <li><strong>Kategoria / Podkategoria</strong> — wybór z pogrupowanej listy. Pozostawienie pustego pola („Brak (Główne)”) zapisuje narzędzie bez kategorii.</li>
+        <li><strong>Opis / Specyfikacja</strong> — nazwa narzędzia (np. „Frez walcowy ⌀12 HSS”).</li>
+        <li><strong>Numer katalogowy (opcjonalnie)</strong> — można pozostawić puste.</li>
+        <li><strong>Cena jednostkowa</strong> — cena jednej sztuki w złotych. Jeżeli cena pochodzi z zamówień, pole jest zablokowane i widoczny jest komunikat „Cena wyliczona z zamówień — nie podlega ręcznej edycji.” Szczegóły w sekcji <a href="#zak-cena">Cena jednostkowa</a>.</li>
+        <li><strong>Limit minimalny</strong> — patrz <a href="#zak-sposob">sekcja 9</a>.</li>
+        <li><strong>Limit maksymalny</strong> — poziom, do którego Generator uzupełnia zapas. Pole jest wyszarzone, gdy zaznaczona jest ręczna kontrola.</li>
+        <li><strong>Ręczna kontrola zamówień</strong> (pole wyboru) — przełącza tryb kontroli (patrz <a href="#zak-kontrola">sekcja 8</a>).</li>
+        <li><strong>Ręczne dodanie (ilość do zamówienia)</strong> — pole pojawia się tylko po zaznaczeniu ręcznej kontroli.</li>
+        <li><strong>Obraz narzędzia</strong> — opcjonalne zdjęcie. Po wybraniu pliku pod polem pojawia się podgląd.</li>
+    </ul>
+    <div class="warn">
+        <strong>Uwaga przy dodawaniu:</strong> nowe narzędzie otrzymuje domyślnie limit minimalny = 0 i limit maksymalny = 10. Należy od razu wpisać właściwe wartości, dostosowane do zużycia narzędzia.
+    </div>
+    <p>Po zapisaniu tabela odświeża się, a pasek stanu zmienia kolor zgodnie z nowymi limitami.</p>
+
+    <h2 id="zak-kontrola">8. Kontrola Auto i Ręczna</h2>
+    <p>Dla każdego narzędzia wybiera się, czy system ma sam wyliczać ilość do zamówienia (Auto), czy ilość ma być wskazywana ręcznie (Ręczna).</p>
+
+    <h3>Kontrola Auto</h3>
+    <ul>
+        <li>Generator zamówień sam sprawdza stan i proponuje zamówienie brakującej ilości do limitu maksymalnego.</li>
+        <li>Dokładna zasada zależy od ustawienia „Sposób liczenia zamówień” (<a href="#zak-sposob">sekcja 9</a>).</li>
+        <li>Tryb właściwy dla narzędzi <strong>regularnie zużywanych</strong>, dla których znany jest bezpieczny zapas.</li>
+    </ul>
+
+    <h3>Kontrola Ręczna</h3>
+    <ul>
+        <li>Generator <strong>nie sprawdza stanu magazynu</strong> i sam nie wylicza ilości.</li>
+        <li>Limit maksymalny nie ma znaczenia (w oknie edycji jest wyszarzony).</li>
+        <li>O zamówieniu decyduje pole <strong>Ręczne dodanie</strong>. Wpisanie liczby większej od zera powoduje, że przy najbliższym otwarciu Generatora zamówień narzędzie pojawi się na liście propozycji z tą ilością.</li>
+        <li>Po przeniesieniu do Generatora wartość <strong>Ręczne dodanie</strong> jest automatycznie zerowana. Każde kolejne zamówienie wymaga ponownego wpisania ilości.</li>
+        <li>Pasek stanu jest wtedy <span class="dot grey"></span> szary, a w kolumnie <strong>Kontrola</strong> widnieje oznaczenie „Ręczna”.</li>
+        <li>Tryb właściwy dla narzędzi <strong>nietypowych</strong> — zamawianych okazjonalnie, drogich lub z długim czasem dostawy.</li>
+    </ul>
+
+    <div class="tip">
+        <strong>Przykład:</strong> frez walcowy ⌀12 zużywany codziennie — kontrola Auto, limit minimalny 5, limit maksymalny 15. Specjalna głowica frezująca kupowana raz w roku — kontrola Ręczna, a gdy jest potrzebna, wpisuje się „Ręczne dodanie” = 1.
+    </div>
+
+    <h2 id="zak-sposob">9. Sposób liczenia zamówień</h2>
+    <p>
+        To ustawienie wspólne dla całego systemu. Decyduje o tym, jak Generator zamówień wylicza ilości dla narzędzi z kontrolą Auto.
+        Zmienia się je w menu konta: <strong>Ustawienia</strong> → zakładka <strong>Inne</strong> → pozycja <strong>Sposób liczenia zamówień</strong>. Po wybraniu nowej wartości pojawia się okno potwierdzenia, w którym należy kliknąć <span class="btn-demo danger">Zapisz</span>. Każda zmiana jest odnotowywana w dzienniku zdarzeń systemu.
+    </p>
+    <p>Dostępne są dwie wartości. <strong>Domyślnie ustawiony jest sposób „według nowych elementów”</strong> — jest to wartość zalecana i stosowana w bieżącej pracy.</p>
+
+    <h3>„standardowa”</h3>
+    <ul>
+        <li>Generator porównuje z limitem maksymalnym <strong>ilość całkowitą</strong> (nowe, używane i wydane sztuki, bez uszkodzonych).</li>
+        <li>Gdy ilość całkowita jest mniejsza od limitu maksymalnego, Generator proponuje zamówienie różnicy: <code>limit maksymalny − ilość całkowita</code>.</li>
+        <li>Limit minimalny <strong>nie ma wpływu</strong> na propozycje Generatora w tym trybie.</li>
+    </ul>
+
+    <h3>„według nowych elementów”</h3>
+    <ul>
+        <li>Generator porównuje z limitami <strong>ilość nowych</strong> — tę samą liczbę, która decyduje o kolorze paska stanu.</li>
+        <li><strong>Limit minimalny działa jak włącznik.</strong> Wartość większa od zera oznacza, że narzędzie jest zamawiane automatycznie. Wartość 0 wyłącza automatyczne zamawianie.</li>
+        <li><strong>Limit maksymalny jest jednocześnie progiem i celem.</strong> Narzędzie trafia do Generatora przy <strong>każdym</strong> spadku ilości nowych poniżej maksimum — a nie dopiero po spadku poniżej minimum. Generator proponuje zamówienie różnicy: <code>limit maksymalny − ilość nowych</code>.</li>
+    </ul>
+    <div class="tip">
+        <strong>Przykład dla trybu „według nowych elementów”:</strong> limit minimalny 5, limit maksymalny 5. Gdy na półce zostają 4 nowe sztuki, narzędzie wraca do Generatora z propozycją zamówienia 1 sztuki.
+    </div>
+
+    <div class="danger-box">
+        <strong>Ważne: limit maksymalny = 0 wyłącza automatyczne zamawianie</strong> w obu trybach. Narzędzie z maksimum równym 0 nigdy nie trafi samo do Generatora, nawet przy całkowicie pustej półce i nawet wtedy, gdy ma ustawiony limit minimalny.
+        Jeżeli narzędzie ma być pilnowane przez system, limit maksymalny musi być większy od zera i nie mniejszy niż limit minimalny.
+    </div>
+
+    <h2 id="zak-pomijanie">10. Kiedy Generator pomija narzędzie</h2>
+    <p>Nawet przy czerwonym lub pomarańczowym pasku Generator nie doda nowej propozycji dla narzędzia, jeżeli:</p>
+    <ul>
+        <li>narzędzie <strong>już jest na liście Generatora</strong> — druga pozycja nie powstaje;</li>
+        <li>narzędzie jest w <strong>otwartym zamówieniu</strong> (w statusie „Wersja robocza”, „Oczekuje na zatwierdzenie”, „Zatwierdzone”, „Wysłane” lub „Częściowo odebrane”) i ta pozycja nie została jeszcze w całości przyjęta na magazyn — towar jest „w drodze”, więc system nie zamawia go drugi raz;</li>
+        <li>kontrola jest ręczna, a pole <strong>Ręczne dodanie</strong> wynosi 0;</li>
+        <li>limit maksymalny wynosi 0 (w trybie „według nowych elementów” także, gdy limit minimalny wynosi 0).</li>
+    </ul>
+    <p>Pozycja zamówienia przyjęta w całości nie blokuje już narzędzia, nawet jeśli samo zamówienie nadal czeka na inne pozycje.</p>
+    <div class="tip">
+        <strong>Narzędzia zamawiane w kompletach:</strong> gdy narzędzie kupuje się w kompletach (np. po 10 sztuk), Generator przelicza brakujące sztuki na komplety i zaokrągla do najbliższej pełnej liczby kompletów, zawsze proponując co najmniej 1 komplet.
+    </div>
+
+    <h2 id="zak-zamowienia">11. Zakładka „Zamówienia” — historia zakupów</h2>
+    <p>
+        Zakładka <strong>Zamówienia</strong> znajduje się w dolnej części ekranu. Dopóki żadne narzędzie nie jest zaznaczone, widoczny jest komunikat „Wybierz narzędzie, aby zobaczyć powiązane zamówienia.”
+        Po kliknięciu wiersza w górnej tabeli obok nazwy zakładki pojawia się opis wybranego narzędzia, a poniżej lista wszystkich zamówień, w których to narzędzie wystąpiło — od najnowszego.
+        Jeżeli narzędzie nie było nigdy zamawiane, pojawia się komunikat „Brak zamówień powiązanych z tym narzędziem.”
+    </p>
+
+    <h3>Kolumny</h3>
+    <ul>
+        <li><strong>Numer</strong> — numer zamówienia (tylko do odczytu).</li>
+        <li><strong>Dostawca</strong> — firma, u której zamówiono towar. Gdy dostawcy nie wskazano, widoczny jest napis „Brak dostawcy”.</li>
+        <li><strong>Data utworzenia</strong> — dzień wystawienia zamówienia.</li>
+        <li><strong>Status</strong> — etap, na którym jest zamówienie:
+            <ul>
+                <li><span class="tag draft">Wersja robocza</span> — zamówienie w przygotowaniu.</li>
+                <li><span class="tag pending">Oczekuje na zatwierdzenie</span> — przekazane do zatwierdzenia.</li>
+                <li><span class="tag verified">Zatwierdzone</span> — zatwierdzone, gotowe do wysłania do dostawcy.</li>
+                <li><span class="tag sent">Wysłane</span> — wysłane do dostawcy, oczekuje na towar.</li>
+                <li><span class="tag partial">Częściowo odebrane</span> — część towaru została przyjęta.</li>
+                <li><span class="tag completed">Zrealizowane</span> — całość przyjęta na magazyn.</li>
+            </ul>
+        </li>
+        <li><strong>Cena jedn.</strong> — cena jednej sztuki <em>tego narzędzia</em> w danym zamówieniu.</li>
+    </ul>
+
+    <h2 id="zak-cena">12. Cena jednostkowa — skąd się bierze i jak ją czytać</h2>
+    <p>Cena pojawia się w dwóch miejscach ekranu:</p>
+    <ul>
+        <li>kolumna <strong>Cena jednostkowa</strong> w tabeli „Lista narzędzi” — ostatnia znana cena narzędzia;</li>
+        <li>kolumna <strong>Cena jedn.</strong> w zakładce „Zamówienia” — cena w konkretnym zamówieniu.</li>
+    </ul>
+    <p>Ceny wyświetlane są w złotych (np. <code>12,50 zł</code>). Brak ceny widoczny jest jako szare <code>0,00 zł</code>. Cena dotyczy zawsze <strong>jednej sztuki</strong>, także dla narzędzi zamawianych w kompletach.</p>
+
+    <h3>Skąd pochodzi cena</h3>
+    <ol>
+        <li><strong>Z zamówień</strong> — po wpisaniu lub zmianie ceny pozycji w module Zamówienia (okno „Szczegóły zamówienia”, przycisk „Zapisz zmiany”) ta cena staje się ceną narzędzia w Zakupach. Cenę pozycji w zamówieniu można poprawić w dowolnym momencie, także po realizacji.</li>
+        <li><strong>Ręcznie w Zakupach</strong> — w oknie edycji narzędzia, w polu <strong>Cena jednostkowa</strong>.</li>
+    </ol>
+
+    <h3>Kiedy cenę można edytować w Zakupach</h3>
+    <ul>
+        <li><strong>Cena pochodząca z zamówień i większa od zera</strong> — pole jest zablokowane (ikona kłódki i komunikat „Cena wyliczona z zamówień — nie podlega ręcznej edycji.”). Taką cenę zmienia się wyłącznie w module Zamówienia.</li>
+        <li><strong>Cena wpisana ręcznie albo równa zeru</strong> — pole jest edytowalne.</li>
+    </ul>
+
+    <h3>Jaką cenę podpowiada Generator zamówień</h3>
+    <p>Generator bierze cenę z <strong>najnowszego zamówienia</strong> tego narzędzia, w którym cena była większa od zera — niezależnie od dostawcy. Jeżeli narzędzie nie ma takiej historii, Generator użyje ceny wpisanej ręcznie w Zakupach.</p>
+
+    <div class="tip">
+        <strong>Zastosowanie w praktyce:</strong> po kliknięciu narzędzia i porównaniu 2–3 ostatnich zamówień widać, czy aktualna oferta dostawcy mieści się w dotychczasowym poziomie cen.
+    </div>
+
+    <h2 id="zak-faq">13. Najczęstsze pytania</h2>
+
+    <h4>Ustawiono limit minimalny, ale Generator nie proponuje zamówienia. Co sprawdzić?</h4>
+    <ol>
+        <li>Kolor paska i podpowiedź po najechaniu kursorem. Szary pasek oznacza, że narzędzie nie jest zamawiane automatycznie (ręczna kontrola lub limit równy 0).</li>
+        <li>Limit maksymalny — jeżeli wynosi 0, automatyczne zamawianie jest wyłączone niezależnie od minimum.</li>
+        <li>Czy narzędzie nie jest już na liście Generatora albo w otwartym zamówieniu, które nie zostało jeszcze w całości odebrane (<a href="#zak-pomijanie">sekcja 10</a>).</li>
+        <li>Ustawiony sposób liczenia zamówień (<a href="#zak-sposob">sekcja 9</a>). W trybie „standardowa” Generator patrzy na ilość całkowitą, więc sztuki wydane na produkcję nadal liczą się jako zapas.</li>
+    </ol>
+
+    <h4>Pasek jest zielony, a na półce nie ma narzędzi. Jak to możliwe?</h4>
+    <p>Od wersji 1.16 pasek liczy wyłącznie nowe, niewydane sztuki, więc taka sytuacja nie powinna wystąpić. Jeżeli pasek jest <strong>szary</strong>, nie oznacza to dobrego stanu — oznacza, że system nie pilnuje tego narzędzia.</p>
+
+    <h4>Po co jest limit maksymalny?</h4>
+    <p>Limit maksymalny określa docelowy zapas. Generator proponuje zamówienie różnicy między maksimum a aktualnym stanem. Bez maksimum (wartość 0) system nie wie, ile zamówić, i narzędzie jest pomijane.</p>
+
+    <h4>Zaznaczono ręczną kontrolę i wpisano „Ręczne dodanie” = 5. Co się stanie?</h4>
+    <p>Przy najbliższym otwarciu Generatora zamówień narzędzie pojawi się na liście propozycji z ilością 5, a pole „Ręczne dodanie” zostanie wyzerowane. Pozycja nie pojawi się, jeżeli narzędzie jest już w otwartym, nieodebranym zamówieniu albo już znajduje się w Generatorze. Generator jest dostępny dla osób z uprawnieniami do generowania zamówień (zaopatrzenie, administrator).</p>
+
+    <h4>Nie da się zmienić ceny w oknie edycji narzędzia. Dlaczego?</h4>
+    <p>Cena pochodzi z zamówień i jest zablokowana. Należy ją poprawić w module Zamówienia, w oknie „Szczegóły zamówienia” odpowiedniego zamówienia.</p>
+
+    <h4>Kolumna „Cena jedn.” w zakładce Zamówienia pokazuje szare „0,00 zł”. Czy to błąd?</h4>
+    <p>Nie. Oznacza to, że w tym zamówieniu nie wpisano ceny dla tego narzędzia. Cenę można uzupełnić w module Zamówienia, w oknie „Szczegóły zamówienia”.</p>
+
+    <h4>Dwaj dostawcy mają różne ceny tego samego narzędzia. Którą cenę podpowie Generator?</h4>
+    <p>Cenę z <strong>najnowszego</strong> zamówienia tego narzędzia (z ceną większą od zera), niezależnie od dostawcy. Proponowaną cenę można zawsze zmienić w Generatorze lub w szczegółach zamówienia.</p>
+
+    <h4>Co oznacza żółty kolor opisu narzędzia?</h4>
+    <p>Narzędzie było już zamawiane — w zakładce „Zamówienia” po jego kliknięciu widoczna będzie historia zakupów. Biały opis oznacza narzędzie, które nie wystąpiło jeszcze w żadnym zamówieniu.</p>
+
+    <h4>Czy w Zakupach można usunąć typ narzędzia?</h4>
+    <p>Nie. Ekran Zakupów pozwala tylko dodawać i edytować typy narzędzi. W sprawie usunięcia typu narzędzia należy zwrócić się do administratora systemu.</p>
+</div>

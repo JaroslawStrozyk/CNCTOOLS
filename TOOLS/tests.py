@@ -498,6 +498,32 @@ class MagazynTestCase(APITestCase):
         egzemplarz.refresh_from_db()
         self.assertEqual(egzemplarz.stan, 'uzywane')
 
+    def test_usuniecie_egzemplarza_w_uzyciu_zablokowane(self):
+        """Egzemplarz wydany (historia bez daty zwrotu) nie może zostać usunięty."""
+        egzemplarz = EgzemplarzNarzedzia.objects.create(
+            narzedzie_typ=self.narzedzie, stan='nowe', lokalizacja=self.lokalizacja
+        )
+        HistoriaUzyciaNarzedzia.objects.create(
+            egzemplarz=egzemplarz, maszyna=self.maszyna, pracownik=self.pracownik
+        )
+        response = self.client.delete(f'/api/egzemplarze/{egzemplarz.id}/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        self.assertTrue(EgzemplarzNarzedzia.objects.filter(id=egzemplarz.id).exists())
+
+    def test_usuniecie_egzemplarza_po_zwrocie_dozwolone(self):
+        """Egzemplarz z zamkniętą historią (zwrócony) można usunąć."""
+        egzemplarz = EgzemplarzNarzedzia.objects.create(
+            narzedzie_typ=self.narzedzie, stan='uzywane', lokalizacja=self.lokalizacja
+        )
+        HistoriaUzyciaNarzedzia.objects.create(
+            egzemplarz=egzemplarz, maszyna=self.maszyna, pracownik=self.pracownik,
+            data_zwrotu=timezone.now()
+        )
+        response = self.client.delete(f'/api/egzemplarze/{egzemplarz.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(EgzemplarzNarzedzia.objects.filter(id=egzemplarz.id).exists())
+
     def test_historia_zwrot_inny_pracownik(self):
         """Test zwrotu narzędzia przez innego pracownika"""
         egzemplarz = EgzemplarzNarzedzia.objects.create(
