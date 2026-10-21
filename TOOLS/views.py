@@ -389,17 +389,10 @@ def generator_zamowien_api(request):
         ).values_list('narzedzie_typ_id', flat=True).distinct()
     )
 
-    # Zbiorczy słownik ostatnich cen — 1 zapytanie (PostgreSQL DISTINCT ON).
-    # Per narzędzie: pozycja z najnowszego zamówienia; remis rozstrzyga domyślne
-    # sortowanie PozycjaZamowienia (zamowienie, id) — jak dawne .first() w pętli.
-    ostatnie_ceny = dict(
-        PozycjaZamowienia.objects.filter(
-            cena_jednostkowa__isnull=False,
-            cena_jednostkowa__gt=0,
-        ).order_by(
-            'narzedzie_typ_id', '-zamowienie__data_utworzenia', 'zamowienie', 'id'
-        ).distinct('narzedzie_typ_id').values_list('narzedzie_typ_id', 'cena_jednostkowa')
-    )
+    # Zbiorczy słownik ostatnich cen: najnowszy wpis z zamówień LUB ofert dostawców
+    # (oferta wpisana w Zakupach wyprzedza starsze zamówienia) — TOOLS/ceny.py
+    from .ceny import najnowsze_ceny
+    ostatnie_ceny = najnowsze_ceny()
 
     # Pobierz narzędzia z annotowanym stanem (egzemplarze bez uszkodzonych).
     # UWAGA: liczymy SUMĘ ilosc_w_komplecie, NIE liczby egzemplarzy — zgodnie z Zakupy.
@@ -2645,6 +2638,125 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
         response = HttpResponse(pdf_file, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{filename_prefix}_{today}.pdf"'
         return response
+
+
+# --- Oferty dostawców (Zakupy → „Dodaj ofertę”) ---
+
+def _pozycja_oferty_dict(poz):
+    oferta = poz.oferta
+    return {
+        'id': poz.id,
+        'oferta_id': oferta.id,
+        'numer_oferty': oferta.numer_oferty,
+        'data_oferty': oferta.data_oferty.isoformat(),
+        'moment': oferta.moment().isoformat(),
+        'uwagi': oferta.uwagi,
+        'dostawca': {'id': oferta.dostawca_id, 'nazwa_firmy': oferta.dostawca.nazwa_firmy},
+        'narzedzie_id': poz.narzedzie_typ_id,
+        'cena_jednostkowa': float(poz.cena_jednostkowa),
+    }
+
+
+@api_view(['GET', 'POST'])
+def oferty_api(request):
+    """
+    GET ?narzedzie_id= — pozycje ofert dla narzędzia (historia w Zakupach).
+    POST — nowa oferta: {dostawca_id, numer_oferty, data_oferty, uwagi,
+    pozycje: [{narzedzie_id, cena_jednostkowa}]}. Narzędzia z oferty dostają tego
+    dostawcę jako ostatniego i — jeśli oferta jest najnowszym wpisem — jej cenę.
+    """
+    from decimal import Decimal, InvalidOperation
+    from datetime import date
+    from .models import OfertaDostawcy, PozycjaOferty, NarzedzieMagazynowe, Dostawca
+    from .ceny import odswiez_cene_narzedzia
+
+    if request.method == 'GET':
+        narzedzie_id = request.query_params.get('narzedzie_id')
+        if not narzedzie_id:
+            return Response({'error': 'Wymagany parametr narzedzie_id'}, status=400)
+        pozycje = PozycjaOferty.objects.filter(narzedzie_typ_id=narzedzie_id).select_related('oferta__dostawca')
+        return Response([_pozycja_oferty_dict(p) for p in pozycje])
+
+    dane = request.data
+    try:
+        dostawca = Dostawca.objects.get(id=dane.get('dostawca_id'))
+    except (Dostawca.DoesNotExist, ValueError, TypeError):
+        return Response({'error': 'Wybierz dostawcę'}, status=400)
+
+    data_oferty = dane.get('data_oferty') or None
+    if data_oferty:
+        try:
+            data_oferty = date.fromisoformat(str(data_oferty)[:10])
+        except ValueError:
+            return Response({'error': 'Nieprawidłowa data oferty'}, status=400)
+
+    pozycje_dane = dane.get('pozycje') or []
+    if not pozycje_dane:
+        return Response({'error': 'Dodaj co najmniej jedną pozycję'}, status=400)
+
+    pozycje = []
+    for p in pozycje_dane:
+        try:
+            narzedzie = NarzedzieMagazynowe.objects.get(id=p.get('narzedzie_id'))
+        except (NarzedzieMagazynowe.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Wybierz narzędzie w każdej pozycji'}, status=400)
+        try:
+            cena = Decimal(str(p.get('cena_jednostkowa')))
+        except (InvalidOperation, TypeError):
+            cena = None
+        if cena is None or cena <= 0:
+            return Response({'error': f'Podaj cenę większą od zera: {narzedzie.opis}'}, status=400)
+        pozycje.append((narzedzie, cena))
+    if len({n.id for n, _ in pozycje}) != len(pozycje):
+        return Response({'error': 'To samo narzędzie występuje w ofercie więcej niż raz'}, status=400)
+
+    with transaction.atomic():
+        oferta = OfertaDostawcy.objects.create(
+            dostawca=dostawca,
+            numer_oferty=(dane.get('numer_oferty') or '').strip(),
+            uwagi=(dane.get('uwagi') or '').strip(),
+            utworzyl=request.user if request.user.is_authenticated else None,
+            **({'data_oferty': data_oferty} if data_oferty else {}),
+        )
+        PozycjaOferty.objects.bulk_create([
+            PozycjaOferty(oferta=oferta, narzedzie_typ=n, cena_jednostkowa=c) for n, c in pozycje
+        ])
+        ids = [n.id for n, _ in pozycje]
+        NarzedzieMagazynowe.objects.filter(id__in=ids).update(ostatni_dostawca=dostawca)
+        for nid in ids:
+            odswiez_cene_narzedzia(nid)
+
+    app_logger.success(
+        get_user_display_name(request.user),
+        f"Dodano ofertę {oferta.numer_oferty or oferta.id} od {dostawca.nazwa_firmy} ({len(pozycje)} poz.)"
+    )
+    return Response({'success': True, 'oferta_id': oferta.id, 'pozycji': len(pozycje)}, status=201)
+
+
+@api_view(['DELETE'])
+def oferta_pozycja_delete_api(request, pozycja_id):
+    """Usuwa pozycję oferty (korekta pomyłki); pusta oferta znika. Cena narzędzia wraca
+    do poprzedniego najnowszego wpisu (zamówienie lub inna oferta)."""
+    from .models import PozycjaOferty
+    from .ceny import odswiez_cene_narzedzia
+
+    try:
+        poz = PozycjaOferty.objects.select_related('oferta', 'narzedzie_typ').get(id=pozycja_id)
+    except PozycjaOferty.DoesNotExist:
+        return Response({'error': 'Pozycja oferty nie istnieje'}, status=404)
+
+    with transaction.atomic():
+        oferta, narzedzie = poz.oferta, poz.narzedzie_typ
+        poz.delete()
+        if not oferta.pozycje.exists():
+            oferta.delete()
+        odswiez_cene_narzedzia(narzedzie.id)
+
+    app_logger.warning(
+        get_user_display_name(request.user),
+        f"Usunięto pozycję oferty {oferta.numer_oferty or oferta.id}: {narzedzie.opis}"
+    )
+    return Response({'success': True})
 
 
 def _zwroc_pozycje_zapotrzebowan(zamowienie, narzedzia_ids):

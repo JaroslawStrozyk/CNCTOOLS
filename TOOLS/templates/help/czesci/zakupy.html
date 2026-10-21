@@ -334,6 +334,20 @@
         <li><strong>Cena jedn.</strong> — cena jednej sztuki <em>tego narzędzia</em> w danym zamówieniu.</li>
     </ul>
 
+    <h3>Oferty dostawców — przycisk „Dodaj ofertę”</h3>
+    <p>
+        Przycisk <strong>Dodaj ofertę</strong> (prawy górny róg zakładki) otwiera okno, w którym wpisuje się ceny z oferty dostawcy:
+        dostawca, opcjonalnie numer i data oferty oraz uwagi, a poniżej lista pozycji — narzędzie (wyszukiwanie po nazwie lub nr katalogowym)
+        i cena za sztukę. Zaznaczone narzędzie jest wpisane od razu jako pierwsza pozycja.
+    </p>
+    <ul>
+        <li>Po <strong>Zatwierdź ofertę</strong> każda pozycja pojawia się w historii narzędzia jako wiersz <span class="tag">Oferta</span> — najnowszy wpis.</li>
+        <li>Narzędzia z oferty dostają tego dostawcę jako ostatniego — następne zamówienie z Generatora pójdzie do niego, po cenie z oferty.</li>
+        <li>Kolejne zamówienia nie kasują oferty, tylko ją wyprzedzają: od tej chwili cena znów pochodzi z najnowszego zamówienia, aż do wpisania następnej oferty.</li>
+        <li>Oferta z datą wcześniejszą niż ostatnie zamówienie nie zmienia aktualnej ceny (liczy się chronologia).</li>
+        <li>Pomyłkę poprawia kosz przy wierszu oferty — cena wraca do poprzedniego wpisu.</li>
+    </ul>
+
     <h2 id="zak-cena">12. Cena jednostkowa — skąd się bierze i jak ją czytać</h2>
     <p>Cena pojawia się w dwóch miejscach ekranu:</p>
     <ul>
@@ -344,7 +358,8 @@
 
     <h3>Skąd pochodzi cena</h3>
     <ol>
-        <li><strong>Z zamówień</strong> — po wpisaniu lub zmianie ceny pozycji w module Zamówienia (okno „Szczegóły zamówienia”, przycisk „Zapisz zmiany”) ta cena staje się ceną narzędzia w Zakupach. Cenę pozycji w zamówieniu można poprawić w dowolnym momencie, także po realizacji.</li>
+        <li><strong>Z zamówień</strong> — po wpisaniu lub zmianie ceny pozycji w module Zamówienia (okno „Szczegóły zamówienia”, przycisk „Zapisz zmiany”) ta cena staje się ceną narzędzia w Zakupach. Cenę pozycji można poprawiać do czasu zakończenia zamówienia (status „Zrealizowane” jest tylko do odczytu).</li>
+        <li><strong>Z oferty dostawcy</strong> — przycisk „Dodaj ofertę” w zakładce „Zamówienia” (opis w sekcji 11).</li>
         <li><strong>Ręcznie w Zakupach</strong> — w oknie edycji narzędzia, w polu <strong>Cena jednostkowa</strong>.</li>
     </ol>
 
@@ -355,7 +370,7 @@
     </ul>
 
     <h3>Jaką cenę podpowiada Generator zamówień</h3>
-    <p>Generator bierze cenę z <strong>najnowszego zamówienia</strong> tego narzędzia, w którym cena była większa od zera — niezależnie od dostawcy. Jeżeli narzędzie nie ma takiej historii, Generator użyje ceny wpisanej ręcznie w Zakupach.</p>
+    <p>Generator bierze cenę z <strong>najnowszego wpisu</strong> w historii narzędzia — zamówienia (z ceną większą od zera) albo oferty dostawcy — niezależnie od dostawcy. Jeżeli narzędzie nie ma takiej historii, Generator użyje ceny wpisanej ręcznie w Zakupach.</p>
 
     <div class="tip">
         <strong>Zastosowanie w praktyce:</strong> po kliknięciu narzędzia i porównaniu 2–3 ostatnich zamówień widać, czy aktualna oferta dostawcy mieści się w dotychczasowym poziomie cen.

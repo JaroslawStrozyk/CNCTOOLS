@@ -154,6 +154,8 @@
 
             <!-- Dolna część - Zamówienia -->
             <div class="orders-panel">
+                <Button label="Dodaj ofertę" icon="pi pi-tag" class="p-button-sm p-button-help btn-dodaj-oferte"
+                        @click="openOfertaModal" title="Wpisz ceny z oferty dostawcy" />
                 <TabView>
                     <TabPanel>
                         <template #header>
@@ -169,12 +171,13 @@
                                 Wybierz narzędzie, aby zobaczyć powiązane zamówienia.
                             </div>
                             <div v-else-if="!orders || orders.length === 0" class="empty-state">
-                                Brak zamówień powiązanych z tym narzędziem.
+                                Brak zamówień i ofert powiązanych z tym narzędziem.
                             </div>
                             <DataTable v-else :value="orders" :scrollable="true" scrollHeight="flex">
                                 <Column header="Numer">
                                     <template #body="{ data }">
                                         <strong>{{ data.numer }}</strong>
+                                        <i v-if="data._typ === 'oferta' && data.uwagi" class="pi pi-comment ml-2" :title="data.uwagi"></i>
                                     </template>
                                 </Column>
                                 <Column header="Dostawca">
@@ -189,7 +192,8 @@
                                 </Column>
                                 <Column header="Status">
                                     <template #body="{ data }">
-                                        <Tag :severity="getOrderStatusSeverity(data.status)" :value="getStatusLabel(data.status)" :class="klasaStatusuZamowienia(data.status)" />
+                                        <Tag v-if="data._typ === 'oferta'" severity="help" value="Oferta" icon="pi pi-tag" />
+                                        <Tag v-else :severity="getOrderStatusSeverity(data.status)" :value="getStatusLabel(data.status)" :class="klasaStatusuZamowienia(data.status)" />
                                     </template>
                                 </Column>
                                 <Column header="Cena jedn." style="width: 150px; text-align: right;">
@@ -199,12 +203,75 @@
                                         </span>
                                     </template>
                                 </Column>
+                                <Column style="width: 60px; text-align: center;">
+                                    <template #body="{ data }">
+                                        <Button v-if="data._typ === 'oferta'" icon="pi pi-trash" class="p-button-danger p-button-sm p-button-text"
+                                                @click="usunPozycjeOferty(data)" title="Usuń wpis oferty (korekta pomyłki)" />
+                                    </template>
+                                </Column>
                             </DataTable>
                         </div>
                     </TabPanel>
                 </TabView>
             </div>
         </main>
+
+        <!-- Modal: Dodaj ofertę dostawcy — ceny trafiają do historii jako najnowszy wpis -->
+        <Dialog v-model:visible="ofertaModalVisible" header="Dodaj ofertę dostawcy" :modal="true" :style="{ width: '900px', maxWidth: '96vw' }">
+            <div class="p-fluid oferta-form">
+                <div class="oferta-naglowek">
+                    <div class="field">
+                        <label>Dostawca <span class="required-mark">*</span></label>
+                        <Dropdown v-model="ofertaForm.dostawca_id" :options="dostawcy" optionLabel="nazwa_firmy" optionValue="id"
+                                  placeholder="Wybierz dostawcę" :filter="true" />
+                    </div>
+                    <div class="field">
+                        <label>Nr oferty dostawcy</label>
+                        <InputText v-model="ofertaForm.numer_oferty" />
+                    </div>
+                    <div class="field">
+                        <label>Data oferty</label>
+                        <Calendar v-model="ofertaForm.data_oferty" dateFormat="yy-mm-dd" :showIcon="true" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Uwagi</label>
+                    <InputText v-model="ofertaForm.uwagi" placeholder="np. warunki, ważność oferty" />
+                </div>
+
+                <DataTable :value="ofertaForm.pozycje" class="p-datatable-sm" dataKey="_key">
+                    <Column header="Narzędzie (kategoria / podkategoria - opis)">
+                        <template #body="{ data }">
+                            <Dropdown v-model="data.narzedzie_id" :options="narzedziaOfertyOptions" optionLabel="label" optionValue="value"
+                                      placeholder="Wyszukaj narzędzie..." :filter="true" filterPlaceholder="Szukaj po nazwie lub nr katalogowym"
+                                      :virtualScrollerOptions="{ itemSize: 38 }" />
+                        </template>
+                    </Column>
+                    <Column header="Cena jedn. [zł/szt.]" style="width: 170px;">
+                        <template #body="{ data }">
+                            <InputNumber v-model="data.cena_jednostkowa" :minFractionDigits="2" :maxFractionDigits="2" :min="0"
+                                         :inputStyle="{ textAlign: 'right' }" />
+                        </template>
+                    </Column>
+                    <Column style="width: 60px; text-align: center;">
+                        <template #body="{ index }">
+                            <Button icon="pi pi-times" class="p-button-danger p-button-sm p-button-text" @click="ofertaForm.pozycje.splice(index, 1)" title="Usuń pozycję" />
+                        </template>
+                    </Column>
+                </DataTable>
+                <div class="mt-2">
+                    <Button label="Dodaj pozycję" icon="pi pi-plus" class="p-button-sm p-button-secondary" style="width: auto;" @click="dodajPozycjeOferty()" />
+                </div>
+                <small class="text-muted mt-2" style="display: block;">
+                    Cena za sztukę (także dla kompletów). Po zatwierdzeniu oferta staje się najnowszym wpisem w historii — następne zamówienie weźmie jej cenę i dostawcę.
+                </small>
+                <Message v-if="ofertaError" severity="error" :closable="false">{{ ofertaError }}</Message>
+            </div>
+            <template #footer>
+                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="ofertaModalVisible = false" />
+                <Button label="Zatwierdź ofertę" icon="pi pi-check" class="p-button-success" @click="zapiszOferte" :loading="isSavingOferta" />
+            </template>
+        </Dialog>
 
         <!-- Modal: Edytuj/Dodaj typ narzędzia -->
         <Dialog v-model:visible="toolModalVisible" :header="isEditMode ? 'Edytuj typ narzędzia' : 'Dodaj nowy typ narzędzia'" :modal="true" :style="{ width: '500px' }">
@@ -345,6 +412,8 @@ import Tag from 'primevue/tag';
 import Checkbox from 'primevue/checkbox';
 import Menu from 'primevue/menu';
 import ProgressSpinner from 'primevue/progressspinner';
+import Calendar from 'primevue/calendar';
+import Message from 'primevue/message';
 
 const API_URL = '/api';
 
@@ -573,6 +642,7 @@ const getOrderStatusSeverity = severityStatusuZamowienia;
 
 // Zwraca cenę jednostkową pozycji zamówienia odpowiadającej zaznaczonemu narzędziu
 const getPozycjaCena = (zamowienie) => {
+    if (zamowienie?._typ === 'oferta') return zamowienie._cena;
     if (!selectedTool.value || !zamowienie?.pozycje) return null;
     const pozycja = zamowienie.pozycje.find(p => p.narzedzie_typ?.id === selectedTool.value.id);
     return pozycja?.cena_jednostkowa;
@@ -596,6 +666,81 @@ const onToolSelect = async (event) => {
     await getToolOrders(tool);
 };
 
+// --- Oferta dostawcy ---
+const ofertaModalVisible = ref(false);
+const isSavingOferta = ref(false);
+const ofertaError = ref('');
+const dostawcy = ref([]);
+let ofertaKlucz = 0;
+const nowaPozycjaOferty = (narzedzieId = null) => ({ _key: ++ofertaKlucz, narzedzie_id: narzedzieId, cena_jednostkowa: null });
+const ofertaForm = ref({ dostawca_id: null, numer_oferty: '', data_oferty: new Date(), uwagi: '', pozycje: [] });
+
+const narzedziaOfertyOptions = computed(() => tools.value.map(t => {
+    const sciezka = t.podkategoria ? `${t.podkategoria.kategoria?.nazwa || ''} / ${t.podkategoria.nazwa} - ` : '';
+    return { label: `${sciezka}${t.opis}${t.numer_katalogowy ? ` (${t.numer_katalogowy})` : ''}`, value: t.id };
+}));
+
+const dodajPozycjeOferty = (narzedzieId = null) => ofertaForm.value.pozycje.push(nowaPozycjaOferty(narzedzieId));
+
+const openOfertaModal = async () => {
+    ofertaError.value = '';
+    ofertaForm.value = {
+        dostawca_id: null, numer_oferty: '', data_oferty: new Date(), uwagi: '',
+        // Zaznaczone narzędzie od razu jako pierwsza pozycja
+        pozycje: [nowaPozycjaOferty(selectedTool.value?.id || null)],
+    };
+    ofertaModalVisible.value = true;
+    if (dostawcy.value.length === 0) {
+        try { dostawcy.value = (await axios.get(`${API_URL}/dostawcy/`)).data; }
+        catch (error) { ofertaError.value = 'Nie udało się pobrać listy dostawców.'; }
+    }
+};
+
+const formatDataISO = (d) => {
+    if (!d) return null;
+    const data = d instanceof Date ? d : new Date(d);
+    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+};
+
+const zapiszOferte = async () => {
+    ofertaError.value = '';
+    const f = ofertaForm.value;
+    if (!f.dostawca_id) { ofertaError.value = 'Wybierz dostawcę.'; return; }
+    const pozycje = f.pozycje.filter(p => p.narzedzie_id || p.cena_jednostkowa);
+    if (pozycje.length === 0) { ofertaError.value = 'Dodaj co najmniej jedną pozycję.'; return; }
+    if (pozycje.some(p => !p.narzedzie_id || !(p.cena_jednostkowa > 0))) {
+        ofertaError.value = 'Każda pozycja musi mieć narzędzie i cenę większą od zera.'; return;
+    }
+    isSavingOferta.value = true;
+    try {
+        await axios.post(`${API_URL}/oferty/`, {
+            dostawca_id: f.dostawca_id,
+            numer_oferty: f.numer_oferty,
+            data_oferty: formatDataISO(f.data_oferty),
+            uwagi: f.uwagi,
+            pozycje: pozycje.map(p => ({ narzedzie_id: p.narzedzie_id, cena_jednostkowa: p.cena_jednostkowa })),
+        });
+        ofertaModalVisible.value = false;
+        await fetchInitialData();  // cena i ostatni dostawca w liście narzędzi
+        if (selectedTool.value) await getToolOrders(selectedTool.value);
+    } catch (error) {
+        ofertaError.value = error.response?.data?.error || 'Błąd zapisu oferty.';
+    } finally {
+        isSavingOferta.value = false;
+    }
+};
+
+const usunPozycjeOferty = async (wiersz) => {
+    if (!confirm(`Usunąć wpis „${wiersz.numer}” (${wiersz.dostawca?.nazwa_firmy || '-'}) z historii? Cena wróci do poprzedniego wpisu.`)) return;
+    try {
+        await axios.delete(`${API_URL}/oferty/pozycje/${wiersz._pozycjaOfertyId}/`);
+        await fetchInitialData();
+        if (selectedTool.value) await getToolOrders(selectedTool.value);
+    } catch (error) {
+        alert('Błąd usuwania: ' + (error.response?.data?.error || error.message));
+    }
+};
+
 const onToolUnselect = () => {
     orders.value = [];
 };
@@ -610,10 +755,25 @@ const getToolOrders = async (tool) => {
     orders.value = [];
 
     try {
-        const response = await axios.get(`${API_URL}/zamowienia/?narzedzie_id=${tool.id}`);
+        const [response, ofertyRes] = await Promise.all([
+            axios.get(`${API_URL}/zamowienia/?narzedzie_id=${tool.id}`),
+            axios.get(`${API_URL}/oferty/?narzedzie_id=${tool.id}`),
+        ]);
         let results = response.data.results || response.data;
         if (!Array.isArray(results)) results = [];
-        orders.value = results.sort((a, b) => new Date(b.data_utworzenia) - new Date(a.data_utworzenia));
+        // Oferty dostawców w jednej osi czasu z zamówieniami (najnowszy wpis = aktualna cena)
+        const oferty = (ofertyRes.data || []).map(o => ({
+            _typ: 'oferta',
+            _pozycjaOfertyId: o.id,
+            _cena: o.cena_jednostkowa,
+            _moment: o.moment,
+            numer: o.numer_oferty ? `Oferta ${o.numer_oferty}` : 'Oferta',
+            dostawca: o.dostawca,
+            data_utworzenia: o.data_oferty,
+            uwagi: o.uwagi,
+        }));
+        const zamowienia = results.map(z => ({ ...z, _typ: 'zamowienie', _moment: z.data_utworzenia }));
+        orders.value = [...zamowienia, ...oferty].sort((a, b) => new Date(b._moment) - new Date(a._moment));
     } catch (error) {
         console.error(`Błąd ładowania zamówień:`, error.response?.data || error.message);
         orders.value = [];
@@ -783,6 +943,12 @@ onBeforeUnmount(() => {
     gap: 16px;
     min-height: 0;
 }
+
+.orders-panel { position: relative; }
+/* „Dodaj ofertę” — prawa strona belki zakładek panelu historii */
+.btn-dodaj-oferte { position: absolute; top: 8px; right: 12px; z-index: 2; width: auto; }
+.oferta-naglowek { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+.mt-2 { margin-top: 8px; }
 
 .tools-panel, .orders-panel {
     flex: 1;

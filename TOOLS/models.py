@@ -3,6 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from datetime import date
 
 
 class Kategoria(models.Model):
@@ -635,6 +636,66 @@ class PozycjaZamowienia(models.Model):
                 cena_jednostkowa=self.cena_jednostkowa,
                 cena_z_zamowienia=True
             )
+
+
+class OfertaDostawcy(models.Model):
+    """
+    Oferta cenowa dostawcy wpisana ręcznie w Zakupach („Dodaj ofertę”).
+    Pozycje oferty uczestniczą w wyborze ceny razem z pozycjami zamówień —
+    wygrywa NAJNOWSZY wpis (TOOLS/ceny.py). Kolejne zamówienia nie kasują oferty,
+    tylko ją wyprzedzają.
+    """
+    dostawca = models.ForeignKey(
+        Dostawca,
+        on_delete=models.PROTECT,
+        related_name='oferty'
+    )
+    numer_oferty = models.CharField(max_length=100, blank=True)
+    data_oferty = models.DateField(default=date.today)
+    uwagi = models.TextField(blank=True)
+    utworzono = models.DateTimeField(auto_now_add=True)
+    utworzyl = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='oferty_dostawcow'
+    )
+
+    class Meta:
+        ordering = ['-data_oferty', '-utworzono']
+
+    def moment(self):
+        """Moment oferty do porównania z zamówieniami: data oferty + godzina wprowadzenia."""
+        from datetime import datetime
+        from django.conf import settings
+        utworzono = self.utworzono
+        if utworzono and timezone.is_aware(utworzono):
+            utworzono = timezone.localtime(utworzono)
+        godzina = utworzono.time() if utworzono else datetime.min.time()
+        moment = datetime.combine(self.data_oferty, godzina)
+        # Projekt działa z USE_TZ=False (daty naiwne) — świadomość strefy tylko gdy włączona
+        return timezone.make_aware(moment) if settings.USE_TZ else moment
+
+    def __str__(self):
+        return f"Oferta {self.numer_oferty or self.id} ({self.dostawca})"
+
+
+class PozycjaOferty(models.Model):
+    oferta = models.ForeignKey(OfertaDostawcy, on_delete=models.CASCADE, related_name='pozycje')
+    narzedzie_typ = models.ForeignKey(
+        NarzedzieMagazynowe,
+        on_delete=models.CASCADE,
+        related_name='pozycje_ofert'
+    )
+    cena_jednostkowa = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Cena jednostkowa za sztukę w PLN (także dla kompletów)"
+    )
+
+    def __str__(self):
+        return f"{self.narzedzie_typ} — {self.cena_jednostkowa} zł"
 
 
 class RealizacjaZamowienia(models.Model):

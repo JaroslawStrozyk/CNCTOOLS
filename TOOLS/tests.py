@@ -63,6 +63,7 @@ MagazynTestCase:
 ================================================================================
 """
 from unittest import mock
+from decimal import Decimal
 
 from django.test import TestCase, Client
 from django.db import IntegrityError
@@ -75,7 +76,7 @@ from .models import (
     Dostawca, Pracownik, NarzedzieMagazynowe, EgzemplarzNarzedzia,
     HistoriaUzyciaNarzedzia, FakturaZakupu, PozycjaGeneratora,
     Zamowienie, PozycjaZamowienia, ZapotrzebowanieTechnologa,
-    PozycjaZapotrzebowania, Uszkodzenie
+    PozycjaZapotrzebowania, Uszkodzenie, OfertaDostawcy, PozycjaOferty
 )
 
 
@@ -1411,6 +1412,83 @@ class StatusZapotrzebowaniaTestCase(APITestCase):
         self.assertEqual(response.status_code, 204)
         self.poz_zap.refresh_from_db()
         self.assertFalse(self.poz_zap.w_zamowieniu)
+
+
+class OfertyDostawcowTestCase(APITestCase):
+    """Oferta dostawcy: najnowszy wpis (oferta/zamówienie) wyznacza cenę w generatorze."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('logistyk', 'l@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+        patcher = mock.patch('TOOLS.views.get_sposob_liczenia_zamowien', return_value='standardowa')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        self.stary = Dostawca.objects.create(kod_dostawcy="STARY", nazwa_firmy="Stary Sp. z o.o.")
+        self.nowy = Dostawca.objects.create(kod_dostawcy="NOWY", nazwa_firmy="Nowy Sp. z o.o.")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="Frez D10", opakowanie='szt', ilosc_w_opakowaniu=1,
+            stan_minimalny=1, stan_maksymalny=5, ostatni_dostawca=self.stary,
+        )
+        self._zamowienie(Decimal('10.00'), '2026/09/001')
+
+    def _zamowienie(self, cena, numer):
+        zam = Zamowienie.objects.create(numer=numer, dostawca=self.stary, status='completed')
+        PozycjaZamowienia.objects.create(
+            zamowienie=zam, narzedzie_typ=self.narzedzie, narzedzie_opis="Frez D10", ilosc_zamowiona=1,
+            jednostka='szt', ilosc_w_komplecie=1, cena_jednostkowa=cena, zrealizowane=True,
+        )
+        return zam
+
+    def _oferta(self, cena, **extra):
+        return self.client.post('/api/oferty/', {
+            'dostawca_id': self.nowy.id, 'numer_oferty': 'OF/1',
+            'pozycje': [{'narzedzie_id': self.narzedzie.id, 'cena_jednostkowa': cena}], **extra,
+        }, format='json')
+
+    def _cena_generatora(self):
+        PozycjaGeneratora.objects.all().delete()
+        pozycje = self.client.get('/api/generator-zamowien/').data['pozycje']
+        return [p for p in pozycje if p['id'] == self.narzedzie.id][0]['cena_jednostkowa']
+
+    def test_oferta_wyprzedza_starsze_zamowienie(self):
+        self.assertEqual(self._oferta('8.50').status_code, 201)
+        self.assertEqual(self._cena_generatora(), 8.5)
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(self.narzedzie.ostatni_dostawca, self.nowy)
+        self.assertEqual(self.narzedzie.cena_jednostkowa, Decimal('8.50'))
+
+    def test_nowsze_zamowienie_wyprzedza_oferte(self):
+        self._oferta('8.50')
+        self._zamowienie(Decimal('9.20'), '2026/10/002')
+        self.assertEqual(self._cena_generatora(), 9.2)
+        self.assertEqual(PozycjaOferty.objects.count(), 1)  # oferta zostaje w historii
+
+    def test_oferta_z_data_wsteczna_nie_wyprzedza(self):
+        self._oferta('8.50', data_oferty='2020-01-01')
+        self.assertEqual(self._cena_generatora(), 10.0)
+
+    def test_usuniecie_pozycji_oferty_przywraca_cene(self):
+        self._oferta('8.50')
+        poz = PozycjaOferty.objects.get()
+        self.assertEqual(self.client.delete(f'/api/oferty/pozycje/{poz.id}/').status_code, 200)
+        self.assertFalse(OfertaDostawcy.objects.exists())  # pusta oferta usunięta
+        self.narzedzie.refresh_from_db()
+        self.assertEqual(self.narzedzie.cena_jednostkowa, Decimal('10.00'))
+
+    def test_historia_ofert_dla_narzedzia(self):
+        self._oferta('8.50')
+        data = self.client.get(f'/api/oferty/?narzedzie_id={self.narzedzie.id}').data
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['numer_oferty'], 'OF/1')
+        self.assertEqual(data[0]['cena_jednostkowa'], 8.5)
+
+    def test_walidacja_ceny_i_dostawcy(self):
+        self.assertEqual(self._oferta('0').status_code, 400)
+        response = self.client.post('/api/oferty/', {'pozycje': []}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(OfertaDostawcy.objects.exists())
 
 
 class GeneratorWedlugNowychTestCase(APITestCase):
