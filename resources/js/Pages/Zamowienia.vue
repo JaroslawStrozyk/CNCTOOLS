@@ -365,6 +365,7 @@ import Menu from 'primevue/menu';
 import Divider from 'primevue/divider';
 import { usePaginacja } from '../paginacja';
 import ZamowienieModal from '../Components/ZamowienieModal.vue';
+import { etykietaStatusuZamowienia, severityStatusuZamowienia, klasaStatusuZamowienia } from '../statusy';
 
 const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
@@ -441,14 +442,6 @@ const dostawcyOptions = computed(() => [
     ...dostawcy.value.map(d => ({ label: d.nazwa_firmy, value: d.id }))
 ]);
 
-const statusLabels = {
-    'draft': 'Wersja robocza',
-    'pending_approval': 'Oczekuje na zatwierdzenie',
-    'verified': 'Zatwierdzone',
-    'sent': 'Wysłane',
-    'partially_received': 'Częściowo odebrane',
-    'completed': 'Zrealizowane'
-};
 
 // Methods
 const toggleUserMenu = (event) => userMenu.value.toggle(event);
@@ -464,18 +457,10 @@ const formatDate = (dateString) => {
     return `${y}-${m}-${d} ${h}:${min}`;
 };
 
-const getStatusLabel = (status) => statusLabels[status] || status;
-
-const getStatusSeverity = (status) => {
-    const map = { 'draft': 'secondary', 'pending_approval': 'warning', 'verified': 'info', 'sent': 'primary', 'partially_received': 'warning', 'completed': 'success' };
-    return map[status] || 'secondary';
-};
-
-// Status 'partially_received' — Tag musi mieć identyczny kolor jak p-button-warning (pomarańczowy).
-// Klasa .tag-status-orange w dark-theme.css ma !important żeby pokonać override .p-tag-warning
-const getStatusTagClass = (status) => {
-    return status === 'partially_received' ? 'tag-status-orange' : '';
-};
+// Etykiety/kolory statusów — wspólne dla całej aplikacji (resources/js/statusy.js)
+const getStatusLabel = etykietaStatusuZamowienia;
+const getStatusSeverity = severityStatusuZamowienia;
+const getStatusTagClass = klasaStatusuZamowienia;
 
 // Wspólny modal zamówienia — klik w numer, „Edytuj pozycje” i „Realizacja” otwierają to samo okno
 const zamowienieDetaleVisible = ref(false);

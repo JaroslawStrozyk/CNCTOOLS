@@ -2647,6 +2647,30 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
         return response
 
 
+def _zwroc_pozycje_zapotrzebowan(zamowienie, narzedzia_ids):
+    """
+    Pozycje zapotrzebowań źródłowych tego zamówienia dla wskazanych narzędzi wracają
+    do puli generatora (w_zamowieniu=False), a zapotrzebowanie 'ordered' z pozycjami
+    oczekującymi cofa się do 'completed' (zatwierdzone). Wołać PRZED usunięciem
+    zamówienia/pozycji — po kasowaniu zamówienia znika powiązanie M2M.
+    Wspólne dla: odpisania w realizacji, usunięcia pozycji, usunięcia zamówienia.
+    """
+    from .models import PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
+    narzedzia_ids = [n for n in narzedzia_ids if n]
+    zrodlowe_zap_ids = list(zamowienie.zrodlowe_zapotrzebowania.values_list('id', flat=True))
+    if not narzedzia_ids or not zrodlowe_zap_ids:
+        return
+    PozycjaZapotrzebowania.objects.filter(
+        zapotrzebowanie_id__in=zrodlowe_zap_ids,
+        narzedzie_typ_id__in=narzedzia_ids,
+        w_zamowieniu=True,
+    ).update(w_zamowieniu=False)
+    for zap in ZapotrzebowanieTechnologa.objects.filter(id__in=zrodlowe_zap_ids, status='ordered'):
+        if zap.pozycje.filter(w_zamowieniu=False, narzedzie_typ__isnull=False).exists():
+            zap.status = 'completed'
+            zap.save(update_fields=['status'])
+
+
 def _propaguj_status_zapotrzebowan(zamowienie):
     """
     Po zmianie statusu zamówienia na completed/partially_received propaguje
@@ -2715,6 +2739,11 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                     .filter(liczba_egz=0)
         )
         nazwy = [n.opis for n in narzedzia_do_usuniecia]
+
+        # Pozycje zapotrzebowań źródłowych wracają do generatora (przed kasowaniem — potem znika M2M)
+        _zwroc_pozycje_zapotrzebowan(
+            instance, list(instance.pozycje.values_list('narzedzie_typ_id', flat=True))
+        )
 
         # Najpierw usuń zamówienie (kaskadowo znikną PozycjaZamowienia wskazujące na te narzędzia).
         super().perform_destroy(instance)
@@ -3020,9 +3049,7 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
 
                 # Odpisz (skasuj) wskazane pozycje — wracają do puli generatora
                 odpisane_opisy = []
-                zapotrzebowania_do_sprawdzenia = set()
                 if pozycje_do_odpisania:
-                    zrodlowe_zap_ids = list(zamowienie.zrodlowe_zapotrzebowania.values_list('id', flat=True))
                     for pz_id in pozycje_do_odpisania:
                         try:
                             poz_zam = PozycjaZamowienia.objects.select_related('narzedzie_typ').get(
@@ -3031,28 +3058,11 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                         except PozycjaZamowienia.DoesNotExist:
                             continue
 
-                        # Cofnij flagę w_zamowieniu na powiązanych pozycjach zapotrzebowań,
-                        # żeby generator mógł je ponownie wykryć.
-                        if poz_zam.narzedzie_typ and zrodlowe_zap_ids:
-                            PozycjaZapotrzebowania.objects.filter(
-                                zapotrzebowanie_id__in=zrodlowe_zap_ids,
-                                narzedzie_typ=poz_zam.narzedzie_typ,
-                                w_zamowieniu=True,
-                            ).update(w_zamowieniu=False)
-                            zapotrzebowania_do_sprawdzenia.update(zrodlowe_zap_ids)
+                        # Pozycje zapotrzebowań wracają do generatora
+                        _zwroc_pozycje_zapotrzebowan(zamowienie, [poz_zam.narzedzie_typ_id])
 
                         odpisane_opisy.append(poz_zam.narzedzie_opis)
                         poz_zam.delete()
-
-                    # Cofnij status zapotrzebowań z 'ordered' na 'completed' jeśli mają
-                    # teraz pozycje oczekujące na przeniesienie do generatora.
-                    for zap_id in zapotrzebowania_do_sprawdzenia:
-                        zap = ZapotrzebowanieTechnologa.objects.filter(
-                            id=zap_id, status='ordered'
-                        ).first()
-                        if zap and zap.pozycje.filter(w_zamowieniu=False, narzedzie_typ__isnull=False).exists():
-                            zap.status = 'completed'
-                            zap.save(update_fields=['status'])
 
                     # Przelicz wartość zamówienia po kasowaniu pozycji.
                     # wartosc_pozycji jest zawsze aktualne (liczone w PozycjaZamowienia.save()
@@ -3158,6 +3168,8 @@ class PozycjaZamowieniaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         zamowienie = instance.zamowienie
+        # Pozycja zapotrzebowania (jeśli źródłem było zapotrzebowanie) wraca do generatora
+        _zwroc_pozycje_zapotrzebowan(zamowienie, [instance.narzedzie_typ_id])
         super().perform_destroy(instance)  # LoggingMixin loguje usunięcie
         self._przelicz_wartosc_zamowienia(zamowienie)
 
@@ -3308,7 +3320,11 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Filtrowanie - technolog widzi swoje, magazynier/logistyk/kierownik widzi wysłane i zatwierdzone + własne (drafty)"""
-        queryset = super().get_queryset()
+        from .statusy import adnotuj_ostatnie_przyjecie
+        # Status efektywny liczony z zamówień — statusy zamówień jednym zapytaniem
+        queryset = adnotuj_ostatnie_przyjecie(super().get_queryset().prefetch_related(
+            Prefetch('zamowienia', queryset=Zamowienie.objects.only('id', 'status'))
+        ))
         if self.request.user.is_authenticated and not self.request.user.is_superuser:
             magazyn_groups = {'magazyn', 'logistyka', 'kierownik', 'administrator'}
             user_groups = set(self.request.user.groups.values_list('name', flat=True))
@@ -3522,13 +3538,9 @@ class ZapotrzebowanieTechnologaViewSet(LoggingMixin, viewsets.ModelViewSet):
             if groups.exists():
                 dzial = groups.first().name
 
-        # Mapowanie statusów na polskie nazwy
-        status_display = {
-            'draft': 'Robocze',
-            'submitted': 'Wysłane',
-            'completed': 'Zrealizowane',
-            'cancelled': 'Anulowane',
-        }.get(zapotrzebowanie.status, zapotrzebowanie.status)
+        # Status efektywny (z zamówień — źródło prawdy), jak w UI
+        from .statusy import status_efektywny_zapotrzebowania, etykieta_statusu_zapotrzebowania
+        status_display = etykieta_statusu_zapotrzebowania(status_efektywny_zapotrzebowania(zapotrzebowanie))
 
         # Ścieżka do logo (absolutna dla WeasyPrint)
         logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')

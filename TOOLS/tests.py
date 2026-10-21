@@ -1338,6 +1338,81 @@ class RealizacjaNadwyzkaTestCase(APITestCase):
         self.assertEqual(self._egzemplarze(), 10)
 
 
+class StatusZapotrzebowaniaTestCase(APITestCase):
+    """Status zapotrzebowania odzwierciedla statusy powiązanych zamówień (źródło prawdy)."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser('admin', 'a@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST01", nazwa_firmy="Test Sp. z o.o.")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="Frez D10", opakowanie='szt', ilosc_w_opakowaniu=1,
+        )
+        self.zap = ZapotrzebowanieTechnologa.objects.create(technolog=self.user, status='ordered')
+        self.poz_zap = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=self.zap, narzedzie_typ=self.narzedzie, ilosc=5, w_zamowieniu=True,
+        )
+
+    def _zamowienie(self, status, numer):
+        zam = Zamowienie.objects.create(numer=numer, dostawca=self.dostawca, status=status)
+        zam.zrodlowe_zapotrzebowania.add(self.zap)
+        PozycjaZamowienia.objects.create(
+            zamowienie=zam, narzedzie_typ=self.narzedzie, narzedzie_opis="Frez D10",
+            ilosc_zamowiona=5, jednostka='szt', ilosc_w_komplecie=1, cena_jednostkowa=10,
+        )
+        return zam
+
+    def _status(self):
+        data = self.client.get(f'/api/zapotrzebowania/{self.zap.id}/').data
+        return data['status_efektywny'], data['status_display']
+
+    def test_zatwierdzone_bez_zamowien(self):
+        self.zap.status = 'completed'
+        self.zap.save()
+        self.assertEqual(self._status(), ('approved', 'Zatwierdzone'))
+
+    def test_etapy_zamowienia(self):
+        zam = self._zamowienie('draft', '2026/10/001')
+        for status_zam, oczekiwany in [
+            ('draft', 'w_przygotowaniu'), ('verified', 'w_przygotowaniu'), ('sent', 'wyslane'),
+            ('partially_received', 'czesciowo_odebrane'), ('completed', 'completed'),
+        ]:
+            zam.status = status_zam
+            zam.save()
+            self.assertEqual(self._status()[0], oczekiwany, status_zam)
+
+    def test_zrealizowane_ma_date_ostatniego_przyjecia(self):
+        zam = self._zamowienie('completed', '2026/10/001')
+        EgzemplarzNarzedzia.objects.create(narzedzie_typ=self.narzedzie, zamowienie=zam, stan='nowe')
+        data = self.client.get(f'/api/zapotrzebowania/{self.zap.id}/').data
+        self.assertEqual(data['status_display'], 'Zrealizowane')
+        self.assertIsNotNone(data['data_zrealizowania'])
+
+    def test_kilka_zamowien_czesciowo(self):
+        self._zamowienie('completed', '2026/10/001')
+        self._zamowienie('sent', '2026/10/002')
+        self.assertEqual(self._status()[0], 'czesciowo_odebrane')
+
+    def test_usuniecie_zamowienia_zwraca_pozycje_do_generatora(self):
+        zam = self._zamowienie('draft', '2026/10/001')
+        response = self.client.delete(f'/api/zamowienia/{zam.id}/')
+        self.assertEqual(response.status_code, 204)
+        self.poz_zap.refresh_from_db()
+        self.zap.refresh_from_db()
+        self.assertFalse(self.poz_zap.w_zamowieniu)
+        self.assertEqual(self.zap.status, 'completed')
+        self.assertEqual(self._status()[0], 'approved')
+
+    def test_usuniecie_pozycji_zamowienia_zwraca_pozycje(self):
+        zam = self._zamowienie('draft', '2026/10/001')
+        response = self.client.delete(f'/api/pozycje-zamowien/{zam.pozycje.get().id}/')
+        self.assertEqual(response.status_code, 204)
+        self.poz_zap.refresh_from_db()
+        self.assertFalse(self.poz_zap.w_zamowieniu)
+
+
 class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).

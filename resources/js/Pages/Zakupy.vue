@@ -189,7 +189,7 @@
                                 </Column>
                                 <Column header="Status">
                                     <template #body="{ data }">
-                                        <Tag :severity="getOrderStatusSeverity(data.status)" :value="getStatusLabel(data.status)" />
+                                        <Tag :severity="getOrderStatusSeverity(data.status)" :value="getStatusLabel(data.status)" :class="klasaStatusuZamowienia(data.status)" />
                                     </template>
                                 </Column>
                                 <Column header="Cena jedn." style="width: 150px; text-align: right;">
@@ -327,6 +327,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
+import { etykietaStatusuZamowienia, severityStatusuZamowienia, klasaStatusuZamowienia } from '../statusy';
 import logoImage from '@images/cnc-logo.png';
 
 // PrimeVue Components
@@ -566,29 +567,9 @@ const formatDateOnly = (dateString) => {
     }
 };
 
-const getStatusLabel = (status) => {
-    const labels = {
-        'draft': 'Wersja robocza',
-        'pending_approval': 'Oczekuje na zatwierdzenie',
-        'verified': 'Zatwierdzone',
-        'sent': 'Wysłane',
-        'partially_received': 'Częściowo odebrane',
-        'completed': 'Zrealizowane'
-    };
-    return labels[status] || status;
-};
-
-const getOrderStatusSeverity = (status) => {
-    const map = {
-        'draft': 'secondary',
-        'pending_approval': 'warning',
-        'verified': 'info',
-        'sent': 'primary',
-        'partially_received': 'warning',
-        'completed': 'success'
-    };
-    return map[status] || 'secondary';
-};
+// Etykiety/kolory statusów zamówień — wspólne z Zamówieniami (resources/js/statusy.js)
+const getStatusLabel = etykietaStatusuZamowienia;
+const getOrderStatusSeverity = severityStatusuZamowienia;
 
 // Zwraca cenę jednostkową pozycji zamówienia odpowiadającej zaznaczonemu narzędziu
 const getPozycjaCena = (zamowienie) => {

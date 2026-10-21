@@ -212,14 +212,20 @@
                     </Column>
                     <Column header="Status" style="width: 130px;">
                         <template #body="{ data }">
-                            <span :class="['status-badge', `status-${data.status}`]">
+                            <!-- Status efektywny: po wygenerowaniu zamówienia liczony z jego statusu -->
+                            <span :class="['status-badge', `status-${data.status_efektywny}`]">
                                 {{ data.status_display }}
                             </span>
                         </template>
                     </Column>
-                    <Column header="Data realizacji" style="width: 150px;">
+                    <Column header="Zatwierdzono" style="width: 150px;">
                         <template #body="{ data }">
                             {{ data.data_realizacji ? formatDate(data.data_realizacji) : '-' }}
+                        </template>
+                    </Column>
+                    <Column header="Zrealizowano" style="width: 150px;">
+                        <template #body="{ data }">
+                            {{ data.data_zrealizowania ? formatDate(data.data_zrealizowania) : '-' }}
                         </template>
                     </Column>
                     <Column header="Pozycji" style="width: 80px; text-align: center;">
@@ -2273,6 +2279,25 @@ onMounted(() => {
     background-color: rgba(13, 110, 253, 0.2);
     color: #4dabf7;
     border: 1px solid rgba(13, 110, 253, 0.4);
+}
+
+.historia-table .status-approved {
+    background-color: rgba(25, 135, 84, 0.12);
+    color: #69db7c;
+    border: 1px solid rgba(25, 135, 84, 0.35);
+}
+
+.historia-table .status-w_przygotowaniu,
+.historia-table .status-wyslane {
+    background-color: rgba(13, 110, 253, 0.2);
+    color: #4dabf7;
+    border: 1px solid rgba(13, 110, 253, 0.4);
+}
+
+.historia-table .status-czesciowo_odebrane {
+    background-color: rgba(217, 119, 6, 0.2);
+    color: #ffa94d;
+    border: 1px solid rgba(217, 119, 6, 0.4);
 }
 
 .historia-table .status-cancelled {

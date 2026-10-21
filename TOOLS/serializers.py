@@ -683,7 +683,11 @@ class ZapotrzebowanieTechnologaSerializer(serializers.ModelSerializer):
     zrealizowany_przez = UserSimpleSerializer(read_only=True)
     pozycje = PozycjaZapotrzebowaniaSerializer(many=True, read_only=True)
     pozycje_count = serializers.SerializerMethodField()
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    # Status efektywny — liczony ze statusów powiązanych zamówień (źródło prawdy),
+    # patrz TOOLS/statusy.py. Pole `status` zostaje surowe (sterowanie akcjami).
+    status_efektywny = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
+    data_zrealizowania = serializers.SerializerMethodField()
 
     class Meta:
         model = ZapotrzebowanieTechnologa
@@ -691,6 +695,32 @@ class ZapotrzebowanieTechnologaSerializer(serializers.ModelSerializer):
 
     def get_pozycje_count(self, obj):
         return obj.pozycje.count()
+
+    def _status(self, obj):
+        from .statusy import status_efektywny_zapotrzebowania
+        if not hasattr(obj, '_status_efektywny_cache'):
+            obj._status_efektywny_cache = status_efektywny_zapotrzebowania(obj)
+        return obj._status_efektywny_cache
+
+    def get_status_efektywny(self, obj):
+        return self._status(obj)
+
+    def get_status_display(self, obj):
+        from .statusy import etykieta_statusu_zapotrzebowania
+        return etykieta_statusu_zapotrzebowania(self._status(obj))
+
+    def get_data_zrealizowania(self, obj):
+        # Tylko dla zrealizowanych: data ostatniego przyjęcia towaru z powiązanych zamówień
+        if self._status(obj) != 'completed':
+            return None
+        if hasattr(obj, '_ostatnie_przyjecie'):
+            data = obj._ostatnie_przyjecie
+        else:
+            from .models import EgzemplarzNarzedzia
+            data = EgzemplarzNarzedzia.objects.filter(
+                zamowienie__zrodlowe_zapotrzebowania=obj, data_zakupu__isnull=False,
+            ).order_by('-data_zakupu').values_list('data_zakupu', flat=True).first()
+        return data.isoformat() if data else None
 
 
 # ============================================================================

@@ -57,9 +57,10 @@
             </Column>
             <Column header="Status" style="width: 140px; text-align: center;">
               <template #body="{ data }">
-                <Tag v-if="data.status === 'ordered'" value="W zamówieniu" severity="info" icon="pi pi-shopping-cart" />
-                <Tag v-else-if="data.status === 'completed'" value="Zatwierdzone" severity="success" icon="pi pi-check" />
-                <Tag v-else value="Nowe" severity="warning" icon="pi pi-clock" />
+                <!-- Status efektywny — po wygenerowaniu zamówienia liczony z jego statusu (źródło prawdy) -->
+                <Tag v-if="data.status === 'submitted'" value="Nowe" severity="warning" icon="pi pi-clock" />
+                <Tag v-else :value="data.status_display" :severity="severityStatusuZapotrzebowania(data.status_efektywny)"
+                     :icon="ikonaStatusu(data.status_efektywny)" />
               </template>
             </Column>
             <Column header="Pozycji" style="width: 80px; text-align: center;">
@@ -334,6 +335,16 @@ import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
 import { usePaginacja } from '../paginacja';
+import { severityStatusuZapotrzebowania } from '../statusy';
+
+const ikonaStatusu = (kod) => ({
+  approved: 'pi pi-check',
+  w_przygotowaniu: 'pi pi-shopping-cart',
+  wyslane: 'pi pi-send',
+  ordered: 'pi pi-shopping-cart',
+  czesciowo_odebrane: 'pi pi-box',
+  completed: 'pi pi-check-circle',
+}[kod] || 'pi pi-info-circle');
 
 const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
