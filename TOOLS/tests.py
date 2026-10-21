@@ -1491,6 +1491,51 @@ class OfertyDostawcowTestCase(APITestCase):
         self.assertFalse(OfertaDostawcy.objects.exists())
 
 
+class NaprawZapotrzebowaniaOsieroconeTestCase(TestCase):
+    """Komenda napraw_zapotrzebowania_osierocone: zwraca sieroty, nie rusza pokrytych pozycji."""
+
+    def setUp(self):
+        from io import StringIO
+        self.out = StringIO()
+        user = User.objects.create_user('tech', 't@test.pl', 'haslo123')
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST01", nazwa_firmy="Test Sp. z o.o.")
+        self.sierota = NarzedzieMagazynowe.objects.create(podkategoria=podkategoria, opis="Sierota", opakowanie='szt')
+        self.w_drodze = NarzedzieMagazynowe.objects.create(podkategoria=podkategoria, opis="W drodze", opakowanie='szt')
+        self.zap = ZapotrzebowanieTechnologa.objects.create(
+            technolog=user, status='ordered', data_realizacji=timezone.now()
+        )
+        self.poz_sierota = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=self.zap, narzedzie_typ=self.sierota, ilosc=2, w_zamowieniu=True)
+        self.poz_w_drodze = PozycjaZapotrzebowania.objects.create(
+            zapotrzebowanie=self.zap, narzedzie_typ=self.w_drodze, ilosc=1, w_zamowieniu=True)
+        # Aktywne zamówienie z narzędziem (bez powiązania M2M) — pokrywa pozycję
+        zam = Zamowienie.objects.create(numer="2026/10/001", dostawca=self.dostawca, status='sent')
+        PozycjaZamowienia.objects.create(zamowienie=zam, narzedzie_typ=self.w_drodze, narzedzie_opis="W drodze",
+                                         ilosc_zamowiona=1, jednostka='szt', ilosc_w_komplecie=1)
+
+    def _uruchom(self, *args):
+        from django.core.management import call_command
+        call_command('napraw_zapotrzebowania_osierocone', *args, stdout=self.out)
+        self.poz_sierota.refresh_from_db()
+        self.poz_w_drodze.refresh_from_db()
+        self.zap.refresh_from_db()
+
+    def test_podglad_nic_nie_zmienia(self):
+        self._uruchom()
+        self.assertTrue(self.poz_sierota.w_zamowieniu)
+        self.assertIn('osieroconych: 1', self.out.getvalue())
+
+    def test_apply_zwraca_tylko_sierote(self):
+        self._uruchom('--apply')
+        self.assertFalse(self.poz_sierota.w_zamowieniu)
+        self.assertTrue(self.poz_w_drodze.w_zamowieniu)  # pokryta aktywnym zamówieniem
+        self.assertEqual(self.zap.status, 'completed')
+        self._uruchom('--apply')  # idempotentne
+        self.assertIn('osieroconych: 0', self.out.getvalue())
+
+
 class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).

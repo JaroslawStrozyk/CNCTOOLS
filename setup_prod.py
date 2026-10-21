@@ -159,12 +159,24 @@ def main():
         "Przeliczenie wartosci zamowien (mnoznik kompletu)"
     )
 
+    # 7c. PODGLAD (dry-run) osieroconych pozycji zapotrzebowan technologow: pozycje
+    #     oznaczone "w zamowieniu", ktorych zamowienie usunieto przed 1.18.0g. NIC nie zmienia.
+    #     Naprawa RECZNIE po przejrzeniu listy z logistyka (pozycje wroca do generatora):
+    #       python manage.py napraw_zapotrzebowania_osierocone --apply
+    run_command(
+        f"{sys.executable} manage.py napraw_zapotrzebowania_osierocone",
+        "Podglad osieroconych pozycji zapotrzebowan (bez zmian)"
+    )
+
     # 8. Podsumowanie
     print(f"{GREEN}")
     print("=" * 64)
     print("              SETUP ZAKONCZONY POMYSLNIE!")
     print("=" * 64)
     print(f"{NC}")
+    print(f"{YELLOW}Osierocone pozycje zapotrzebowan (krok 7c) - jesli lista nie jest pusta,{NC}")
+    print(f"{YELLOW}po uzgodnieniu z logistyka: python manage.py napraw_zapotrzebowania_osierocone --apply{NC}")
+    print()
     print(f"{CYAN}Teraz zrestartuj Apache:{NC}")
     print()
     print(f"  {YELLOW}sudo systemctl restart apache2{NC}")
