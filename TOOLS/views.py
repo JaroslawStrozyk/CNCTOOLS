@@ -2920,10 +2920,14 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
         Obsługuje także odpisanie pozycji (skasowanie z zamówienia) — niezrealizowane
         pozycje wracają do puli generatora."""
         from .models import PozycjaZapotrzebowania, ZapotrzebowanieTechnologa
+        from django.core.exceptions import ValidationError
         try:
             zamowienie = self.get_object()
             pozycje_dane = request.data.get('pozycje', [])
             pozycje_do_odpisania = request.data.get('pozycje_do_odpisania', []) or []
+            # Przyjęcie ponad zamówioną ilość (dostawca przysłał więcej) — tylko świadomie,
+            # po potwierdzeniu w UI; chroni przed literówką (100 zamiast 10)
+            nadwyzka_potwierdzona = bool(request.data.get('nadwyzka_potwierdzona', False))
 
             if not pozycje_dane and not pozycje_do_odpisania:
                 return Response({'error': 'Brak pozycji do przyjęcia lub odpisania'}, status=400)
@@ -2962,6 +2966,15 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                         realizacja=realizacja,
                         pozycja_zamowienia=poz_zam
                     )
+
+                    pozostalo = poz_zam.ilosc_zamowiona - (poz_real.ilosc_przyjeta or 0)
+                    if pozostalo <= 0:
+                        raise ValidationError(f"Pozycja „{poz_zam.narzedzie_opis}” jest już w pełni przyjęta.")
+                    if ilosc > pozostalo and not nadwyzka_potwierdzona:
+                        raise ValidationError(
+                            f"Ilość do przyjęcia ({ilosc}) przekracza pozostałą ({pozostalo}) "
+                            f"dla „{poz_zam.narzedzie_opis}” — wymagane potwierdzenie nadwyżki."
+                        )
 
                     # Akumuluj ilość (nie nadpisuj)
                     poz_real.ilosc_przyjeta = (poz_real.ilosc_przyjeta or 0) + ilosc
@@ -3097,6 +3110,9 @@ class ZamowienieViewSet(LoggingMixin, viewsets.ModelViewSet):
                 'status_zamowienia': zamowienie.status,
             })
 
+        except ValidationError as e:
+            # Transakcja wycofana — nic nie przyjęto
+            return Response({'error': e.messages[0]}, status=400)
         except Exception as e:
             return Response({'error': str(e)}, status=500)
 

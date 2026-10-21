@@ -61,11 +61,17 @@
                 <Column v-if="pokazStanRealizacji" header="Przyjęto" style="width: 130px; text-align: center;">
                     <template #body="{ data }">
                         <div v-if="trybRealizacji && data.ilosc_pozostala > 0 && !data.odpisz">
-                            <InputNumber v-model="data.ilosc_do_przyjecia" :min="0" :max="data.ilosc_pozostala"
+                            <InputNumber v-model="data.ilosc_do_przyjecia" :min="0"
                                          inputClass="qty-input" :inputStyle="{ width: '70px', textAlign: 'center' }" />
                             <div v-if="data.ilosc_przyjeta > 0" class="text-muted" style="font-size: 0.72rem; margin-top: 2px;">już przyjęto: {{ data.ilosc_przyjeta }}</div>
+                            <div v-if="data.ilosc_do_przyjecia > data.ilosc_pozostala" class="text-orange" style="font-size: 0.72rem; margin-top: 2px;">
+                                nadwyżka +{{ data.ilosc_do_przyjecia - data.ilosc_pozostala }}
+                            </div>
                         </div>
-                        <span v-else-if="data.ilosc_pozostala === 0" class="text-green">{{ data.ilosc_przyjeta }} ✓</span>
+                        <span v-else-if="data.ilosc_pozostala === 0" class="text-green">
+                            {{ data.ilosc_przyjeta }} ✓
+                            <span v-if="data.ilosc_przyjeta > data.ilosc_zamowiona" class="text-orange" title="Przyjęto więcej niż zamówiono">(+{{ data.ilosc_przyjeta - data.ilosc_zamowiona }})</span>
+                        </span>
                         <span v-else-if="!trybRealizacji">{{ data.ilosc_przyjeta }}</span>
                         <span v-else class="text-muted">-</span>
                     </template>
@@ -135,7 +141,29 @@
             <Button v-if="moznaZapisac" label="Zapisz zmiany" icon="pi pi-save" class="p-button-success"
                     @click="zapiszZmiany" :loading="isSaving" :disabled="isLoading || isRealizujLoading" />
             <Button v-if="trybRealizacji" label="Zatwierdź przyjęcie" icon="pi pi-check" class="p-button-warning"
-                    @click="confirmRealizuj" :loading="isRealizujLoading" :disabled="isLoading || isSaving || !hasSelectedPozycje" />
+                    @click="confirmRealizuj()" :loading="isRealizujLoading" :disabled="isLoading || isSaving || !hasSelectedPozycje" />
+        </template>
+    </Dialog>
+
+    <!-- Potwierdzenie przyjęcia ponad zamówioną ilość (chroni przed literówką) -->
+    <Dialog v-model:visible="nadwyzkaVisible" header="Przyjęcie ponad zamówioną ilość" :modal="true" :style="{ width: '560px' }">
+        <p>Dla poniższych pozycji przyjmujesz więcej, niż pozostało do przyjęcia:</p>
+        <DataTable :value="nadwyzki" class="p-datatable-sm">
+            <Column field="narzedzie_opis" header="Narzędzie" />
+            <Column header="Pozostało" style="width: 90px; text-align: center;">
+                <template #body="{ data }">{{ data.ilosc_pozostala }}</template>
+            </Column>
+            <Column header="Przyjmujesz" style="width: 100px; text-align: center;">
+                <template #body="{ data }"><strong>{{ data.ilosc_do_przyjecia }}</strong></template>
+            </Column>
+            <Column header="Nadwyżka" style="width: 90px; text-align: center;">
+                <template #body="{ data }"><span class="text-orange">+{{ data.ilosc_do_przyjecia - data.ilosc_pozostala }}</span></template>
+            </Column>
+        </DataTable>
+        <p class="text-muted mt-3">Nadwyżka trafi na stan magazynu. Zamówiona ilość i wartość zamówienia pozostają bez zmian.</p>
+        <template #footer>
+            <Button label="Popraw ilości" icon="pi pi-pencil" class="p-button-text" @click="nadwyzkaVisible = false" />
+            <Button label="Przyjmij z nadwyżką" icon="pi pi-check" class="p-button-warning" @click="potwierdzNadwyzke" />
         </template>
     </Dialog>
 </template>
@@ -181,6 +209,8 @@ const isSaving = ref(false);
 const isRealizujLoading = ref(false);
 const zaznaczWszystkie = ref(false);
 const blad = ref('');
+const nadwyzkaVisible = ref(false);
+const nadwyzki = ref([]);
 
 const status = computed(() => zamowienie.value?.status);
 const isMagazynierView = computed(() => props.auth?.isMagazyn && !props.auth?.isLogistyka);
@@ -335,7 +365,12 @@ const toggleSelectAll = () => {
     });
 };
 
-const confirmRealizuj = async () => {
+const potwierdzNadwyzke = () => {
+    nadwyzkaVisible.value = false;
+    confirmRealizuj(true);
+};
+
+const confirmRealizuj = async (nadwyzkaPotwierdzona = false) => {
     blad.value = '';
 
     const zaznaczone = pozycje.value.filter(p => p.ilosc_do_przyjecia > 0 && !p.odpisz && p.ilosc_pozostala > 0);
@@ -345,11 +380,12 @@ const confirmRealizuj = async () => {
         blad.value = 'Wpisz ilość do przyjęcia lub zaznacz pozycję do odpisania.';
         return;
     }
-    for (const poz of zaznaczone) {
-        if (poz.ilosc_do_przyjecia > poz.ilosc_pozostala) {
-            blad.value = `Ilość do przyjęcia nie może przekroczyć pozostałej (${poz.narzedzie_opis}).`;
-            return;
-        }
+    // Przyjęcie ponad pozostałą ilość (dostawca przysłał więcej) — tylko po potwierdzeniu
+    const ponad = zaznaczone.filter(p => p.ilosc_do_przyjecia > p.ilosc_pozostala);
+    if (ponad.length > 0 && nadwyzkaPotwierdzona !== true) {
+        nadwyzki.value = ponad;
+        nadwyzkaVisible.value = true;
+        return;
     }
 
     isRealizujLoading.value = true;
@@ -360,6 +396,7 @@ const confirmRealizuj = async () => {
         const response = await axios.post(`${API_URL}/zamowienia/${zamowienie.value.id}/realizuj/`, {
             pozycje: zaznaczone.map(poz => ({ pozycja_zamowienia_id: poz.id, ilosc_przyjeta: poz.ilosc_do_przyjecia })),
             pozycje_do_odpisania: odpisane.map(p => p.id),
+            nadwyzka_potwierdzona: ponad.length > 0,
         });
         if (response.data.success) {
             zamknij();

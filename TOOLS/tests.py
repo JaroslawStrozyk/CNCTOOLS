@@ -1282,6 +1282,62 @@ class NarzedzieJednorazoweTestCase(APITestCase):
         self.assertIn('jednorazowe', response.data)
 
 
+class RealizacjaNadwyzkaTestCase(APITestCase):
+    """Przyjęcie ponad zamówioną ilość: tylko z potwierdzeniem, tylko dla pozycji otwartej."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('magazyn', 'm@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST01", nazwa_firmy="Test Sp. z o.o.")
+        self.narzedzie = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="Frez D10", opakowanie='szt', ilosc_w_opakowaniu=1,
+        )
+        self.zamowienie = Zamowienie.objects.create(numer="2026/10/001", dostawca=self.dostawca, status='sent')
+        self.pozycja = PozycjaZamowienia.objects.create(
+            zamowienie=self.zamowienie, narzedzie_typ=self.narzedzie, narzedzie_opis="Frez D10",
+            ilosc_zamowiona=10, jednostka='szt', ilosc_w_komplecie=1, cena_jednostkowa=10,
+        )
+        self.url = f'/api/zamowienia/{self.zamowienie.id}/realizuj/'
+
+    def _przyjmij(self, ilosc, **extra):
+        return self.client.post(self.url, {
+            'pozycje': [{'pozycja_zamowienia_id': self.pozycja.id, 'ilosc_przyjeta': ilosc}], **extra,
+        }, format='json')
+
+    def _egzemplarze(self):
+        return EgzemplarzNarzedzia.objects.filter(narzedzie_typ=self.narzedzie).count()
+
+    def test_nadwyzka_bez_potwierdzenia_odrzucona(self):
+        response = self._przyjmij(12)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('nadwyżki', response.data['error'])
+        self.assertEqual(self._egzemplarze(), 0)  # transakcja wycofana
+
+    def test_nadwyzka_z_potwierdzeniem_przyjmuje_wszystko(self):
+        response = self._przyjmij(12, nadwyzka_potwierdzona=True)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._egzemplarze(), 12)
+        self.pozycja.refresh_from_db()
+        self.assertEqual(self.pozycja.ilosc_zamowiona, 10)  # zamówiona bez zmian
+        self.assertEqual(self.pozycja.ilosc_dostarczona, 12)
+        self.assertTrue(self.pozycja.zrealizowane)
+
+    def test_nadwyzka_w_drugiej_dostawie(self):
+        self._przyjmij(7)
+        response = self._przyjmij(5, nadwyzka_potwierdzona=True)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.pozycja.refresh_from_db()
+        self.assertEqual(self.pozycja.ilosc_dostarczona, 12)
+
+    def test_pozycja_domknieta_odrzucona(self):
+        self._przyjmij(10)
+        response = self._przyjmij(2, nadwyzka_potwierdzona=True)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._egzemplarze(), 10)
+
+
 class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).
