@@ -39,6 +39,7 @@ from django.contrib.auth.models import Group
 from rest_framework.permissions import BasePermission
 from .views_inertia import get_user_grupa_stanowiska
 from .services import EgzemplarzService, LokalizacjaService
+from .constants import STAN_ZUZYTE_JEDNORAZOWE
 from .logging_service import app_logger, get_user_display_name
 
 
@@ -2369,6 +2370,25 @@ class HistoriaUzyciaNarzedziaViewSet(viewsets.ModelViewSet):
                         )
                         # Usuń egzemplarz
                         egzemplarz_zwrocony.delete()
+                    elif narzedzie_typ and narzedzie_typ.jednorazowe:
+                        # Zużyta paczka narzędzia jednorazowego — bez karty i bez regeneracji,
+                        # wpis z ilością trafia do zakładki „Zużyte – jednorazowe” w Zwrotach
+                        Uszkodzenie.objects.create(
+                            egzemplarz=None,  # Egzemplarz zostanie usunięty
+                            narzedzie_typ=narzedzie_typ,
+                            narzedzie_opis=narzedzie_opis,
+                            numer_katalogowy=numer_katalogowy,
+                            kategoria_narzedzia=kategoria_narzedzia,
+                            lokalizacja_opis=lokalizacja_opis,
+                            stan=STAN_ZUZYTE_JEDNORAZOWE,
+                            maszyna_nazwa=maszyna_nazwa,
+                            pracownik_nazwisko=pracownik_nazwisko,
+                            pracownik_imie=pracownik_imie,
+                            opis_uszkodzenia='Zużyte (narzędzie jednorazowe)',
+                            pracownik=historia.pracownik,
+                            ilosc=egzemplarz_zwrocony.ilosc_w_komplecie,
+                        )
+                        egzemplarz_zwrocony.delete()
                     elif stan_po_zwrocie == 'uszkodzone_regeneracja':
                         # Uszkodzone do regeneracji - z kartą w formacie RRRR/XXXR
                         numer_karty_regen = Uszkodzenie.generuj_numer_karty_regeneracji()
@@ -2501,6 +2521,14 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
                 if not kategoria and egz.narzedzie_typ.podkategoria:
                     kategoria = f"{egz.narzedzie_typ.podkategoria.kategoria.nazwa} / {egz.narzedzie_typ.podkategoria.nazwa}"
 
+        # Zużyta paczka narzędzia jednorazowego: ta sama karta, a dane spoza formularza
+        # (ilość, rodzaj wpisu) dopisujemy do sekcji uwag
+        uwagi = uszkodzenie.opis_uszkodzenia
+        if uszkodzenie.stan == STAN_ZUZYTE_JEDNORAZOWE:
+            uwagi = f"{STAN_ZUZYTE_JEDNORAZOWE}: zużyta paczka, ilość {uszkodzenie.ilosc} szt."
+            if uszkodzenie.opis_uszkodzenia and uszkodzenie.opis_uszkodzenia != 'Zużyte (narzędzie jednorazowe)':
+                uwagi += f" {uszkodzenie.opis_uszkodzenia}"
+
         context = {
             'numer_karty': uszkodzenie.numer_karty or '-',
             'data_uszkodzenia': uszkodzenie.data_uszkodzenia.strftime('%Y-%m-%d %H:%M'),
@@ -2511,7 +2539,7 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
             'numer_katalogowy': numer_katalogowy,
             'przyczyna': uszkodzenie.przyczyna_uszkodzenia,
             'stracony_czas': uszkodzenie.stracony_czas,
-            'uwagi': uszkodzenie.opis_uszkodzenia,
+            'uwagi': uwagi,
             'logo_path': f'file://{logo_path}',
             'data_wydruku': getattr(settings, 'PDF_USZKODZENIE_DATA', ''),
             'wersja_dokumentu': getattr(settings, 'PDF_USZKODZENIE_WERSJA', 1),
@@ -2550,7 +2578,11 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
         logo_path = os.path.join(settings.BASE_DIR, 'static_dev', 'images', 'logo-cnc.png')
 
         # Ustawienia zależne od typu
-        if typ == 'regeneracja':
+        if typ == 'jednorazowe':
+            typ_raportu = STAN_ZUZYTE_JEDNORAZOWE
+            tytul_dokumentu = 'LISTA ZUŻYTYCH NARZĘDZI JEDNORAZOWYCH'
+            filename_prefix = 'Lista_zuzytych_jednorazowych'
+        elif typ == 'regeneracja':
             typ_raportu = 'Do regeneracji'
             tytul_dokumentu = 'LISTA NARZĘDZI DO REGENERACJI'
             filename_prefix = 'Lista_do_regeneracji'
@@ -2577,11 +2609,14 @@ class UszkodzenieViewSet(LoggingMixin, viewsets.ModelViewSet):
                 'przyczyna': u.przyczyna_uszkodzenia or '-',
                 'stracony_czas': u.stracony_czas or '-',
                 'uwagi': u.opis_uszkodzenia or '-',
+                'ilosc': u.ilosc,
             })
 
         context = {
             'uszkodzenia': lista,
             'liczba': len(lista),
+            'jednorazowe': typ == 'jednorazowe',
+            'suma_ilosci': sum(u['ilosc'] for u in lista),
             'typ_raportu': typ_raportu,
             'tytul_dokumentu': tytul_dokumentu,
             'data_wydruku': datetime.now().strftime('%Y-%m-%d %H:%M'),

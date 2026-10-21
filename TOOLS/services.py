@@ -18,7 +18,7 @@ from .models import (
     Pracownik,
     Lokalizacja,
 )
-from .constants import STANY_DOSTEPNE_DO_WYDANIA, STANY_PO_ZWROCIE
+from .constants import STANY_DOSTEPNE_DO_WYDANIA, STANY_PO_ZWROCIE, STANY_PO_ZWROCIE_JEDNORAZOWE
 
 
 # ============================================================================
@@ -166,6 +166,16 @@ class EgzemplarzService:
         ).exists():
             raise ValidationError("Ten egzemplarz jest już w użyciu.")
 
+        # Narzędzie jednorazowe — wydanie paczki o wybranej ilości (scalanie sztuk)
+        if egzemplarz.narzedzie_typ and egzemplarz.narzedzie_typ.jednorazowe:
+            paczka = EgzemplarzService._zbierz_paczke(egzemplarz, ilosc_sztuk or 1)
+            return HistoriaUzyciaNarzedzia.objects.create(
+                egzemplarz=paczka,
+                maszyna_id=maszyna_id,
+                pracownik_id=pracownik_id,
+                nr_zlecenia=nr_zlecenia
+            )
+
         # Obsługa częściowego wydania (rozbicie kompletu)
         if czesciowe_wydanie:
             if not egzemplarz.narzedzie_typ.wydawanie_sztuk or egzemplarz.ilosc_w_komplecie <= 1:
@@ -216,6 +226,72 @@ class EgzemplarzService:
         return historia
 
     @staticmethod
+    def _zbierz_paczke(egzemplarz, ilosc):
+        """
+        Składa paczkę narzędzia jednorazowego do wydania: jeden egzemplarz z
+        ilosc_w_komplecie == ilosc. Sztuki pobiera najpierw z klikniętego egzemplarza,
+        potem z pozostałych wolnych egzemplarzy tego typu w TYM SAMYM stanie
+        (najstarsze najpierw). Egzemplarze zużyte w całości są usuwane (scalone w paczkę),
+        z nadmiarowego odejmowana jest ilość. Wywoływać w transakcji (select_for_update).
+        """
+        try:
+            ilosc = int(ilosc)
+        except (TypeError, ValueError):
+            raise ValidationError("Podaj poprawną ilość sztuk do wydania.")
+        if ilosc < 1:
+            raise ValidationError("Podaj poprawną ilość sztuk do wydania.")
+
+        # Kliknięty egzemplarz wystarcza — wydaj go w całości albo oddziel część
+        if egzemplarz.ilosc_w_komplecie == ilosc:
+            return egzemplarz
+        if egzemplarz.ilosc_w_komplecie > ilosc:
+            paczka = EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=egzemplarz.narzedzie_typ,
+                stan=egzemplarz.stan,
+                lokalizacja=egzemplarz.lokalizacja,
+                faktura_zakupu=egzemplarz.faktura_zakupu,
+                zamowienie=egzemplarz.zamowienie,
+                jednostka='szt',
+                ilosc_w_komplecie=ilosc,
+                komplet_zrodlowy=egzemplarz
+            )
+            egzemplarz.ilosc_w_komplecie -= ilosc
+            egzemplarz.save()
+            return paczka
+
+        # Za mało w klikniętym — dobierz z pozostałych wolnych egzemplarzy tego typu
+        w_uzyciu = HistoriaUzyciaNarzedzia.objects.filter(
+            data_zwrotu__isnull=True
+        ).values('egzemplarz_id')
+        pozostale = list(
+            EgzemplarzNarzedzia.objects.select_for_update().filter(
+                narzedzie_typ=egzemplarz.narzedzie_typ,
+                stan=egzemplarz.stan,
+                ilosc_w_komplecie__gt=0,
+            ).exclude(id=egzemplarz.id).exclude(id__in=w_uzyciu).order_by('id')
+        )
+        dostepne = egzemplarz.ilosc_w_komplecie + sum(e.ilosc_w_komplecie for e in pozostale)
+        if dostepne < ilosc:
+            raise ValidationError(f"Dostępnych jest tylko {dostepne} szt. tego narzędzia.")
+
+        brakuje = ilosc - egzemplarz.ilosc_w_komplecie
+        for e in pozostale:
+            if brakuje <= 0:
+                break
+            pobierz = min(brakuje, e.ilosc_w_komplecie)
+            if pobierz == e.ilosc_w_komplecie:
+                e.delete()
+            else:
+                e.ilosc_w_komplecie -= pobierz
+                e.save()
+            brakuje -= pobierz
+
+        egzemplarz.ilosc_w_komplecie = ilosc
+        egzemplarz.jednostka = 'szt'
+        egzemplarz.save()
+        return egzemplarz
+
+    @staticmethod
     @transaction.atomic
     def zwroc_egzemplarz(historia_id, stan_po_zwrocie, czesciowy_zwrot=False, ilosc_sztuk=None):
         """
@@ -253,6 +329,10 @@ class EgzemplarzService:
             raise ValidationError("Nieprawidłowy stan po zwrocie.")
 
         egzemplarz = historia.egzemplarz
+
+        if (egzemplarz.narzedzie_typ and egzemplarz.narzedzie_typ.jednorazowe
+                and stan_po_zwrocie not in STANY_PO_ZWROCIE_JEDNORAZOWE):
+            raise ValidationError("Narzędzie jednorazowe można zwrócić tylko jako nowe lub zużyte.")
 
         # Obsługa częściowego zwrotu
         if czesciowy_zwrot:

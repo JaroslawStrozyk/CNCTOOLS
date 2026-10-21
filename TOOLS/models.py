@@ -249,6 +249,14 @@ class NarzedzieMagazynowe(models.Model):
         verbose_name='Możliwość wydawania pojedynczych sztuk',
         help_text='Jeśli zaznaczone, można wydawać pojedyncze sztuki z kompletu. Jeśli nie, tylko całe komplety.'
     )
+    # Narzędzie jednorazowe (np. paski ścierne): przyjmowane na sztuki, wydawane paczką
+    # (wybrana ilość scalana w jeden egzemplarz), zwracane tylko jako Nowe lub Zużyte —
+    # zużycie trafia do Zwrotów jako „Zużyte – jednorazowe”, bez regeneracji.
+    jednorazowe = models.BooleanField(
+        default=False,
+        verbose_name='Narzędzie jednorazowe',
+        help_text='Wydawane w paczkach o wybranej ilości, po użyciu odpisywane jako zużyte.'
+    )
     # Ostatnia cena jednostkowa — ustawiana ręcznie w modalu Zakupy lub automatycznie
     # propagowana z PozycjaZamowienia.save() (przyciski "Zmień cenę" / "Zapisz" w Zamowienia.vue).
     cena_jednostkowa = models.DecimalField(
@@ -433,6 +441,8 @@ class Uszkodzenie(models.Model):
     maszyna_nazwa = models.CharField(max_length=200, blank=True)
     pracownik_nazwisko = models.CharField(max_length=100, blank=True)
     pracownik_imie = models.CharField(max_length=100, blank=True)
+    # Ilość sztuk objętych wpisem (paczka narzędzia jednorazowego); dla kart uszkodzeń/regeneracji 1
+    ilosc = models.PositiveIntegerField(default=1)
 
     data_uszkodzenia = models.DateTimeField(auto_now_add=True)
     opis_uszkodzenia = models.TextField(null=True, blank=True)

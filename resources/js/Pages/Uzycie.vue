@@ -184,11 +184,11 @@
                             <RadioButton v-model="returnStatus" inputId="stanNowe" value="nowe" />
                             <label for="stanNowe">Nowym <span class="hint-text">(nie używane)</span></label>
                         </div>
-                        <div class="field-radiobutton">
+                        <div class="field-radiobutton" v-if="!zwrotJednorazowy">
                             <RadioButton v-model="returnStatus" inputId="stanUzywane" value="uzywane" />
                             <label for="stanUzywane">Dobrym <span class="hint-text">(jako używane)</span></label>
                         </div>
-                        <div class="field-radiobutton">
+                        <div class="field-radiobutton" v-if="!zwrotJednorazowy">
                             <RadioButton v-model="returnStatus" inputId="stanUszkodzone" value="uszkodzone" />
                             <label for="stanUszkodzone">Uszkodzonym</label>
                         </div>
@@ -412,6 +412,9 @@ const returnData = ref({
     iloscSztuk: 1          // Ilość zwracanych sztuk przy częściowym zwrocie
 });
 
+// Zwrot paczki narzędzia jednorazowego — tylko stany Nowe/Zużyte
+const zwrotJednorazowy = computed(() => !!returnData.value.usage?.egzemplarz?.narzedzie_typ?.jednorazowe);
+
 // Opcje dla typu zwrotu
 const typZwrotuOptions = [
     { label: 'Całość', value: 'calosc' },
@@ -566,6 +569,8 @@ const przygotujUsages = (rows) => rows.map(usage => {
         opakowanie = `Komplet <span class="hint-text">(${egz.ilosc_w_komplecie} szt.)</span>`;
     } else if (nt?.opakowanie === 'kompl') {
         opakowanie = `${egz.ilosc_w_komplecie} z kompletu`;
+    } else if (nt?.jednorazowe && egz.ilosc_w_komplecie > 1) {
+        opakowanie = `Paczka <span class="hint-text">(${egz.ilosc_w_komplecie} szt.)</span>`;
     } else {
         opakowanie = 'Sztuka';
     }
@@ -590,9 +595,9 @@ const showReturnModal = async (usageId) => {
     // Lista pracowników jest potrzebna dopiero tutaj — na starcie strony jej nie czekamy.
     await ensurePracownicy();
     usageToReturnId.value = usageId;
-    returnStatus.value = 'uzywane';
-
     const usage = usagesInUse.value.find(u => u.id === usageId);
+    // Narzędzie jednorazowe: tylko Nowe/Zużyte, domyślnie Zużyte (zwrot paczki jednym kliknięciem)
+    returnStatus.value = usage?.egzemplarz?.narzedzie_typ?.jednorazowe ? 'uszkodzone_regeneracja' : 'uzywane';
 
     // Zapisz pełne dane o wydaniu do returnData
     returnData.value.usage = usage;

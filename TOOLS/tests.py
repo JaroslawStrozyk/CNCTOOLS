@@ -1159,6 +1159,129 @@ class GeneratorPamiecSesjiTestCase(APITestCase):
         self.assertEqual(self._ids(self.client.get(self.URL)), {self.a.id, self.b.id, self.c.id})
 
 
+class NarzedzieJednorazoweTestCase(APITestCase):
+    """
+    Narzędzie jednorazowe (paski ścierne): przyjęte na sztuki, wydawane paczką
+    (scalanie sztuk w jeden egzemplarz), zwrot tylko Nowe/Zużyte; zużycie →
+    wpis „Zużyte – jednorazowe” z ilością w Zwrotach.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user('magazyn', 'm@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+        kategoria = Kategoria.objects.create(nazwa="INNE")
+        podkategoria = Podkategoria.objects.create(nazwa="ŚLUSARNIA", kategoria=kategoria)
+        self.lokalizacja = Lokalizacja.objects.create(szafa="S", kolumna="01", polka="1")
+        self.pracownik = Pracownik.objects.create(karta="111", nazwisko="Kowalski", imie="Jan")
+        self.pasek = NarzedzieMagazynowe.objects.create(
+            podkategoria=podkategoria, opis="Pasek szlifierski 10 x 330 784F P80 [3M]",
+            opakowanie='szt', ilosc_w_opakowaniu=1, jednorazowe=True,
+        )
+        self.sztuki = [
+            EgzemplarzNarzedzia.objects.create(
+                narzedzie_typ=self.pasek, stan='nowe', lokalizacja=self.lokalizacja,
+                jednostka='szt', ilosc_w_komplecie=1,
+            ) for _ in range(10)
+        ]
+
+    def _wydaj(self, egzemplarz, ilosc):
+        return self.client.post('/api/historia/wydanie/', {
+            'egzemplarz_id': egzemplarz.id, 'pracownik_id': self.pracownik.id, 'ilosc_sztuk': ilosc,
+        }, format='json')
+
+    def _stan(self):
+        return sum(EgzemplarzNarzedzia.objects.filter(narzedzie_typ=self.pasek).values_list('ilosc_w_komplecie', flat=True))
+
+    def test_wydanie_scala_sztuki_w_paczke(self):
+        response = self._wydaj(self.sztuki[0], 6)
+        self.assertEqual(response.status_code, 201, response.data)
+        historia = HistoriaUzyciaNarzedzia.objects.get(id=response.data['id'])
+        self.assertEqual(historia.egzemplarz.ilosc_w_komplecie, 6)
+        self.assertEqual(EgzemplarzNarzedzia.objects.filter(narzedzie_typ=self.pasek).count(), 5)  # paczka + 4 sztuki
+        self.assertEqual(self._stan(), 10)  # stan magazynu bez zmian
+
+    def test_wydanie_ponad_dostepne_odrzucone(self):
+        # 3 sztuki w użyciu → wolnych 7
+        self._wydaj(self.sztuki[0], 3)
+        response = self._wydaj(self.sztuki[5], 8)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('7', response.data['error'])
+
+    def test_wydanie_czesci_zwroconej_paczki(self):
+        # Paczka 10 wraca jako nowa, potem wydajemy z niej 3
+        historia_id = self._wydaj(self.sztuki[0], 10).data['id']
+        self.client.post(f'/api/historia/{historia_id}/zwrot/', {'stan_po_zwrocie': 'nowe'}, format='json')
+        paczka = EgzemplarzNarzedzia.objects.get(narzedzie_typ=self.pasek)
+        response = self._wydaj(paczka, 3)
+        self.assertEqual(response.status_code, 201, response.data)
+        paczka.refresh_from_db()
+        self.assertEqual(paczka.ilosc_w_komplecie, 7)
+        self.assertEqual(self._stan(), 10)
+
+    def test_zwrot_zuzytej_paczki_tworzy_wpis_jednorazowy(self):
+        historia_id = self._wydaj(self.sztuki[0], 5).data['id']
+        response = self.client.post(f'/api/historia/{historia_id}/zwrot/', {
+            'stan_po_zwrocie': 'uszkodzone_regeneracja', 'pracownik_zwracajacy_id': self.pracownik.id,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        wpis = Uszkodzenie.objects.get()
+        self.assertEqual(wpis.stan, 'Zużyte – jednorazowe')
+        self.assertEqual(wpis.ilosc, 5)
+        self.assertIsNone(wpis.numer_karty)  # bez karty regeneracji
+        self.assertEqual(self._stan(), 5)
+
+    def test_zwrot_czesciowy_nowe_reszta_zuzyta(self):
+        historia_id = self._wydaj(self.sztuki[0], 8).data['id']
+        response = self.client.post(f'/api/historia/{historia_id}/zwrot/', {
+            'stan_po_zwrocie': 'nowe', 'czesciowy_zwrot': True, 'ilosc_sztuk': 3,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f'/api/historia/{historia_id}/zwrot/', {
+            'stan_po_zwrocie': 'uszkodzone_regeneracja',
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(Uszkodzenie.objects.get().ilosc, 5)
+        self.assertEqual(self._stan(), 2 + 3)
+
+    def test_zwrot_jako_uzywane_odrzucony(self):
+        historia_id = self._wydaj(self.sztuki[0], 2).data['id']
+        response = self.client.post(f'/api/historia/{historia_id}/zwrot/', {'stan_po_zwrocie': 'uzywane'}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def _zuzyj_paczke(self, ilosc):
+        wolny = EgzemplarzNarzedzia.objects.filter(narzedzie_typ=self.pasek).order_by('id').first()
+        historia_id = self._wydaj(wolny, ilosc).data['id']
+        self.client.post(f'/api/historia/{historia_id}/zwrot/', {'stan_po_zwrocie': 'uszkodzone_regeneracja'}, format='json')
+        return Uszkodzenie.objects.latest('id')
+
+    def test_pdf_karty_ma_ilosc_w_uwagach(self):
+        from django.template import loader
+        wpis = self._zuzyj_paczke(4)
+        with mock.patch.object(loader, 'render_to_string', wraps=loader.render_to_string) as render:
+            response = self.client.get(f'/api/uszkodzenia/{wpis.id}/pdf/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('4 szt.', render.call_args[0][1]['uwagi'])
+
+    def test_pdf_lista_jednorazowych_z_suma(self):
+        from django.template import loader
+        a = self._zuzyj_paczke(4)
+        b = self._zuzyj_paczke(3)
+        with mock.patch.object(loader, 'render_to_string', wraps=loader.render_to_string) as render:
+            response = self.client.post('/api/uszkodzenia/pdf_lista/', {'ids': [a.id, b.id], 'typ': 'jednorazowe'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        context = render.call_args[0][1]
+        self.assertTrue(context['jednorazowe'])
+        self.assertEqual(context['suma_ilosci'], 7)
+
+    def test_jednorazowe_wymaga_jednostki_sztuka(self):
+        response = self.client.patch(f'/api/narzedzia/{self.pasek.id}/', {
+            'opakowanie': 'kompl', 'ilosc_w_opakowaniu': 10, 'jednorazowe': True,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('jednorazowe', response.data)
+
+
 class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).

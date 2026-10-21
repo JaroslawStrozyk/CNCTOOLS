@@ -32,6 +32,15 @@ STANY_DOSTEPNE_DO_WYDANIA = [
     StanEgzemplarza.UZYWANE,
 ]
 
+# Stany możliwe po zwrocie narzędzia JEDNORAZOWEGO (paczki): nieużyte wracają, reszta zużyta
+STANY_PO_ZWROCIE_JEDNORAZOWE = [
+    StanEgzemplarza.NOWE,
+    StanEgzemplarza.USZKODZONE_REGENERACJA,
+]
+
+# Stan zapisywany w Uszkodzenie dla zużytej paczki narzędzia jednorazowego (zakładka w Zwrotach)
+STAN_ZUZYTE_JEDNORAZOWE = 'Zużyte – jednorazowe'
+
 # Stany możliwe po zwrocie narzędzia
 STANY_PO_ZWROCIE = [
     StanEgzemplarza.NOWE,

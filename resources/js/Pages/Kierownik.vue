@@ -407,6 +407,81 @@
                     </DataTable>
                 </div>
             </div>
+            <!-- Widok: Zużyte – jednorazowe (paczki narzędzi jednorazowych) -->
+            <div v-if="currentView === 'jednorazowe'" class="tools-panel">
+                <div class="panel-header" style="height: 50px;">
+                    <div class="search-box">
+                        <input
+                            type="text"
+                            v-model="jednSearchQuery"
+                            placeholder="Szukaj..."
+                            class="form-control search-input"
+                        />
+                    </div>
+                    <h3 class="panel-title">
+                        Zużyte – jednorazowe
+                        <Badge :value="filteredDamagesJednorazowe.length" severity="secondary" style="margin-left: 8px;" />
+                    </h3>
+                    <div class="filter-box">
+                        <button class="btn-pdf-header" @click="openDmgPdfList('jednorazowe')" title="Eksport PDF całej listy">
+                            <i class="pi pi-file-pdf"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <DataTable
+                        :value="filteredDamagesJednorazowe"
+                        :loading="isLoadingDamages"
+                        :scrollable="true"
+                        scrollHeight="flex"
+                        :paginator="true"
+                        :rows="pageSize"
+                        :rowsPerPageOptions="rowsPerPageOptions"
+                        :paginatorTemplate="paginatorTemplate"
+                        currentPageReportTemplate="{first}–{last} z {totalRecords}"
+                        class="tools-table"
+                        stripedRows
+                    >
+                        <Column header="Data zwrotu">
+                            <template #body="{ data }">
+                                <span v-html="formatCustomDate(data.data_uszkodzenia)"></span>
+                            </template>
+                        </Column>
+                        <Column header="Maszyna">
+                            <template #body="{ data }">
+                                {{ data.maszyna_uszkodzenia || '-' }}
+                            </template>
+                        </Column>
+                        <Column header="Pracownik">
+                            <template #body="{ data }">
+                                {{ formatDmgPracownik(data.ostatni_pracownik) }}
+                            </template>
+                        </Column>
+                        <Column header="Narzędzie">
+                            <template #body="{ data }">
+                                {{ data.kategoria_narzedzia }}: {{ data.opis_narzedzia }}
+                            </template>
+                        </Column>
+                        <Column header="Nr kat.">
+                            <template #body="{ data }">
+                                {{ data.numer_katalogowy || '-' }}
+                            </template>
+                        </Column>
+                        <Column header="Ilość" style="width: 90px; text-align: center;">
+                            <template #body="{ data }">
+                                <strong>{{ data.ilosc }}</strong> szt.
+                            </template>
+                        </Column>
+                        <Column header="" style="width: 50px; text-align: center;">
+                            <template #body="{ data }">
+                                <button class="btn-pdf-row" @click="openDmgPdfSingle(data)" title="Eksport PDF">
+                                    <i class="pi pi-file-pdf"></i>
+                                </button>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
+            </div>
         </main>
 
         <!-- Modal: Podgląd PDF uszkodzenia -->
@@ -909,6 +984,7 @@ const damagesList = ref([]);
 const isLoadingDamages = isLoadingTools;
 const dmgSearchQuery = ref('');
 const regenSearchQuery = ref('');
+const jednSearchQuery = ref('');
 const dmgPdfPreviewVisible = ref(false);
 const dmgPdfPreviewUrl = ref('');
 const dmgDetailModalVisible = ref(false);
@@ -998,6 +1074,22 @@ const filteredDamagesRegeneracja = computed(() => {
     });
 });
 
+// Zużyte paczki narzędzi jednorazowych (wpisy bez karty, z ilością)
+const damagesJednorazowe = computed(() => {
+    return damagesList.value.filter(d => d.stan_egzemplarza === 'Zużyte – jednorazowe');
+});
+
+const filteredDamagesJednorazowe = computed(() => {
+    const query = jednSearchQuery.value.toLowerCase().trim();
+    if (!query) return damagesJednorazowe.value;
+    return damagesJednorazowe.value.filter(d => [
+        d.maszyna_uszkodzenia || '',
+        formatDmgPracownik(d.ostatni_pracownik) || '',
+        `${d.kategoria_narzedzia}: ${d.opis_narzedzia}`,
+        d.numer_katalogowy || ''
+    ].some(f => f.toLowerCase().includes(query)));
+});
+
 const formatDmgPracownik = (pracownik) => {
     if (!pracownik) return '-';
     return `${pracownik.nazwisko} ${pracownik.imie}`;
@@ -1020,7 +1112,11 @@ const openDmgPdfSingle = async (damage) => {
 };
 
 const openDmgPdfList = async (typ) => {
-    const items = typ === 'uszkodzone' ? filteredDamagesUszkodzone.value : filteredDamagesRegeneracja.value;
+    const items = {
+        uszkodzone: filteredDamagesUszkodzone.value,
+        regeneracja: filteredDamagesRegeneracja.value,
+        jednorazowe: filteredDamagesJednorazowe.value,
+    }[typ] || [];
     const ids = items.map(d => d.id);
     if (ids.length === 0) {
         alert('Brak elementów do wydruku.');
@@ -1281,6 +1377,7 @@ const miejscaMenuItems = ref([
     { separator: true },
     { label: 'Uszkodzone elementy', icon: 'pi pi-exclamation-triangle', command: () => { currentView.value = 'uszkodzone'; } },
     { label: 'Zużyte', icon: 'pi pi-refresh', command: () => { currentView.value = 'zuzyte'; } },
+    { label: 'Zużyte – jednorazowe', icon: 'pi pi-box', command: () => { currentView.value = 'jednorazowe'; } },
     { separator: true },
     { label: 'Lista realizacji', icon: 'pi pi-box', command: () => { window.location.href = props.urls.realizacja; } }
 ]);

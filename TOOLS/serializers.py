@@ -182,6 +182,15 @@ class NarzedzieMagazynoweSerializer(serializers.ModelSerializer):
             )
         return value
 
+    def validate(self, attrs):
+        # Narzędzie jednorazowe przyjmowane jest zawsze na sztuki
+        opakowanie = attrs.get('opakowanie', getattr(self.instance, 'opakowanie', 'szt'))
+        if opakowanie == 'kompl' and attrs.get('jednorazowe'):
+            raise serializers.ValidationError(
+                {'jednorazowe': 'Narzędzie jednorazowe musi mieć jednostkę zakupu „Sztuka”.'}
+            )
+        return attrs
+
     def update(self, instance, validated_data):
         # Ręczna zmiana ceny (dozwolona — patrz validate_cena_jednostkowa) zdejmuje
         # flagę "z zamówienia": wartość znów edytowalna do czasu kolejnej propagacji
@@ -395,6 +404,7 @@ class HistoriaWUzyciuLightSerializer(serializers.ModelSerializer):
                 'id': nt.id,
                 'opis': nt.opis,
                 'opakowanie': nt.opakowanie,
+                'jednorazowe': nt.jednorazowe,
                 'podkategoria': podkategoria,
             }
         return {
@@ -436,7 +446,7 @@ class UszkodzenieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'egzemplarz', 'egzemplarz_id', 'narzedzie_typ', 'narzedzie_opis',
             'lokalizacja_opis', 'stan', 'maszyna_nazwa',
-            'pracownik_nazwisko', 'pracownik_imie', 'data_uszkodzenia', 'opis_uszkodzenia',
+            'pracownik_nazwisko', 'pracownik_imie', 'data_uszkodzenia', 'opis_uszkodzenia', 'ilosc',
             'pracownik', 'pracownik_id',
             # Pola karty uszkodzenia
             'numer_karty', 'przyczyna_uszkodzenia', 'stracony_czas',
@@ -554,7 +564,7 @@ class UszkodzenieListLightSerializer(UszkodzenieSerializer):
             'kategoria_narzedzia', 'opis_narzedzia', 'numer_katalogowy',
             'ostatnia_lokalizacja', 'maszyna_uszkodzenia', 'ostatni_pracownik',
             'nazwisko_zglaszajacego', 'przyczyna_uszkodzenia', 'stracony_czas',
-            'opis_uszkodzenia',
+            'opis_uszkodzenia', 'ilosc',
         ]
 
 

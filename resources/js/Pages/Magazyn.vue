@@ -458,6 +458,12 @@
                         </template>
                     </small>
                 </div>
+                <!-- Narzędzie jednorazowe: ilość sztuk scalanych w jedną paczkę -->
+                <div class="field" v-if="issueJednorazowe">
+                    <label>Ilość do wydania (szt.)</label>
+                    <InputNumber v-model="issueData.iloscSztuk" :min="1" :max="dostepneJednorazowe || null" showButtons />
+                    <small class="text-muted">Dostępne: {{ dostepneJednorazowe }} szt. — wydanie tworzy jedną paczkę</small>
+                </div>
                 <!-- Wybór typu wydania dla kompletów (tylko gdy narzędzie pozwala na wydawanie sztuk) -->
                 <div class="field" v-if="issueData.instance && issueData.instance.narzedzie_typ && issueData.instance.narzedzie_typ.wydawanie_sztuk && issueData.instance.ilosc_w_komplecie > 1">
                     <label>Typ wydania</label>
@@ -567,11 +573,11 @@
                             <RadioButton v-model="returnStatus" inputId="stanNowe" value="nowe" />
                             <label for="stanNowe">Nowym <span class="hint-text">(nie używane)</span></label>
                         </div>
-                        <div class="field-radiobutton">
+                        <div class="field-radiobutton" v-if="!zwrotJednorazowy">
                             <RadioButton v-model="returnStatus" inputId="stanUzywane" value="uzywane" />
                             <label for="stanUzywane">Dobrym <span class="hint-text">(jako używane)</span></label>
                         </div>
-                        <div class="field-radiobutton">
+                        <div class="field-radiobutton" v-if="!zwrotJednorazowy">
                             <RadioButton v-model="returnStatus" inputId="stanUszkodzone" value="uszkodzone" />
                             <label for="stanUszkodzone">Uszkodzonym</label>
                         </div>
@@ -710,6 +716,12 @@
                                 <RadioButton v-model="currentTool.opakowanie" inputId="zakupKompl" value="kompl" @change="onOpakowanieChange" />
                                 <label for="zakupKompl">Komplet</label>
                             </div>
+                        </div>
+                    </div>
+                    <div class="field" v-if="currentTool.opakowanie === 'szt'">
+                        <div class="field-radiobutton">
+                            <Checkbox v-model="currentTool.jednorazowe" inputId="narzJednorazowe" :binary="true" />
+                            <label for="narzJednorazowe">Narzędzie jednorazowe</label>
                         </div>
                     </div>
                     <div class="field" v-if="currentTool.opakowanie === 'kompl'">
@@ -916,6 +928,7 @@ import Tag from 'primevue/tag';
 import Message from 'primevue/message';
 import Menu from 'primevue/menu';
 import RadioButton from 'primevue/radiobutton';
+import Checkbox from 'primevue/checkbox';
 import ProgressSpinner from 'primevue/progressspinner';
 import Textarea from 'primevue/textarea';
 
@@ -1023,6 +1036,16 @@ const issueData = ref({
     nr_zlecenia: ''
 });
 
+// Narzędzie jednorazowe — wydanie paczki; dostępne = wolne sztuki tego typu w tym samym stanie
+const issueJednorazowe = computed(() => !!issueData.value.instance?.narzedzie_typ?.jednorazowe);
+const dostepneJednorazowe = computed(() => {
+    const inst = issueData.value.instance;
+    if (!issueJednorazowe.value) return 0;
+    return toolInstances.value
+        .filter(e => e.stan === inst.stan && !inUseInstanceIds.value.has(e.id))
+        .reduce((suma, e) => suma + (e.ilosc_w_komplecie || 0), 0);
+});
+
 // Opcje dla typu wydania (komplet vs sztuki)
 const typWydaniaOptions = [
     { label: 'Cały komplet', value: 'komplet' },
@@ -1038,6 +1061,9 @@ const returnData = ref({
     typZwrotu: 'calosc',   // 'calosc' lub 'czesc'
     iloscSztuk: 1          // Ilość zwracanych sztuk przy częściowym zwrocie
 });
+
+// Zwrot paczki narzędzia jednorazowego — tylko stany Nowe/Zużyte
+const zwrotJednorazowy = computed(() => !!returnData.value.usage?.egzemplarz?.narzedzie_typ?.jednorazowe);
 
 // Opcje dla typu zwrotu
 const typZwrotuOptions = [
@@ -1510,7 +1536,7 @@ const issueTool = async () => {
     }
 
     const instance = issueData.value.instance;
-    const isPartialIssue = instance && instance.narzedzie_typ && instance.narzedzie_typ.wydawanie_sztuk && instance.ilosc_w_komplecie > 1 && issueData.value.typWydania === 'sztuki';
+    const isPartialIssue = !issueJednorazowe.value && instance && instance.narzedzie_typ && instance.narzedzie_typ.wydawanie_sztuk && instance.ilosc_w_komplecie > 1 && issueData.value.typWydania === 'sztuki';
 
     // Walidacja ilości przy częściowym wydaniu
     if (isPartialIssue) {
@@ -1531,6 +1557,16 @@ const issueTool = async () => {
             pracownik_id: issueData.value.pracownik_id,
             nr_zlecenia: issueData.value.nr_zlecenia || null
         };
+
+        // Narzędzie jednorazowe — backend scala wybraną ilość sztuk w jedną paczkę
+        if (issueJednorazowe.value) {
+            const ilosc = issueData.value.iloscSztuk;
+            if (!Number.isInteger(ilosc) || ilosc < 1 || ilosc > dostepneJednorazowe.value) {
+                issueError.value = `Ilość musi być liczbą od 1 do ${dostepneJednorazowe.value}.`;
+                return;
+            }
+            payload.ilosc_sztuk = ilosc;
+        }
 
         // Dodaj info o częściowym wydaniu
         if (isPartialIssue) {
@@ -1555,9 +1591,9 @@ const issueTool = async () => {
 
 const showReturnModal = (usageId) => {
     usageToReturnId.value = usageId;
-    returnStatus.value = 'uzywane';
-
     const usage = usagesInUse.value.find(u => u.id === usageId);
+    // Narzędzie jednorazowe: tylko Nowe/Zużyte, domyślnie Zużyte (zwrot paczki jednym kliknięciem)
+    returnStatus.value = usage?.egzemplarz?.narzedzie_typ?.jednorazowe ? 'uszkodzone_regeneracja' : 'uzywane';
 
     // Zapisz pełne dane o wydaniu do returnData
     returnData.value.usage = usage;
@@ -1728,7 +1764,8 @@ const openToolModal = (tool = null) => {
             domyslna_lokalizacja_id: tool.domyslna_lokalizacja ? tool.domyslna_lokalizacja.id : null,
             opakowanie: tool.opakowanie || 'szt',
             ilosc_w_opakowaniu: tool.ilosc_w_opakowaniu || 1,
-            wydawanie_sztuk: tool.wydawanie_sztuk !== undefined ? tool.wydawanie_sztuk : false
+            wydawanie_sztuk: tool.wydawanie_sztuk !== undefined ? tool.wydawanie_sztuk : false,
+            jednorazowe: !!tool.jednorazowe
         };
         if (tool.obraz) {
             toolImagePreview.value = tool.obraz;
@@ -1742,7 +1779,8 @@ const openToolModal = (tool = null) => {
             obraz: null,
             opakowanie: 'szt',
             ilosc_w_opakowaniu: 1,
-            wydawanie_sztuk: false
+            wydawanie_sztuk: false,
+            jednorazowe: false
         };
     }
 
@@ -1750,6 +1788,7 @@ const openToolModal = (tool = null) => {
 };
 
 const onOpakowanieChange = () => {
+    if (currentTool.value.opakowanie === 'kompl') currentTool.value.jednorazowe = false;  // jednorazowe tylko na sztuki
     if (currentTool.value.opakowanie === 'kompl' && currentTool.value.ilosc_w_opakowaniu <= 1) {
         currentTool.value.ilosc_w_opakowaniu = 2;
     } else if (currentTool.value.opakowanie === 'szt') {
@@ -1784,6 +1823,7 @@ const saveTool = async () => {
     formData.append('ilosc_w_opakowaniu', currentTool.value.ilosc_w_opakowaniu || 1);
     // Dla kompletów według wyboru użytkownika, dla sztuk pole nie ma znaczenia (domyślnie false)
     formData.append('wydawanie_sztuk', currentTool.value.wydawanie_sztuk || false);
+    formData.append('jednorazowe', currentTool.value.opakowanie === 'szt' && !!currentTool.value.jednorazowe);
 
     if (currentTool.value.podkategoria_id) {
         formData.append('podkategoria_id', currentTool.value.podkategoria_id);

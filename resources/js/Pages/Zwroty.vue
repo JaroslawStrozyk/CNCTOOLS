@@ -203,6 +203,81 @@
                 </DataTable>
               </template>
             </TabPanel>
+            <TabPanel>
+              <template #header>
+                <i class="pi pi-box mr-2"></i>
+                <span>Zużyte – jednorazowe</span>
+                <Badge :value="filteredDamagesJednorazowe.length" severity="secondary" class="ml-2" />
+              </template>
+              <ProgressSpinner v-if="isLoading" class="loading-spinner" />
+              <div v-else-if="damagesJednorazowe.length === 0" class="empty-state">
+                <i class="pi pi-check-circle success-icon"></i>
+                <p class="empty-title">Brak zużytych narzędzi jednorazowych</p>
+              </div>
+              <template v-else>
+                <!-- Pole wyszukiwania -->
+                <div class="search-bar">
+                  <div class="search-wrapper">
+                    <i class="pi pi-search search-icon" />
+                    <InputText v-model="searchQueryJedn" placeholder="Szukaj..." class="search-input" />
+                  </div>
+                  <Button v-if="searchQueryJedn" icon="pi pi-times" class="p-button-secondary p-button-sm" @click="searchQueryJedn = ''" title="Wyczyść" />
+                  <div class="search-bar-spacer"></div>
+                  <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfListPreviewJedn" title="Drukuj listę" :loading="isGeneratingList" :disabled="isGeneratingList" :label="isGeneratingList ? 'Generowanie...' : null" />
+                </div>
+                <DataTable
+                  :value="filteredDamagesJednorazowe"
+                  responsiveLayout="scroll"
+                  class="damages-table"
+                  stripedRows
+                  scrollable
+                  scrollHeight="flex"
+                  :paginator="true"
+                  :rows="pageSize"
+                  :rowsPerPageOptions="rowsPerPageOptions"
+                  :paginatorTemplate="paginatorTemplate"
+                >
+                  <Column header="Data zwrotu">
+                    <template #body="{ data }">
+                      {{ formatCustomDate(data.data_uszkodzenia) }}
+                    </template>
+                  </Column>
+                  <Column header="Maszyna">
+                    <template #body="{ data }">
+                      {{ data.maszyna_uszkodzenia || '-' }}
+                    </template>
+                  </Column>
+                  <Column header="Pracownik">
+                    <template #body="{ data }">
+                      {{ formatPracownik(data.ostatni_pracownik) }}
+                    </template>
+                  </Column>
+                  <Column header="Narzędzie">
+                    <template #body="{ data }">
+                      {{ data.kategoria_narzedzia }}: {{ data.opis_narzedzia }}
+                    </template>
+                  </Column>
+                  <Column header="Nr kat.">
+                    <template #body="{ data }">
+                      {{ data.numer_katalogowy || '-' }}
+                    </template>
+                  </Column>
+                  <Column header="Ilość" style="width: 90px; text-align: center;">
+                    <template #body="{ data }">
+                      <strong>{{ data.ilosc }}</strong> szt.
+                    </template>
+                  </Column>
+                  <Column header="Akcje" style="width: 110px; text-align: center;">
+                    <template #body="{ data }">
+                      <div class="btn-group-inline">
+                        <Button icon="pi pi-file-pdf" class="p-button-sm btn-pdf" @click="openPdfPreview(data)" title="Drukuj" />
+                        <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteModal(data)" title="Usuń" />
+                      </div>
+                    </template>
+                  </Column>
+                </DataTable>
+              </template>
+            </TabPanel>
           </TabView>
         </div>
       </div>
@@ -313,6 +388,7 @@ const isLoading = ref(false);
 const activeTab = ref(0);
 const searchQuery = ref('');
 const searchQueryRegen = ref('');
+const searchQueryJedn = ref('');
 
 // Modal edycji
 const editModalVisible = ref(false);
@@ -388,6 +464,23 @@ const filteredDamagesRegeneracja = computed(() => {
     ];
     return searchFields.some(field => field.toLowerCase().includes(query));
   });
+});
+
+// Zużyte paczki narzędzi jednorazowych (stan zapisany przy zwrocie, bez karty)
+const damagesJednorazowe = computed(() => {
+  return damages.value.filter(d => d.stan_egzemplarza === 'Zużyte – jednorazowe');
+});
+
+const filteredDamagesJednorazowe = computed(() => {
+  const query = searchQueryJedn.value.toLowerCase().trim();
+  if (!query) return damagesJednorazowe.value;
+  return damagesJednorazowe.value.filter(d => [
+    formatCustomDate(d.data_uszkodzenia) || '',
+    d.maszyna_uszkodzenia || '',
+    formatPracownik(d.ostatni_pracownik) || '',
+    `${d.kategoria_narzedzia}: ${d.opis_narzedzia}`,
+    d.numer_katalogowy || '',
+  ].some(field => field.toLowerCase().includes(query)));
 });
 
 // Methods
@@ -504,6 +597,8 @@ const downloadPdf = () => {
     filename = `Lista_uszkodzen_${today}.pdf`;
   } else if (currentPdfData.value.type === 'lista_regen') {
     filename = `Lista_do_regeneracji_${today}.pdf`;
+  } else if (currentPdfData.value.type === 'lista_jedn') {
+    filename = `Lista_zuzytych_jednorazowych_${today}.pdf`;
   } else if (currentPdfData.value.numer_karty) {
     filename = `Karta_uszkodzenia_${currentPdfData.value.numer_karty.replace('/', '-')}.pdf`;
   } else {
@@ -577,6 +672,36 @@ const openPdfListPreviewRegen = async () => {
 
     pdfPreviewUrl.value = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
     currentPdfData.value = { type: 'lista_regen', count: ids.length };
+    pdfPreviewVisible.value = true;
+  } catch (error) {
+    console.error('Błąd generowania zbiorczego PDF:', error);
+    alert('Błąd podczas generowania zbiorczego PDF');
+  } finally {
+    isGeneratingList.value = false;
+  }
+};
+
+// Zbiorcze PDF listy zużytych narzędzi jednorazowych
+const openPdfListPreviewJedn = async () => {
+  const ids = filteredDamagesJednorazowe.value.map(d => d.id);
+
+  if (ids.length === 0) {
+    alert('Brak elementów do wydruku.');
+    return;
+  }
+
+  isGeneratingList.value = true;
+  try {
+    const response = await axios.post(`${API_URL}/uszkodzenia/pdf_lista/`, { ids, typ: 'jednorazowe' }, {
+      responseType: 'blob'
+    });
+
+    if (pdfPreviewUrl.value) {
+      window.URL.revokeObjectURL(pdfPreviewUrl.value);
+    }
+
+    pdfPreviewUrl.value = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    currentPdfData.value = { type: 'lista_jedn', count: ids.length };
     pdfPreviewVisible.value = true;
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
