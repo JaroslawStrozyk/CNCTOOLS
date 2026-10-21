@@ -65,7 +65,7 @@
                                     class="pi pi-exclamation-triangle ikona-domkniecia"
                                     :title="tytulDomkniecia(data)"
                                 ></i>
-                                <a href="#" @click.prevent="selectZamowienie(data)" class="order-link">
+                                <a href="#" @click.prevent="otworzZamowienie(data)" class="order-link">
                                     <strong>{{ data.numer }}</strong>
                                 </a>
                                 <Tag v-if="auth?.isLogistyka && data.nr_oferty_dostawcy" :value="data.nr_oferty_dostawcy" severity="info" class="ml-2" />
@@ -107,11 +107,11 @@
                                     <Button v-if="data.status === 'verified'" icon="pi pi-envelope" class="p-button-success p-button-sm" @click="openEmailConfirmModal(data)" title="Wyślij e-mail do dostawcy" />
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-check" class="p-button-success p-button-sm" @click="zatwierdzZamowienie(data)" title="Zatwierdź zamówienie" />
                                     <Button v-if="data.status === 'pending_approval'" icon="pi pi-undo" class="p-button-secondary p-button-sm" @click="cofnijDoRoboczej(data)" title="Cofnij do wersji roboczej" />
-                                    <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="rozpocznijRealizacje(data)" title="Rozpocznij realizację" />
+                                    <Button v-if="data.status === 'sent'" icon="pi pi-box" class="p-button-info p-button-sm" @click="otworzZamowienie(data)" title="Rozpocznij realizację" />
                                     <Button v-if="data.status === 'sent' && !isMagazynierView" icon="pi pi-undo" class="p-button-warning p-button-sm" @click="openCofnijDoZatwierdzoneModal(data)" title="Cofnij do 'Zatwierdzone' (zmiana dostawcy)" />
-                                    <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="rozpocznijRealizacje(data)" title="Kontynuuj realizację" />
+                                    <Button v-if="data.status === 'partially_received'" icon="pi pi-box" class="p-button-warning p-button-sm" @click="otworzZamowienie(data)" title="Kontynuuj realizację" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-truck" class="p-button-help p-button-sm" @click="openZmienDostawceModal(data)" title="Zmień dostawcę" />
-                                    <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="selectZamowienie(data)" title="Edytuj pozycje" />
+                                    <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-pencil" class="p-button-secondary p-button-sm" @click="otworzZamowienie(data)" title="Edytuj pozycje" />
                                     <Button v-if="['draft', 'pending_approval', 'verified'].includes(data.status)" icon="pi pi-trash" class="p-button-danger p-button-sm" @click="openDeleteConfirmModal(data)" title="Usuń" />
                                 </div>
                             </template>
@@ -124,99 +124,18 @@
             </div>
         </main>
 
-        <!-- Modal: Szczegóły zamówienia -->
-        <Dialog v-model:visible="detailsModalVisible" header="Szczegóły zamówienia" :modal="true" :style="{ width: '1800px' }">
-            <div v-if="selectedZamowienie" class="order-details">
-                <div class="details-grid">
-                    <div class="details-left">
-                        <p><strong>Dostawca:</strong> {{ selectedZamowienie.dostawca?.nazwa_firmy }}</p>
-                        <p><strong>Data utworzenia:</strong> {{ formatDate(selectedZamowienie.data_utworzenia) }}</p>
-                        <p><strong>Data wysłania:</strong> {{ selectedZamowienie.data_wyslania ? formatDate(selectedZamowienie.data_wyslania) : 'Nie wysłano' }}</p>
-                    </div>
-                    <div class="details-right">
-                        <p><strong>Status:</strong> <Tag :severity="getStatusSeverity(selectedZamowienie.status)" :value="getStatusLabel(selectedZamowienie.status)" :class="getStatusTagClass(selectedZamowienie.status)" /></p>
-                        <p><strong>Wartość:</strong> {{ obliczonaWartoscZamowienia }} zł</p>
-                        <p><strong>Email:</strong> {{ selectedZamowienie.email_docelowy || 'brak' }}</p>
-                        <p v-if="auth?.isLogistyka" style="margin-top: 5px;">
-                            <strong>Nr oferty dostawcy:</strong>
-                            <InputText
-                                v-if="canEditPozycje"
-                                v-model="selectedZamowienie.nr_oferty_dostawcy"
-                                style="width: 240px; margin-left: 8px;"
-                            />
-                            <span v-else>{{ selectedZamowienie.nr_oferty_dostawcy || 'brak' }}</span>
-                        </p>
-                    </div>
-                </div>
-
-                <h6 class="mt-4 mb-3">Pozycje zamówienia:</h6>
-                <DataTable :value="selectedZamowienie.pozycje" :scrollable="true" scrollHeight="300px" class="p-datatable-sm">
-                    <Column field="kategoria_nazwa" header="Kategoria" />
-                    <Column field="podkategoria_nazwa" header="Podkategoria" />
-                    <Column field="narzedzie_opis" header="Narzędzie" />
-                    <Column field="numer_katalogowy" header="Nr katalogowy" />
-                    <Column header="Ilość" style="width: 100px;">
-                        <template #body="{ data }">
-                            <InputNumber
-                                v-if="canEditPozycje"
-                                v-model="data.ilosc_zamowiona"
-                                :min="1"
-                                :inputStyle="{ width: '60px', textAlign: 'center' }"
-                            />
-                            <span v-else>{{ data.ilosc_zamowiona }}</span>
-                        </template>
-                    </Column>
-                    <Column header="Jednostka" style="width: 120px;">
-                        <template #body="{ data }">
-                            {{ data.jednostka === 'kompl' ? `kompl. (${data.ilosc_w_komplecie} szt.)` : 'szt.' }}
-                        </template>
-                    </Column>
-                    <Column header="Cena jedn." style="width: 120px;">
-                        <template #body="{ data }">
-                            <InputNumber
-                                v-model="data.cena_jednostkowa"
-                                :minFractionDigits="2"
-                                :maxFractionDigits="2"
-                                :min="0"
-                                :inputStyle="{ width: '80px', textAlign: 'right' }"
-                            />
-                        </template>
-                    </Column>
-                    <Column header="Wartość" style="width: 110px;">
-                        <template #body="{ data }">
-                            <strong>{{ wartoscPozycji(data).toFixed(2) }} zł</strong>
-                        </template>
-                    </Column>
-                    <Column v-if="canDeletePozycja" header="" style="width: 60px; text-align: center;">
-                        <template #body="{ data }">
-                            <Button icon="pi pi-trash" class="p-button-danger p-button-sm" @click="deletePozycja(data)" title="Usuń pozycję" />
-                        </template>
-                    </Column>
-                </DataTable>
-
-                <Message v-if="selectedZamowienie.uwagi" severity="info" :closable="false" class="mt-3">
-                    <strong>Uwagi:</strong> {{ selectedZamowienie.uwagi }}
-                </Message>
-
-                <div v-if="selectedZamowienie.powiazane_zapotrzebowania && selectedZamowienie.powiazane_zapotrzebowania.length > 0" class="mt-4">
-                    <h6 class="mb-3">Powiązane zapotrzebowania:</h6>
-                    <DataTable :value="selectedZamowienie.powiazane_zapotrzebowania" class="p-datatable-sm">
-                        <Column field="numer" header="Numer" style="width: 120px;">
-                            <template #body="{ data }"><strong style="color: #69db7c;">{{ data.numer }}</strong></template>
-                        </Column>
-                        <Column field="technolog" header="Technolog" />
-                        <Column field="data_wyslania" header="Data wysłania" style="width: 130px;">
-                            <template #body="{ data }">{{ data.data_wyslania || '-' }}</template>
-                        </Column>
-                        <Column field="status" header="Status" style="width: 130px;" />
-                    </DataTable>
-                </div>
-            </div>
-            <template #footer>
-                <Button label="Zapisz zmiany" icon="pi pi-save" class="p-button-success" @click="saveAllPozycje" :loading="isSavingPozycje" />
-                <Button label="Zamknij" @click="closeDetails" />
-            </template>
-        </Dialog>
+        <!-- Modal: Zamówienie (szczegóły + edycja + realizacja) -->
+        <ZamowienieModal
+            v-model:visible="zamowienieDetaleVisible"
+            :zamowienieId="zamowienieDetaleId"
+            :auth="auth"
+            :formatDate="formatDate"
+            :getStatusLabel="getStatusLabel"
+            :getStatusSeverity="getStatusSeverity"
+            :getStatusTagClass="getStatusTagClass"
+            @zmieniono="fetchInitialData"
+            @wynik="pokazWynikRealizacji"
+        />
 
         <!-- Modal: Dodaj/Edytuj zamówienie -->
         <Dialog v-model:visible="zamowienieModalVisible" :header="zamowienieModal.title" :modal="true" :style="{ width: '500px' }">
@@ -345,103 +264,6 @@
             </template>
         </Dialog>
 
-        <!-- Modal: Realizacja zamówienia (częściowa/pełna) -->
-        <Dialog v-model:visible="realizacjaConfirmModalVisible" :header="realizacjaModalTitle" :modal="true" :style="{ width: '1100px' }">
-            <div v-if="selectedRealizacjaZamowienie" class="realizacja-modal-content">
-                <div class="realizacja-info-bar">
-                    <span><strong>Zamówienie:</strong> {{ selectedRealizacjaZamowienie.numer }}</span>
-                    <span><strong>Dostawca:</strong> {{ selectedRealizacjaZamowienie.dostawca?.nazwa_firmy }}</span>
-                    <span><Tag :severity="getStatusSeverity(selectedRealizacjaZamowienie.status)" :value="getStatusLabel(selectedRealizacjaZamowienie.status)" :class="getStatusTagClass(selectedRealizacjaZamowienie.status)" /></span>
-                </div>
-
-                <div v-if="isLoadingRealizacja" class="loading-state">
-                    <i class="pi pi-spin pi-spinner" style="font-size: 2rem;"></i>
-                    <p>Ładowanie danych realizacji...</p>
-                </div>
-
-                <div v-else>
-                    <div class="realizacja-toolbar">
-                        <label class="select-all-label">
-                            <Checkbox v-model="realizacjaSelectAll" :binary="true" @change="toggleSelectAll" />
-                            <span>Zaznacz wszystkie (pełna realizacja)</span>
-                        </label>
-                    </div>
-
-                    <DataTable :value="realizacjaPozycje" class="p-datatable-sm realizacja-table" :scrollable="true" scrollHeight="400px">
-                        <Column field="narzedzie_opis" header="Narzędzie" />
-                        <Column field="numer_katalogowy" header="Nr katalogowy" style="width: 140px;" />
-                        <Column header="Zamówiono" style="width: 100px; text-align: center;">
-                            <template #body="{ data }">
-                                <strong>{{ data.ilosc_zamowiona }}</strong>
-                                <span class="unit-label">{{ data.jednostka === 'kompl' ? 'kompl.' : 'szt.' }}</span>
-                            </template>
-                        </Column>
-                        <Column header="Przyjęto" style="width: 130px; text-align: center;">
-                            <template #body="{ data }">
-                                <div v-if="data.ilosc_pozostala > 0 && !data.odpisz">
-                                    <InputNumber
-                                        v-model="data.ilosc_do_przyjecia"
-                                        :min="0"
-                                        :max="data.ilosc_pozostala"
-                                        inputClass="qty-input"
-                                        :inputStyle="{ width: '70px', textAlign: 'center' }"
-                                    />
-                                    <div v-if="data.ilosc_przyjeta > 0" class="text-muted" style="font-size: 0.72rem; margin-top: 2px;">już przyjęto: {{ data.ilosc_przyjeta }}</div>
-                                </div>
-                                <span v-else-if="data.ilosc_pozostala === 0" class="text-green">{{ data.ilosc_przyjeta }} ✓</span>
-                                <span v-else class="text-muted">-</span>
-                            </template>
-                        </Column>
-                        <Column header="Pozostało" style="width: 90px; text-align: center;">
-                            <template #body="{ data }">
-                                <span :class="{ 'text-orange': data.ilosc_pozostala > 0, 'text-green': data.ilosc_pozostala === 0 }">
-                                    {{ data.ilosc_pozostala }}
-                                </span>
-                            </template>
-                        </Column>
-                        <Column header="Odpisz" style="width: 80px; text-align: center;">
-                            <template #body="{ data }">
-                                <Checkbox
-                                    v-if="data.ilosc_pozostala > 0"
-                                    v-model="data.odpisz"
-                                    :binary="true"
-                                    @change="onOdpiszToggle(data)"
-                                    title="Skasuj pozycję z zamówienia (wróci do generatora)"
-                                />
-                                <span v-else class="text-muted">-</span>
-                            </template>
-                        </Column>
-                        <Column header="Cena jedn." style="width: 120px; text-align: right;">
-                            <template #body="{ data }">
-                                <span>{{ Number(data.cena_jednostkowa || 0).toFixed(2) }} zł</span>
-                            </template>
-                        </Column>
-                        <Column header="Lokalizacja" style="width: 140px;">
-                            <template #body="{ data }">
-                                <span v-if="data.lokalizacja">
-                                    {{ data.lokalizacja.szafa }}/{{ data.lokalizacja.polka }}/{{ data.lokalizacja.kolumna }}
-                                </span>
-                                <span v-else class="text-muted">Brak domyślnej</span>
-                            </template>
-                        </Column>
-                    </DataTable>
-
-                    <Message v-if="realizacjaError" severity="error" :closable="false" class="mt-3">{{ realizacjaError }}</Message>
-                </div>
-            </div>
-            <template #footer>
-                <Button label="Anuluj" icon="pi pi-times" class="p-button-text" @click="onAnulujRealizacja" />
-                <Button
-                    label="Zatwierdź"
-                    icon="pi pi-check"
-                    class="p-button-success"
-                    @click="confirmRealizuj"
-                    :loading="isRealizujLoading"
-                    :disabled="isLoadingRealizacja || !hasSelectedPozycje"
-                />
-            </template>
-        </Dialog>
-
         <!-- Modal: Wynik realizacji -->
         <Dialog v-model:visible="realizacjaResultModalVisible" :header="realizacjaResult.success ? 'Przyjęcie potwierdzone' : 'Błąd'" :modal="true" :style="{ width: '650px' }">
             <Message :severity="realizacjaResult.success ? 'success' : 'error'" :closable="false">{{ realizacjaResult.message }}</Message>
@@ -532,10 +354,8 @@ import logoImage from '@images/cnc-logo.png';
 
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
-import InputNumber from 'primevue/inputnumber';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
-import Checkbox from 'primevue/checkbox';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
@@ -544,6 +364,7 @@ import Message from 'primevue/message';
 import Menu from 'primevue/menu';
 import Divider from 'primevue/divider';
 import { usePaginacja } from '../paginacja';
+import ZamowienieModal from '../Components/ZamowienieModal.vue';
 
 const { pageSize, rowsPerPageOptions, paginatorTemplate } = usePaginacja();
 
@@ -560,37 +381,27 @@ const props = defineProps({
 const zamowienia = ref([]);
 const isLoading = ref(false);
 const dostawcy = ref([]);
-const selectedZamowienie = ref(null);
 const selectedUwagiZamowienie = ref(null);
 const selectedEmailZamowienie = ref(null);
 const selectedDeleteZamowienie = ref(null);
-const selectedRealizacjaZamowienie = ref(null);
 
 const isSaving = ref(false);
 const isSendingEmail = ref(false);
 const isDeleting = ref(false);
 const isSendingApproval = ref(false);
-const isSavingPozycje = ref(false);
 
 const emailResult = ref({ success: false, message: '' });
 const emailSzef = ref('');
 const realizacjaResult = ref({ success: false, message: '', egzemplarze: [] });
-const realizacjaPozycje = ref([]);
-const realizacjaSelectAll = ref(false);
-const realizacjaError = ref('');
-const isLoadingRealizacja = ref(false);
-const isRealizujLoading = ref(false);
 const zamowieniaTestowe = ref(false);
 const emailTestAddress = ref('');
 
 // Modals
-const detailsModalVisible = ref(false);
 const zamowienieModalVisible = ref(false);
 const uwagiModalVisible = ref(false);
 const emailConfirmModalVisible = ref(false);
 const emailResultModalVisible = ref(false);
 const deleteConfirmModalVisible = ref(false);
-const realizacjaConfirmModalVisible = ref(false);
 const realizacjaResultModalVisible = ref(false);
 const aboutModalVisible = ref(false);
 const approvalModalVisible = ref(false);
@@ -666,9 +477,16 @@ const getStatusTagClass = (status) => {
     return status === 'partially_received' ? 'tag-status-orange' : '';
 };
 
-const selectZamowienie = (zamowienie) => {
-    selectedZamowienie.value = zamowienie;
-    detailsModalVisible.value = true;
+// Wspólny modal zamówienia — klik w numer, „Edytuj pozycje” i „Realizacja” otwierają to samo okno
+const zamowienieDetaleVisible = ref(false);
+const zamowienieDetaleId = ref(null);
+const otworzZamowienie = (zamowienie) => {
+    zamowienieDetaleId.value = zamowienie.id;
+    zamowienieDetaleVisible.value = true;
+};
+const pokazWynikRealizacji = (wynik) => {
+    realizacjaResult.value = wynik;
+    realizacjaResultModalVisible.value = true;
 };
 
 const showUwagi = (zamowienie) => {
@@ -838,25 +656,6 @@ const zamowieniaDoDomkniecia = computed(() => {
 
 // Computed — filtrowane zamówienia
 const draftZamowienia = computed(() => zamowienia.value.filter(z => z.status === 'draft'));
-const canEditPozycje = computed(() => {
-    if (!selectedZamowienie.value) return false;
-    return ['draft', 'pending_approval', 'verified'].includes(selectedZamowienie.value.status);
-});
-const canDeletePozycja = computed(() => {
-    if (!selectedZamowienie.value) return false;
-    return ['draft', 'pending_approval'].includes(selectedZamowienie.value.status);
-});
-// Wartość pozycji: cena jest za sztukę, więc dla kompletów mnożymy przez ilość sztuk w komplecie
-const wartoscPozycji = (p) => {
-    const mnoznik = p.jednostka === 'kompl' ? (p.ilosc_w_komplecie || 1) : 1;
-    return p.ilosc_zamowiona * mnoznik * (p.cena_jednostkowa || 0);
-};
-const obliczonaWartoscZamowienia = computed(() => {
-    if (!selectedZamowienie.value?.pozycje) return '0.00';
-    return selectedZamowienie.value.pozycje
-        .reduce((sum, p) => sum + wartoscPozycji(p), 0)
-        .toFixed(2);
-});
 const approvalTotal = computed(() => {
     return selectedApprovalZamowienia.value.reduce((sum, z) => sum + parseFloat(z.wartosc_zamowienia || 0), 0).toFixed(2);
 });
@@ -978,197 +777,8 @@ const confirmCofnijDoZatwierdzone = async () => {
         isCofajacDoZatwierdzone.value = false;
     }
 };
-
-// Edycja pozycji zamówienia
-const updatePozycja = async (pozycja) => {
-    try {
-        await axios.patch(`${API_URL}/pozycje-zamowien/${pozycja.id}/`, {
-            ilosc_zamowiona: pozycja.ilosc_zamowiona
-        });
-        await refreshSelectedZamowienie();
-    } catch (error) {
-        alert('Błąd aktualizacji: ' + (error.response?.data?.detail || error.message));
-    }
-};
-
-const saveAllPozycje = async () => {
-    if (!selectedZamowienie.value) return;
-    isSavingPozycje.value = true;
-    const editIlosc = canEditPozycje.value;
-    try {
-        for (const poz of selectedZamowienie.value.pozycje) {
-            const payload = { cena_jednostkowa: poz.cena_jednostkowa || 0 };
-            if (editIlosc) payload.ilosc_zamowiona = poz.ilosc_zamowiona;
-            await axios.patch(`${API_URL}/pozycje-zamowien/${poz.id}/`, payload);
-        }
-        if (props.auth?.isLogistyka && editIlosc) {
-            await axios.patch(`${API_URL}/zamowienia/${selectedZamowienie.value.id}/`, {
-                nr_oferty_dostawcy: selectedZamowienie.value.nr_oferty_dostawcy || ''
-            });
-        }
-        await fetchInitialData();
-        closeDetails();
-    } catch (error) {
-        alert('Błąd zapisu: ' + (error.response?.data?.detail || error.message));
-    } finally {
-        isSavingPozycje.value = false;
-    }
-};
-
-const closeDetails = () => {
-    detailsModalVisible.value = false;
-    selectedZamowienie.value = null;
-    setTimeout(() => fetchInitialData(), 500);
-};
-
-const deletePozycja = async (pozycja) => {
-    try {
-        await axios.delete(`${API_URL}/pozycje-zamowien/${pozycja.id}/`);
-        await refreshSelectedZamowienie();
-    } catch (error) {
-        alert('Błąd usuwania: ' + (error.response?.data?.detail || error.message));
-    }
-};
-
-const refreshSelectedZamowienie = async () => {
-    if (!selectedZamowienie.value) return;
-    await fetchInitialData();
-    const updated = zamowienia.value.find(z => z.id === selectedZamowienie.value.id);
-    if (updated) {
-        selectedZamowienie.value = updated;
-    } else {
-        detailsModalVisible.value = false;
-    }
-};
-
 const generujAutomatyczne = () => {
     window.location.href = props.urls.generator || '/generator/';
-};
-
-const realizacjaModalTitle = computed(() => {
-    if (!selectedRealizacjaZamowienie.value) return 'Realizacja zamówienia';
-    return selectedRealizacjaZamowienie.value.status === 'partially_received'
-        ? 'Kontynuuj realizację zamówienia'
-        : 'Realizacja zamówienia — przyjęcie towaru';
-});
-
-const hasSelectedPozycje = computed(() => {
-    return realizacjaPozycje.value.some(p => ((p.ilosc_do_przyjecia > 0 && !p.odpisz) || p.odpisz) && p.ilosc_pozostala > 0);
-});
-
-const rozpocznijRealizacje = async (zamowienie) => {
-    selectedRealizacjaZamowienie.value = zamowienie;
-    realizacjaError.value = '';
-    realizacjaSelectAll.value = false;
-    realizacjaPozycje.value = [];
-    isLoadingRealizacja.value = true;
-    realizacjaConfirmModalVisible.value = true;
-
-    try {
-        const res = await axios.get(`${API_URL}/zamowienia/${zamowienie.id}/stan_realizacji/`);
-        realizacjaPozycje.value = res.data.pozycje.map(poz => ({
-            ...poz,
-            odpisz: false,
-            ilosc_do_przyjecia: 0,  // "ile przyjąć teraz" — domyślnie 0, magazynier wpisuje ręcznie
-        }));
-    } catch (error) {
-        realizacjaError.value = 'Błąd ładowania danych: ' + (error.response?.data?.error || error.message);
-    } finally {
-        isLoadingRealizacja.value = false;
-    }
-};
-
-const onAnulujRealizacja = async () => {
-    // Skrót do przeliczenia statusu: "Zaznacz wszystkie" + "Anuluj" → backend
-    // ponownie liczy status zamówienia (bezpiecznie, bez ruszania pozycji).
-    if (realizacjaSelectAll.value && selectedRealizacjaZamowienie.value) {
-        try {
-            const res = await axios.post(
-                `${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/przelicz_status/`
-            );
-            realizacjaConfirmModalVisible.value = false;
-            realizacjaResult.value = {
-                success: res.data.success,
-                message: res.data.message,
-                egzemplarze: []
-            };
-            realizacjaResultModalVisible.value = true;
-            if (res.data.changed) await fetchInitialData();
-            return;
-        } catch (error) {
-            realizacjaError.value = error.response?.data?.error || 'Błąd przeliczania statusu';
-            return;
-        }
-    }
-    realizacjaConfirmModalVisible.value = false;
-};
-
-const onOdpiszToggle = (poz) => {
-    // Odpisanie i przyjęcie wykluczają się — przy odpisaniu zeruj ilość do przyjęcia
-    if (poz.odpisz) poz.ilosc_do_przyjecia = 0;
-};
-
-const toggleSelectAll = () => {
-    const val = realizacjaSelectAll.value;
-    realizacjaPozycje.value.forEach(poz => {
-        if (poz.ilosc_pozostala > 0) {
-            if (val) {
-                poz.odpisz = false;
-                poz.ilosc_do_przyjecia = poz.ilosc_pozostala;  // pełna realizacja
-            } else {
-                poz.ilosc_do_przyjecia = 0;
-            }
-        }
-    });
-};
-
-const confirmRealizuj = async () => {
-    realizacjaError.value = '';
-
-    const zaznaczone = realizacjaPozycje.value.filter(p => p.ilosc_do_przyjecia > 0 && !p.odpisz && p.ilosc_pozostala > 0);
-    const odpisane = realizacjaPozycje.value.filter(p => p.odpisz && p.ilosc_pozostala > 0);
-
-    if (zaznaczone.length === 0 && odpisane.length === 0) {
-        realizacjaError.value = 'Wpisz ilość do przyjęcia lub zaznacz pozycję do odpisania.';
-        return;
-    }
-
-    for (const poz of zaznaczone) {
-        if (poz.ilosc_do_przyjecia > poz.ilosc_pozostala) {
-            realizacjaError.value = `Ilość do przyjęcia nie może przekroczyć pozostałej (${poz.narzedzie_opis}).`;
-            return;
-        }
-    }
-
-    isRealizujLoading.value = true;
-
-    try {
-        const pozycje_dane = zaznaczone.map(poz => ({
-            pozycja_zamowienia_id: poz.pozycja_zamowienia_id,
-            ilosc_przyjeta: poz.ilosc_do_przyjecia,
-        }));
-        const pozycje_do_odpisania = odpisane.map(p => p.pozycja_zamowienia_id);
-
-        const response = await axios.post(
-            `${API_URL}/zamowienia/${selectedRealizacjaZamowienie.value.id}/realizuj/`,
-            { pozycje: pozycje_dane, pozycje_do_odpisania }
-        );
-
-        if (response.data.success) {
-            realizacjaConfirmModalVisible.value = false;
-            realizacjaResult.value = {
-                success: true,
-                message: response.data.message,
-                egzemplarze: response.data.utworzone_egzemplarze || [],
-            };
-            realizacjaResultModalVisible.value = true;
-            await fetchInitialData();
-        }
-    } catch (error) {
-        realizacjaError.value = error.response?.data?.error || 'Wystąpił błąd podczas realizacji.';
-    } finally {
-        isRealizujLoading.value = false;
-    }
 };
 
 const fetchZamowienia = async () => {
@@ -1260,12 +870,6 @@ onMounted(() => fetchInitialData());
     color: #ffda6a;
 }
 
-.order-details .details-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-}
-
 .about-content { text-align: center; }
 .about-header { margin-bottom: 24px; }
 .about-logo { width: 80px; height: 80px; }
@@ -1275,47 +879,7 @@ onMounted(() => fetchInitialData());
 .mt-3 { margin-top: 16px; }
 .mt-4 { margin-top: 24px; }
 
-.realizacja-modal-content { min-height: 200px; }
-
-.realizacja-info-bar {
-    display: flex;
-    gap: 24px;
-    align-items: center;
-    padding: 10px 16px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 6px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.realizacja-toolbar {
-    margin-bottom: 12px;
-    padding: 8px 0;
-}
-
-.select-all-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-.loading-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px;
-    color: var(--dark-text-muted);
-}
-
-.text-green { color: #69db7c; font-weight: 600; }
-.text-orange { color: #ffa94d; font-weight: 600; }
 .text-muted { color: #868e96; }
-.unit-label { font-size: 0.8em; color: #868e96; margin-left: 4px; }
-
-:deep(.qty-input) { width: 70px !important; text-align: center; }
 
 /* --- Zamówienia zalegające ("do domknięcia", ponad 30 dni) ---------------- */
 /* Bursztyn, nie czerwień — to sygnał "zrób z tym porządek", nie błąd krytyczny.
