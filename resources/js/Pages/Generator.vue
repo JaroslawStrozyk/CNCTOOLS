@@ -6,7 +6,7 @@
                 <button class="btn btn-success" @click="zamowienieGotowe" style="margin-right: 50px;">
                     <i class="pi pi-check"></i> Zamówienie gotowe
                 </button>
-                <a :href="urls.zamowienia" class="btn btn-danger">
+                <a :href="urls.zamowienia" class="btn btn-danger" @click.prevent="wyjscie">
                     <i class="pi pi-sign-out"></i> Wyjście
                 </a>
             </div>
@@ -29,7 +29,9 @@
                         <h5>Wszystkie narzędzia są na odpowiednim poziomie - Nie ma nic do zamówienia.</h5>
                     </div>
                     <DataTable v-else :value="toolsToOrder" :scrollable="true" scrollHeight="flex"
-                               v-model:selection="selectedTools" dataKey="id">
+                               v-model:selection="selectedTools" dataKey="id"
+                               v-model:sortField="stanTabeli.sortField" v-model:sortOrder="stanTabeli.sortOrder"
+                               v-model:filters="stanTabeli.filters">
                         <Column selectionMode="multiple" headerStyle="width: 3rem" :exportable="false" />
                         <Column field="dostawca_nazwa" header="Dostawca">
                             <template #body="{ data }">{{ data.dostawca_nazwa || '-' }}</template>
@@ -327,6 +329,37 @@ const API_URL = '/api';
 const props = defineProps({
     urls: { type: Object, default: () => ({ zamowienia: '/zamowienia-inertia/' }) }
 });
+
+// --- Pamięć sesji generatora ---
+// Lista pozostawionych pozycji żyje w sesji Django (backend). Każde wejście na stronę
+// poza F5 rozpoczyna nową sesję (GET ?nowa_sesja=1), kończy ją 'Wyjście' lub 'Zamówienie gotowe'.
+// Stan tabeli (sortowanie/filtry) trzymamy w sessionStorage, żeby przetrwał F5 — dziś kolumny
+// nie są sortowalne; wystarczy dodać `sortable`/filtry w Column, wiązania już są.
+const czyPrzeladowanie = () => performance.getEntriesByType('navigation')[0]?.type === 'reload';
+
+const STAN_TABELI_KLUCZ = 'generator-stan-tabeli';
+const domyslnyStanTabeli = () => ({ sortField: null, sortOrder: null, filters: null });
+const wczytajStanTabeli = () => {
+    try {
+        const zapis = sessionStorage.getItem(STAN_TABELI_KLUCZ);
+        return zapis ? { ...domyslnyStanTabeli(), ...JSON.parse(zapis) } : domyslnyStanTabeli();
+    } catch { return domyslnyStanTabeli(); }
+};
+const stanTabeli = ref(wczytajStanTabeli());
+watch(stanTabeli, (stan) => {
+    try { sessionStorage.setItem(STAN_TABELI_KLUCZ, JSON.stringify(stan)); } catch { /* brak storage — stan tylko w pamięci */ }
+}, { deep: true });
+const wyczyscStanTabeli = () => {
+    stanTabeli.value = domyslnyStanTabeli();
+    try { sessionStorage.removeItem(STAN_TABELI_KLUCZ); } catch { /* j.w. */ }
+};
+
+const wyjscie = async () => {
+    wyczyscStanTabeli();
+    // Best-effort: nawet gdy reset się nie uda, kolejne wejście i tak zaczyna nową sesję
+    try { await axios.post(`${API_URL}/generator-zamowien/reset/`); } catch { /* ignoruj */ }
+    window.location.href = props.urls.zamowienia;
+};
 
 const toolsToOrder = ref([]);
 const nieprzypisanePozycje = ref([]);
@@ -634,15 +667,15 @@ const zamowienieGotowe = () => { if (toolsToOrder.value.length === 0) { alert('B
 
 const confirmZamowienieGotowe = async () => {
     isGenerating.value = true;
-    try { const response = await axios.post(`${API_URL}/generator-zamowien/gotowe/`); if (response.data.success) { confirmOrderModalVisible.value = false; window.location.href = props.urls.zamowienia; } }
+    try { const response = await axios.post(`${API_URL}/generator-zamowien/gotowe/`); if (response.data.success) { confirmOrderModalVisible.value = false; wyczyscStanTabeli(); window.location.href = props.urls.zamowienia; } }
     catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isGenerating.value = false; }
 };
 
-const fetchToolsToOrder = async () => {
+const fetchToolsToOrder = async ({ nowaSesja = false } = {}) => {
     isLoading.value = true;
     try {
-        const res = await axios.get(`${API_URL}/generator-zamowien/`);
+        const res = await axios.get(`${API_URL}/generator-zamowien/`, { params: nowaSesja ? { nowa_sesja: 1 } : {} });
         toolsToOrder.value = res.data.pozycje || [];
         nieprzypisanePozycje.value = res.data.nieprzypisane || [];
     }
@@ -655,7 +688,10 @@ onMounted(async () => {
     dostawcy.value = dosRes.data;
     kategorie.value = katRes.data;
     narzedzia.value = narRes.data.results || narRes.data;
-    await fetchToolsToOrder();
+    // Wejście na stronę (nie F5) = nowa sesja: pełna lista wejściowa, czysty stan tabeli
+    const nowaSesja = !czyPrzeladowanie();
+    if (nowaSesja) wyczyscStanTabeli();
+    await fetchToolsToOrder({ nowaSesja });
 });
 </script>
 

@@ -229,6 +229,51 @@ from rest_framework.response import Response
 from django.db.models import Count, Q
 
 
+# --- Pamięć sesji generatora ---
+# Zbiór narzędzi POZOSTAWIONYCH przez użytkownika na liście (whitelist, nie lista usuniętych).
+# Start: GET z ?nowa_sesja=1 (front wysyła go przy każdym wejściu na stronę poza F5) —
+# zapamiętuje pełną wygenerowaną listę. Usuwanie zdejmuje z pamięci, ręczne dodanie
+# i przypisanie narzędzia dopisują. Kolejne GET pokazują tylko pozycje z pamięci, więc
+# pozycje odtworzone przez generator po usunięciu (albo przybyłe w trakcie pracy) nie
+# wracają na listę ani do zamówienia — pojawią się przy następnym wejściu.
+# Koniec: 'Zamówienie gotowe' albo wyjście (reset). Brak klucza w sesji = brak filtra
+# (dotychczasowe zachowanie).
+GENERATOR_SESJA_KLUCZ = 'generator_pozostawione'
+
+
+def _pamiec_generatora(request):
+    """Zwraca zbiór id narzędzi pozostawionych w generatorze albo None (pamięć nieaktywna)."""
+    ids = request.session.get(GENERATOR_SESJA_KLUCZ)
+    return set(ids) if ids is not None else None
+
+
+def _zapisz_pamiec_generatora(request, ids):
+    request.session[GENERATOR_SESJA_KLUCZ] = sorted(ids)
+
+
+def _dopisz_do_pamieci_generatora(request, narzedzie_ids):
+    pamiec = _pamiec_generatora(request)
+    if pamiec is not None:
+        _zapisz_pamiec_generatora(request, pamiec | set(narzedzie_ids))
+
+
+def _usun_z_pamieci_generatora(request, narzedzie_ids):
+    pamiec = _pamiec_generatora(request)
+    if pamiec is not None:
+        _zapisz_pamiec_generatora(request, pamiec - set(narzedzie_ids))
+
+
+def _wyczysc_pamiec_generatora(request):
+    request.session.pop(GENERATOR_SESJA_KLUCZ, None)
+
+
+@api_view(['POST'])
+def generator_zamowien_reset_api(request):
+    """Kończy sesję generatora (wyjście z okna) — czyści pamięć pozostawionych pozycji."""
+    _wyczysc_pamiec_generatora(request)
+    return Response({'success': True})
+
+
 @api_view(['GET'])
 def generator_zamowien_api(request):
     """
@@ -583,6 +628,15 @@ def generator_zamowien_api(request):
     # Sortowanie
     wynik.sort(key=lambda x: (x['kategoria'].lower(), x['podkategoria'].lower(), x['opis'].lower()))
 
+    # Pamięć sesji generatora: wejście na stronę zapamiętuje pełną listę,
+    # każdy kolejny GET pokazuje tylko pozycje pozostawione przez użytkownika.
+    if request.query_params.get('nowa_sesja') == '1':
+        _zapisz_pamiec_generatora(request, {p['id'] for p in wynik})
+    else:
+        pamiec = _pamiec_generatora(request)
+        if pamiec is not None:
+            wynik = [p for p in wynik if p['id'] in pamiec]
+
     # Pozycje zapotrzebowań BEZ powiązanego narzędzia (do ręcznego przetworzenia).
     # Status 'ordered' też akceptujemy — zaszłości po starym bugu, w którym zapotrzebowanie
     # było przedwcześnie oznaczane jako 'ordered' mimo nieprzypisanych pozycji.
@@ -734,6 +788,7 @@ def generator_zamowien_delete_api(request, narzedzie_id):
     with transaction.atomic():
         zapotrzebowania_do_cofniecia = _usun_pozycje_generatora(narzedzie)
         _cofnij_status_zapotrzebowan(zapotrzebowania_do_cofniecia)
+    _usun_z_pamieci_generatora(request, [narzedzie.id])
 
     user_name = get_user_display_name(request.user)
     app_logger.warning(user_name, f"Usunięto z generatora zamówień: {narzedzie.opis}")
@@ -762,6 +817,7 @@ def generator_zamowien_bulk_delete_api(request):
         for narzedzie in narzedzia:
             zapotrzebowania_do_cofniecia |= _usun_pozycje_generatora(narzedzie)
         _cofnij_status_zapotrzebowan(zapotrzebowania_do_cofniecia)
+    _usun_z_pamieci_generatora(request, [n.id for n in narzedzia])
 
     user_name = get_user_display_name(request.user)
     app_logger.warning(
@@ -802,6 +858,8 @@ def generator_zamowien_przypisz_pozycje_api(request, pozycja_id):
     pozycja.narzedzie_typ = narzedzie
     pozycja.w_zamowieniu = False  # żeby generator podjął ją przy najbliższym odświeżeniu
     pozycja.save(update_fields=['narzedzie_typ', 'w_zamowieniu'])
+    # Świadoma decyzja użytkownika — pozycja ma się pojawić mimo pamięci sesji
+    _dopisz_do_pamieci_generatora(request, [narzedzie.id])
 
     user_name = get_user_display_name(request.user)
     app_logger.success(
@@ -939,6 +997,7 @@ def generator_zamowien_add_api(request):
                     zrodlo='reczne',
                     utworzone_narzedzie=True,
                 )
+            _dopisz_do_pamieci_generatora(request, [narzedzie.id])
         except Exception as e:
             return Response({'error': f'Błąd tworzenia narzędzia: {e}'}, status=400)
 
@@ -965,16 +1024,30 @@ def generator_zamowien_add_api(request):
     except NarzedzieMagazynowe.DoesNotExist:
         return Response({'error': 'Narzędzie nie istnieje'}, status=404)
 
-    if PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie).exists():
+    istniejaca = PozycjaGeneratora.objects.filter(narzedzie_typ=narzedzie).first()
+    pamiec = _pamiec_generatora(request)
+    if istniejaca and (pamiec is None or narzedzie.id in pamiec):
         return Response({'error': 'To narzędzie jest już w generatorze'}, status=400)
 
-    PozycjaGeneratora.objects.create(
-        narzedzie_typ=narzedzie,
-        dostawca=dostawca,
-        ilosc_do_zamowienia=ilosc,
-        cena_jednostkowa=cena,
-        zrodlo='reczne'
-    )
+    if istniejaca:
+        # Pozycja ukryta przez pamięć sesji (usunięta z listy i odtworzona przez generator
+        # albo przybyła w trakcie pracy) — ręczne dodanie przywraca ją z danymi użytkownika.
+        # Źródło 'zapotrzebowanie' zostaje, żeby nie zgubić powiązania z ZAM-xxxx.
+        istniejaca.dostawca = dostawca
+        istniejaca.ilosc_do_zamowienia = ilosc
+        istniejaca.cena_jednostkowa = cena
+        if istniejaca.zrodlo == 'auto':
+            istniejaca.zrodlo = 'reczne'
+        istniejaca.save(update_fields=['dostawca', 'ilosc_do_zamowienia', 'cena_jednostkowa', 'zrodlo'])
+    else:
+        PozycjaGeneratora.objects.create(
+            narzedzie_typ=narzedzie,
+            dostawca=dostawca,
+            ilosc_do_zamowienia=ilosc,
+            cena_jednostkowa=cena,
+            zrodlo='reczne'
+        )
+    _dopisz_do_pamieci_generatora(request, [narzedzie.id])
 
     user_name = get_user_display_name(request.user)
     app_logger.success(user_name, f"Dodano do generatora zamówień: {narzedzie.opis} ({ilosc} szt.)")
@@ -1003,6 +1076,13 @@ def generator_zamowien_gotowe_api(request):
                 'narzedzie_typ__podkategoria__kategoria',
                 'dostawca'
             ).all()
+
+            # Pamięć sesji: zamawiamy WYŁĄCZNIE pozycje pozostawione przez użytkownika.
+            # Pozycje ukryte (usunięte z listy, przybyłe w trakcie pracy) zostają
+            # w generatorze i pojawią się przy następnym wejściu.
+            pamiec = _pamiec_generatora(request)
+            if pamiec is not None:
+                pozycje_generatora = pozycje_generatora.filter(narzedzie_typ_id__in=pamiec)
 
             if not pozycje_generatora.exists():
                 return Response({'error': 'Brak pozycji w generatorze'}, status=400)
@@ -1140,13 +1220,14 @@ def generator_zamowien_gotowe_api(request):
             # w generatorze, żeby user mógł uzupełnić dostawcę lub skasować je ręcznie.
             # Pozycje z ilosc=0 również zostają (user widzi i może edytować/usunąć).
             pominiete_count = len(grouped.get(None, []))
-            narzedzia_do_zachowania = [
+            narzedzia_zamowione = [
                 p.narzedzie_typ_id for p in pozycje_generatora
-                if p.ilosc_do_zamowienia <= 0 or p.dostawca is None
+                if p.ilosc_do_zamowienia > 0 and p.dostawca is not None
             ]
-            PozycjaGeneratora.objects.exclude(
-                narzedzie_typ_id__in=narzedzia_do_zachowania
+            PozycjaGeneratora.objects.filter(
+                narzedzie_typ_id__in=narzedzia_zamowione
             ).delete()
+            _wyczysc_pamiec_generatora(request)
 
             # Logowanie
             user_name = get_user_display_name(request.user)

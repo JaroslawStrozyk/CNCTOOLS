@@ -1071,6 +1071,94 @@ class GeneratorZamowienTestCase(APITestCase):
         self.assertEqual(zap.status, 'ordered')
 
 
+class GeneratorPamiecSesjiTestCase(APITestCase):
+    """
+    Pamięć sesji generatora: po wejściu (GET ?nowa_sesja=1) lista = pozycje POZOSTAWIONE
+    przez użytkownika. Usunięte nie wracają po edycji/dodaniu/odświeżeniu, przybyłe
+    w trakcie pracy są ukryte, 'Zamówienie gotowe' zamawia tylko pozostawione.
+    """
+
+    URL = '/api/generator-zamowien/'
+
+    def setUp(self):
+        self.user = User.objects.create_user('logistyk', 'log@test.pl', 'haslo123')
+        self.client.force_authenticate(user=self.user)
+        patcher = mock.patch('TOOLS.views.get_sposob_liczenia_zamowien', return_value='standardowa')
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        kategoria = Kategoria.objects.create(nazwa="Frezy")
+        self.podkategoria = Podkategoria.objects.create(nazwa="VHM", kategoria=kategoria)
+        self.dostawca = Dostawca.objects.create(kod_dostawcy="TEST01", nazwa_firmy="Test Sp. z o.o.")
+        self.a = self._narzedzie("Frez A")
+        self.b = self._narzedzie("Frez B")
+        self.c = self._narzedzie("Frez C")
+
+    def _narzedzie(self, opis):
+        return NarzedzieMagazynowe.objects.create(
+            podkategoria=self.podkategoria, opis=opis, opakowanie="szt", ilosc_w_opakowaniu=1,
+            stan_minimalny=5, stan_maksymalny=20, ostatni_dostawca=self.dostawca,
+        )
+
+    def _ids(self, response):
+        return {p['id'] for p in response.data['pozycje']}
+
+    def _wejscie_i_usun_b(self):
+        self.assertEqual(self._ids(self.client.get(self.URL, {'nowa_sesja': 1})), {self.a.id, self.b.id, self.c.id})
+        self.client.post(f'{self.URL}bulk-delete/', {'narzedzie_ids': [self.b.id]}, format='json')
+
+    def test_usunieta_nie_wraca_po_odswiezeniu(self):
+        self._wejscie_i_usun_b()
+        response = self.client.get(self.URL)
+        self.assertEqual(self._ids(response), {self.a.id, self.c.id})
+        # Generator odtworzył pozycję w bazie, ale jest ukryta
+        self.assertTrue(PozycjaGeneratora.objects.filter(narzedzie_typ=self.b).exists())
+
+    def test_pozycja_przybyla_w_trakcie_jest_ukryta(self):
+        self.client.get(self.URL, {'nowa_sesja': 1})
+        d = self._narzedzie("Frez D")
+        self.assertNotIn(d.id, self._ids(self.client.get(self.URL)))
+        # Kolejne wejście ją pokazuje
+        self.assertIn(d.id, self._ids(self.client.get(self.URL, {'nowa_sesja': 1})))
+
+    def test_reczne_dodanie_usunietej_przywraca_ja(self):
+        self._wejscie_i_usun_b()
+        self.client.get(self.URL)  # odtworzenie ukrytej pozycji w bazie
+        response = self.client.post(f'{self.URL}add/', {
+            'tryb': 'istniejace', 'narzedzie_id': self.b.id, 'dostawca_id': self.dostawca.id,
+            'ilosc_do_zamowienia': 3, 'cena_jednostkowa': 10,
+        }, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        pozycje = {p['id']: p for p in self.client.get(self.URL).data['pozycje']}
+        self.assertIn(self.b.id, pozycje)
+        self.assertEqual(pozycje[self.b.id]['ilosc_do_zamowienia'], 3)
+        self.assertEqual(pozycje[self.b.id]['zrodlo'], 'reczne')
+
+    def test_reczne_dodanie_widocznej_nadal_blokowane(self):
+        self.client.get(self.URL, {'nowa_sesja': 1})
+        response = self.client.post(f'{self.URL}add/', {
+            'tryb': 'istniejace', 'narzedzie_id': self.a.id, 'dostawca_id': self.dostawca.id,
+            'ilosc_do_zamowienia': 3, 'cena_jednostkowa': 10,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_gotowe_zamawia_tylko_pozostawione(self):
+        self._wejscie_i_usun_b()
+        self.client.get(self.URL)  # b odtworzone w bazie (ukryte)
+        response = self.client.post(f'{self.URL}gotowe/')
+        self.assertEqual(response.status_code, 200, response.data)
+        zamowione = set(PozycjaZamowienia.objects.values_list('narzedzie_typ_id', flat=True))
+        self.assertEqual(zamowione, {self.a.id, self.c.id})
+        # Ukryta pozycja nie przepada — zostaje na następne wejście
+        self.assertTrue(PozycjaGeneratora.objects.filter(narzedzie_typ=self.b).exists())
+        self.assertIsNone(self.client.session.get('generator_pozostawione'))
+
+    def test_reset_konczy_sesje(self):
+        self._wejscie_i_usun_b()
+        self.client.post(f'{self.URL}reset/')
+        self.assertEqual(self._ids(self.client.get(self.URL)), {self.a.id, self.b.id, self.c.id})
+
+
 class GeneratorWedlugNowychTestCase(APITestCase):
     """
     Testy trybu 'według nowych elementów' (Ustawienia → Inne → Sposób liczenia zamówień).
