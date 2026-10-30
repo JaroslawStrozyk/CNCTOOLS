@@ -1,6 +1,6 @@
 // CNC Tools - Service Worker for PWA
 // CACHE_NAME jest automatycznie aktualizowany przez lap_prod.py
-const CACHE_NAME = 'cnctools-1.18.0g';
+const CACHE_NAME = 'cnctools-1.18.1g';
 
 // Zasoby do cache'owania przy instalacji
 const STATIC_CACHE = [
@@ -60,6 +60,13 @@ self.addEventListener('fetch', (event) => {
 
     // API - zawsze siec, bez cache
     if (url.pathname.startsWith('/api/')) {
+        return;
+    }
+
+    // Inne moduły systemu CNC (wspólny origin) - nie obsługujemy ich requestów.
+    // Ekran logowania "/" to dziś strona Tools; po wejściu Portalu też trzeba go tu dopisać.
+    const INNE_MODULY = ['/portal/', '/handel/', '/spedycja/'];
+    if (INNE_MODULY.some((prefix) => url.pathname.startsWith(prefix))) {
         return;
     }
 
