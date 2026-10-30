@@ -326,6 +326,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, shallowRef, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
@@ -624,7 +625,7 @@ const confirmReturnTool = async () => {
         const iloscSztuk = returnData.value.iloscSztuk;
         const maxSztuk = usage.egzemplarz.ilosc_w_komplecie - 1;
         if (!Number.isInteger(iloscSztuk) || iloscSztuk < 1 || iloscSztuk > maxSztuk) {
-            alert(`Ilość sztuk musi być liczbą od 1 do ${maxSztuk}.`);
+            ostrzezenie(`Ilość sztuk musi być liczbą od 1 do ${maxSztuk}.`);
             return;
         }
     }
@@ -746,7 +747,7 @@ const wykonajZwrot = async (kartaData = null) => {
         await fetchUsages();
     } catch (error) {
         console.error("Błąd zwracania narzędzia:", error.response?.data || error.message);
-        alert(error.response?.data?.error || "Wystąpił błąd podczas zwracania narzędzia.");
+        blad(error.response?.data?.error || "Wystąpił błąd podczas zwracania narzędzia.");
     }
 };
 

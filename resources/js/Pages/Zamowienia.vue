@@ -348,6 +348,7 @@
 </template>
 
 <script setup>
+import { blad } from '../komunikaty.js';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
@@ -686,7 +687,7 @@ const cofnijDoRoboczej = async (zamowienie) => {
         await axios.post(`${API_URL}/zamowienia/cofnij-do-roboczej/`, { zamowienie_id: zamowienie.id });
         await fetchInitialData();
     } catch (error) {
-        alert('Błąd: ' + (error.response?.data?.error || error.message));
+        blad('Błąd: ' + (error.response?.data?.error || error.message));
     }
 };
 
@@ -757,7 +758,7 @@ const confirmCofnijDoZatwierdzone = async () => {
         selectedCofnijZamowienie.value = null;
         await fetchInitialData();
     } catch (error) {
-        alert('Błąd: ' + (error.response?.data?.error || error.message));
+        blad('Błąd: ' + (error.response?.data?.error || error.message));
     } finally {
         isCofajacDoZatwierdzone.value = false;
     }

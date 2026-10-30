@@ -392,6 +392,7 @@
 </template>
 
 <script setup>
+import { blad, potwierdz } from '../komunikaty.js';
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import { etykietaStatusuZamowienia, severityStatusuZamowienia, klasaStatusuZamowienia } from '../statusy';
@@ -731,13 +732,13 @@ const zapiszOferte = async () => {
 };
 
 const usunPozycjeOferty = async (wiersz) => {
-    if (!confirm(`Usunąć wpis „${wiersz.numer}” (${wiersz.dostawca?.nazwa_firmy || '-'}) z historii? Cena wróci do poprzedniego wpisu.`)) return;
+    if (!await potwierdz(`Usunąć wpis „${wiersz.numer}” (${wiersz.dostawca?.nazwa_firmy || '-'}) z historii? Cena wróci do poprzedniego wpisu.`)) return;
     try {
         await axios.delete(`${API_URL}/oferty/pozycje/${wiersz._pozycjaOfertyId}/`);
         await fetchInitialData();
         if (selectedTool.value) await getToolOrders(selectedTool.value);
     } catch (error) {
-        alert('Błąd usuwania: ' + (error.response?.data?.error || error.message));
+        blad('Błąd usuwania: ' + (error.response?.data?.error || error.message));
     }
 };
 
@@ -867,7 +868,7 @@ const saveTool = async () => {
         await fetchInitialData();
     } catch (error) {
         console.error("Błąd zapisu:", error.response?.data || error.message);
-        alert('Wystąpił błąd podczas zapisu narzędzia: ' + JSON.stringify(error.response?.data || error.message));
+        blad('Wystąpił błąd podczas zapisu narzędzia: ' + JSON.stringify(error.response?.data || error.message));
     }
 };
 

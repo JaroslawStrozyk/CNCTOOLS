@@ -321,6 +321,7 @@
 </template>
 
 <script setup>
+import { blad } from '../komunikaty.js';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import DataTable from 'primevue/datatable';
@@ -505,7 +506,7 @@ const confirmRealizuj = async () => {
     await fetchZapotrzebowania();
   } catch (error) {
     console.error("Błąd zatwierdzania:", error.response?.data || error.message);
-    alert('Nie udało się zatwierdzić zapotrzebowania: ' + (error.response?.data?.error || error.message));
+    blad('Nie udało się zatwierdzić zapotrzebowania: ' + (error.response?.data?.error || error.message));
   } finally {
     realizowanieId.value = null;
   }
@@ -519,7 +520,7 @@ const cofnijZapotrzebowanie = async (zap) => {
     await fetchZapotrzebowania();
   } catch (error) {
     console.error("Błąd cofania:", error.response?.data || error.message);
-    alert('Nie udało się cofnąć zatwierdzenia: ' + (error.response?.data?.error || error.message));
+    blad('Nie udało się cofnąć zatwierdzenia: ' + (error.response?.data?.error || error.message));
   } finally {
     cofanieId.value = null;
   }
@@ -539,7 +540,7 @@ const confirmDeleteZap = async () => {
     await fetchZapotrzebowania();
   } catch (error) {
     console.error("Błąd usuwania zapotrzebowania:", error.response?.data || error.message);
-    alert('Nie udało się usunąć zapotrzebowania: ' + (error.response?.data?.error || error.message));
+    blad('Nie udało się usunąć zapotrzebowania: ' + (error.response?.data?.error || error.message));
   } finally {
     isDeletingZap.value = false;
   }
@@ -625,7 +626,7 @@ const saveEditPozycja = async () => {
     await fetchZapotrzebowania();
   } catch (error) {
     console.error("Błąd zapisu pozycji:", error.response?.data || error.message);
-    alert('Nie udało się zapisać zmian.');
+    blad('Nie udało się zapisać zmian.');
   } finally {
     isSaving.value = false;
   }
@@ -646,7 +647,7 @@ const confirmDeletePoz = async () => {
     await fetchZapotrzebowania();
   } catch (error) {
     console.error("Błąd usuwania pozycji:", error.response?.data || error.message);
-    alert('Nie udało się usunąć pozycji.');
+    blad('Nie udało się usunąć pozycji.');
   } finally {
     isDeletingPoz.value = false;
   }

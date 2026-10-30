@@ -598,6 +598,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import defaultToolImage from '@images/cnc.png';
@@ -897,11 +898,11 @@ const closeKartaModal = () => {
 
 const saveKartaForm = async () => {
     if (!koszyk.value) {
-        alert('Błąd: Brak aktywnego koszyka');
+        ostrzezenie('Błąd: Brak aktywnego koszyka');
         return;
     }
     if (nrZleceniaError.value) {
-        alert(nrZleceniaError.value);
+        ostrzezenie(nrZleceniaError.value);
         return;
     }
 
@@ -942,7 +943,7 @@ const saveKartaForm = async () => {
         resetKartaForm();
     } catch (error) {
         console.error('Błąd zapisywania pozycji:', error.response?.data || error.message);
-        alert('Błąd podczas zapisywania pozycji');
+        blad('Błąd podczas zapisywania pozycji');
     }
 };
 
@@ -983,7 +984,7 @@ const confirmDelete = async () => {
         await fetchKoszyk();
     } catch (error) {
         console.error('Błąd usuwania pozycji:', error.response?.data || error.message);
-        alert('Błąd podczas usuwania pozycji');
+        blad('Błąd podczas usuwania pozycji');
     } finally {
         confirmDeleteVisible.value = false;
         pozycjaToDelete.value = null;
@@ -1012,7 +1013,7 @@ const openPdfPreview = async () => {
         pdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania PDF:', error.response?.data || error.message);
-        alert('Błąd podczas generowania PDF');
+        blad('Błąd podczas generowania PDF');
     }
 };
 
@@ -1070,7 +1071,7 @@ const confirmSend = async () => {
         console.error('Błąd wysyłania:', error.response?.data || error.message);
         confirmSendVisible.value = false;
         // Wyświetl błąd w formie alertu (tymczasowo)
-        alert(error.response?.data?.error || 'Błąd podczas wysyłania zapotrzebowania');
+        blad(error.response?.data?.error || 'Błąd podczas wysyłania zapotrzebowania');
     } finally {
         isSending.value = false;
     }
@@ -1129,7 +1130,7 @@ const openHistoriaPdf = async (zamowienie) => {
         pdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania PDF:', error.response?.data || error.message);
-        alert('Błąd podczas generowania PDF');
+        blad('Błąd podczas generowania PDF');
     }
 };
 
@@ -1157,7 +1158,7 @@ const fetchInitialData = async () => {
         await fetchKoszyk();
     } catch (error) {
         console.error("Błąd ładowania danych początkowych:", error.response?.data || error.message);
-        alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
+        blad("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
     } finally {
         isLoadingTools.value = false;
     }

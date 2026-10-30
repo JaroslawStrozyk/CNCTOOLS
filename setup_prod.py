@@ -20,15 +20,21 @@ def ensure_virtualenv():
     project_root = os.path.dirname(script_dir)
     venv_python = os.path.join(project_root, "env", "bin", "python3")
 
+    # Brak virtualenv (pierwsze wdrożenie) - tworzymy go na miejscu.
+    # venv ma ścieżki bezwzględne, więc musi powstać w katalogu docelowym, nie być kopiowany.
     if not os.path.isfile(venv_python):
-        print(f"BLAD: Nie znaleziono virtualenv w {venv_python}")
-        print(f"Utworz virtualenv: python3 -m venv {os.path.join(project_root, 'env')}")
-        sys.exit(1)
+        venv_dir = os.path.join(project_root, "env")
+        print(f"Brak virtualenv - tworzę {venv_dir} ...")
+        wynik = subprocess.run([sys.executable, "-m", "venv", venv_dir])
+        if wynik.returncode != 0 or not os.path.isfile(venv_python):
+            print(f"BLAD: Nie udało się utworzyć virtualenv w {venv_dir}")
+            print("Sprawdź pakiet systemowy: sudo apt install python3-venv")
+            sys.exit(1)
+        print("Virtualenv utworzony - zależności zainstaluje krok pip install.")
 
-    current_python = os.path.realpath(sys.executable)
-    expected_python = os.path.realpath(venv_python)
-
-    if current_python != expected_python:
+    # Porównujemy sys.prefix, nie realpath interpretera - python w venv to dowiązanie
+    # do systemowego, więc realpath byłby identyczny i re-exec nigdy by nie nastąpił.
+    if os.path.realpath(sys.prefix) != os.path.realpath(os.path.join(project_root, "env")):
         os.execv(venv_python, [venv_python] + sys.argv)
 
 ensure_virtualenv()

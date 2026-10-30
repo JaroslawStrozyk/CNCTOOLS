@@ -311,6 +311,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, onMounted, watch } from 'vue';
 import axios from 'axios';
 
@@ -591,7 +592,7 @@ const confirmDelete = async () => {
         toolsToOrder.value = toolsToOrder.value.filter(t => t.id !== deleteItem.value.id);
         deleteModalVisible.value = false;
     }
-    catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
+    catch (error) { blad('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isDeleting.value = false; deleteItem.value = null; }
 };
 
@@ -609,7 +610,7 @@ const confirmBulkDelete = async () => {
         selectedTools.value = [];
         bulkDeleteModalVisible.value = false;
     }
-    catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
+    catch (error) { blad('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isBulkDeleting.value = false; }
 };
 
@@ -657,18 +658,18 @@ const confirmReject = async () => {
         rejectItem.value = null;
         await fetchToolsToOrder();
     } catch (error) {
-        alert('Błąd: ' + (error.response?.data?.error || error.message));
+        blad('Błąd: ' + (error.response?.data?.error || error.message));
     } finally {
         isRejecting.value = false;
     }
 };
 
-const zamowienieGotowe = () => { if (toolsToOrder.value.length === 0) { alert('Brak pozycji w generatorze!'); return; } confirmOrderModalVisible.value = true; };
+const zamowienieGotowe = () => { if (toolsToOrder.value.length === 0) { ostrzezenie('Brak pozycji w generatorze!'); return; } confirmOrderModalVisible.value = true; };
 
 const confirmZamowienieGotowe = async () => {
     isGenerating.value = true;
     try { const response = await axios.post(`${API_URL}/generator-zamowien/gotowe/`); if (response.data.success) { confirmOrderModalVisible.value = false; wyczyscStanTabeli(); window.location.href = props.urls.zamowienia; } }
-    catch (error) { alert('Błąd: ' + (error.response?.data?.error || error.message)); }
+    catch (error) { blad('Błąd: ' + (error.response?.data?.error || error.message)); }
     finally { isGenerating.value = false; }
 };
 
@@ -679,7 +680,7 @@ const fetchToolsToOrder = async ({ nowaSesja = false } = {}) => {
         toolsToOrder.value = res.data.pozycje || [];
         nieprzypisanePozycje.value = res.data.nieprzypisane || [];
     }
-    catch (error) { alert('Błąd ładowania danych.'); }
+    catch (error) { blad('Błąd ładowania danych.'); }
     finally { isLoading.value = false; }
 };
 

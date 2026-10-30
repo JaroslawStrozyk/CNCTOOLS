@@ -841,6 +841,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 axios.defaults.xsrfCookieName = 'csrftoken';
@@ -1073,7 +1074,7 @@ const confirmDeleteItem = async () => {
     } catch (error) {
         console.error(`Błąd usuwania:`, error);
         deleteModalVisible.value = false;
-        alert('Nie można usunąć elementu. Sprawdź, czy nie jest powiązany z innymi danymi.');
+        blad('Nie można usunąć elementu. Sprawdź, czy nie jest powiązany z innymi danymi.');
     }
 };
 
@@ -1084,7 +1085,7 @@ const openBulkAddModal = () => {
 
 const saveBulkItems = async () => {
     if (!bulkAddData.value.szafa || !bulkAddData.value.liczba_kolumn || !bulkAddData.value.liczba_polek) {
-        alert('Wszystkie pola są wymagane.');
+        ostrzezenie('Wszystkie pola są wymagane.');
         return;
     }
     try {
@@ -1093,7 +1094,7 @@ const saveBulkItems = async () => {
         await fetchAllData();
     } catch (error) {
         console.error('Błąd:', error.response?.data);
-        alert('Wystąpił błąd: ' + (error.response?.data?.error || 'Błąd serwera.'));
+        blad('Wystąpił błąd: ' + (error.response?.data?.error || 'Błąd serwera.'));
     }
 };
 
@@ -1387,7 +1388,7 @@ const downloadDocumentTemplate = async (type) => {
         window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Błąd pobierania wzoru:', error);
-        alert('Nie udało się pobrać wzoru dokumentu.');
+        blad('Nie udało się pobrać wzoru dokumentu.');
     }
 };
 
@@ -1411,7 +1412,7 @@ const printDocumentTemplate = async (type) => {
         };
     } catch (error) {
         console.error('Błąd drukowania wzoru:', error);
-        alert('Nie udało się wydrukować wzoru dokumentu.');
+        blad('Nie udało się wydrukować wzoru dokumentu.');
     }
 };
 
@@ -1434,7 +1435,7 @@ const downloadInwenturaPdf = async () => {
         window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Błąd pobierania inwentury PDF:', error);
-        alert('Nie udało się wygenerować dokumentu PDF inwentury.');
+        blad('Nie udało się wygenerować dokumentu PDF inwentury.');
     } finally {
         inwenturaLoading.value.pdf = false;
     }
@@ -1458,7 +1459,7 @@ const downloadInwenturaXls = async () => {
         window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error('Błąd pobierania inwentury XLS:', error);
-        alert('Nie udało się wygenerować pliku Excel inwentury.');
+        blad('Nie udało się wygenerować pliku Excel inwentury.');
     } finally {
         inwenturaLoading.value.xls = false;
     }
@@ -1623,7 +1624,7 @@ const deleteUserConfirmed = async () => {
         userToDelete.value = null;
         await fetchUsersAndGroups();
     } catch (error) {
-        alert('Błąd usunięcia: ' + (error.response?.data?.detail || error.message));
+        blad('Błąd usunięcia: ' + (error.response?.data?.detail || error.message));
     } finally {
         isDeletingUser.value = false;
     }

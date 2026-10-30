@@ -244,6 +244,7 @@
 </template>
 
 <script setup>
+import { blad } from '../komunikaty.js';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 
@@ -475,7 +476,7 @@ const openPdfBiezace = async () => {
         pdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania PDF:', error.response?.data || error.message);
-        alert('Błąd podczas generowania PDF');
+        blad('Błąd podczas generowania PDF');
     }
 };
 
@@ -501,7 +502,7 @@ const openPdfArchiwum = async () => {
         pdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania PDF:', error.response?.data || error.message);
-        alert('Błąd podczas generowania PDF');
+        blad('Błąd podczas generowania PDF');
     }
 };
 

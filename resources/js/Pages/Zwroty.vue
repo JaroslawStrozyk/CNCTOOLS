@@ -355,6 +355,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, onMounted } from 'vue';
 import axios from 'axios';
 import DataTable from 'primevue/datatable';
@@ -532,7 +533,7 @@ const saveEdit = async () => {
     await fetchDamages();
   } catch (error) {
     console.error('Błąd zapisu:', error);
-    alert('Nie udało się zapisać zmian.');
+    blad('Nie udało się zapisać zmian.');
   } finally {
     isSaving.value = false;
   }
@@ -553,7 +554,7 @@ const confirmDelete = async () => {
     await fetchDamages();
   } catch (error) {
     console.error('Błąd usuwania:', error);
-    alert('Nie udało się usunąć wpisu.');
+    blad('Nie udało się usunąć wpisu.');
   } finally {
     isDeleting.value = false;
   }
@@ -575,7 +576,7 @@ const openPdfPreview = async (damage) => {
     pdfPreviewVisible.value = true;
   } catch (error) {
     console.error('Błąd generowania PDF:', error);
-    alert('Błąd podczas generowania PDF');
+    blad('Błąd podczas generowania PDF');
   }
 };
 
@@ -626,7 +627,7 @@ const openPdfListPreview = async () => {
   const ids = filteredDamagesUszkodzone.value.map(d => d.id);
 
   if (ids.length === 0) {
-    alert('Brak elementów do wydruku.');
+    ostrzezenie('Brak elementów do wydruku.');
     return;
   }
 
@@ -645,7 +646,7 @@ const openPdfListPreview = async () => {
     pdfPreviewVisible.value = true;
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
-    alert('Błąd podczas generowania zbiorczego PDF');
+    blad('Błąd podczas generowania zbiorczego PDF');
   } finally {
     isGeneratingList.value = false;
   }
@@ -656,7 +657,7 @@ const openPdfListPreviewRegen = async () => {
   const ids = filteredDamagesRegeneracja.value.map(d => d.id);
 
   if (ids.length === 0) {
-    alert('Brak elementów do wydruku.');
+    ostrzezenie('Brak elementów do wydruku.');
     return;
   }
 
@@ -675,7 +676,7 @@ const openPdfListPreviewRegen = async () => {
     pdfPreviewVisible.value = true;
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
-    alert('Błąd podczas generowania zbiorczego PDF');
+    blad('Błąd podczas generowania zbiorczego PDF');
   } finally {
     isGeneratingList.value = false;
   }
@@ -686,7 +687,7 @@ const openPdfListPreviewJedn = async () => {
   const ids = filteredDamagesJednorazowe.value.map(d => d.id);
 
   if (ids.length === 0) {
-    alert('Brak elementów do wydruku.');
+    ostrzezenie('Brak elementów do wydruku.');
     return;
   }
 
@@ -705,7 +706,7 @@ const openPdfListPreviewJedn = async () => {
     pdfPreviewVisible.value = true;
   } catch (error) {
     console.error('Błąd generowania zbiorczego PDF:', error);
-    alert('Błąd podczas generowania zbiorczego PDF');
+    blad('Błąd podczas generowania zbiorczego PDF');
   } finally {
     isGeneratingList.value = false;
   }

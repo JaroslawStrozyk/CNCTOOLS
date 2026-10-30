@@ -220,6 +220,7 @@
 </template>
 
 <script setup>
+import { blad } from '../komunikaty.js';
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import Button from 'primevue/button';
@@ -300,7 +301,7 @@ const fetchDostawcy = async () => {
     dostawcy.value = response.data;
   } catch (error) {
     console.error("Błąd podczas pobierania dostawców:", error);
-    alert("Nie udało się pobrać listy dostawców.");
+    blad("Nie udało się pobrać listy dostawców.");
   }
 };
 
@@ -316,7 +317,7 @@ const fetchFaktury = async (url = baseUrl, page = 1) => {
     updatePagination(response.data, page);
   } catch (error) {
     console.error("Błąd podczas pobierania faktur:", error);
-    alert("Nie udało się pobrać listy faktur.");
+    blad("Nie udało się pobrać listy faktur.");
   } finally {
     isLoading.value = false;
   }
@@ -452,7 +453,7 @@ const confirmDeleteItem = async () => {
   } catch (error) {
     console.error("Błąd usuwania faktury:", error);
     deleteModalVisible.value = false;
-    alert('Nie można usunąć faktury. Sprawdź, czy nie jest powiązana z egzemplarzami narzędzi.');
+    blad('Nie można usunąć faktury. Sprawdź, czy nie jest powiązana z egzemplarzami narzędzi.');
   }
 };
 

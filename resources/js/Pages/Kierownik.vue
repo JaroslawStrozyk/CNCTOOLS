@@ -807,6 +807,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
@@ -1107,7 +1108,7 @@ const openDmgPdfSingle = async (damage) => {
         dmgPdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania PDF:', error);
-        alert('Błąd podczas generowania PDF');
+        blad('Błąd podczas generowania PDF');
     }
 };
 
@@ -1119,7 +1120,7 @@ const openDmgPdfList = async (typ) => {
     }[typ] || [];
     const ids = items.map(d => d.id);
     if (ids.length === 0) {
-        alert('Brak elementów do wydruku.');
+        ostrzezenie('Brak elementów do wydruku.');
         return;
     }
     try {
@@ -1133,7 +1134,7 @@ const openDmgPdfList = async (typ) => {
         dmgPdfPreviewVisible.value = true;
     } catch (error) {
         console.error('Błąd generowania zbiorczego PDF:', error);
-        alert('Błąd podczas generowania zbiorczego PDF');
+        blad('Błąd podczas generowania zbiorczego PDF');
     }
 };
 

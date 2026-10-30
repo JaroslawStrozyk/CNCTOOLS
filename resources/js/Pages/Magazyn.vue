@@ -908,6 +908,7 @@
 </template>
 
 <script setup>
+import { blad, ostrzezenie } from '../komunikaty.js';
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import logoImage from '@images/cnc-logo.png';
@@ -1620,7 +1621,7 @@ const confirmReturnTool = async () => {
         const iloscSztuk = returnData.value.iloscSztuk;
         const maxSztuk = usage.egzemplarz.ilosc_w_komplecie - 1;
         if (!Number.isInteger(iloscSztuk) || iloscSztuk < 1 || iloscSztuk > maxSztuk) {
-            alert(`Ilość sztuk musi być liczbą od 1 do ${maxSztuk}.`);
+            ostrzezenie(`Ilość sztuk musi być liczbą od 1 do ${maxSztuk}.`);
             return;
         }
     }
@@ -1747,7 +1748,7 @@ const wykonajZwrot = async (kartaData = null) => {
         }
     } catch (error) {
         console.error("Błąd zwracania narzędzia:", error.response?.data || error.message);
-        alert(error.response?.data?.error || "Wystąpił błąd podczas zwracania narzędzia.");
+        blad(error.response?.data?.error || "Wystąpił błąd podczas zwracania narzędzia.");
     }
 };
 
@@ -2097,7 +2098,7 @@ const confirmDeleteInstance = async () => {
     } catch (error) {
         console.error("Błąd usuwania egzemplarza:", error.response?.data || error.message);
         deleteInstanceModalVisible.value = false;
-        alert(error.response?.data?.error || 'Nie można usunąć egzemplarza.');
+        blad(error.response?.data?.error || 'Nie można usunąć egzemplarza.');
     }
 };
 
@@ -2117,7 +2118,7 @@ const fetchInitialData = async () => {
     } catch (error) {
         console.error("Błąd ładowania danych głównych:", error.response?.data || error.message);
         isLoadingTools.value = false;
-        alert("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
+        blad("Wystąpił krytyczny błąd podczas ładowania danych aplikacji. Sprawdź konsolę przeglądarki.");
         return;
     }
 
