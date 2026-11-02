@@ -2,6 +2,11 @@
 
 **Środowisko docelowe:** Debian 11 / Apache2 / SSL
 **Adres serwera:** https://192.168.1.226
+**Katalog na serwerze:** `/opt/CNC/CNCTOOLS/CNCTOOLS` (env: `/opt/CNC/CNCTOOLS/env`)
+
+> ⚠ Do czasu przeniesienia serwera (`PRZENIESIENIE_SERWERA.md` w katalogu projektu na laptopie)
+> aplikacja działa z `/opt/CNCTOOLS/CNCTOOLS`. Przy podmianie zachowaj `pass_file.py`,
+> `app_settings.json` i `media/` — `rm -rf` z kroku 3 je usuwa.
 
 ---
 
@@ -26,7 +31,7 @@
 Po zakończeniu modyfikacji i testów (`./run.py`), wykonaj build produkcyjny:
 
 ```bash
-cd /opt/PROJEKTY/CNC-Tools/CNCTOOLS
+cd /opt/PROJEKTY/CNC/CNC-Tools/CNCTOOLS
 ./lap_prod.py
 ```
 
@@ -52,14 +57,14 @@ Cache:  cnctools-X.XX.Xg
 Skopiuj cały katalog CNCTOOLS na serwer:
 
 ```bash
-scp -r /opt/PROJEKTY/CNC-Tools/CNCTOOLS user@192.168.1.226:/tmp/
+scp -r /opt/PROJEKTY/CNC/CNC-Tools/CNCTOOLS user@192.168.1.226:/tmp/
 ```
 
 Lub przez rsync (szybsze przy aktualizacjach):
 
 ```bash
 rsync -avz --exclude='node_modules' --exclude='__pycache__' \
-    /opt/PROJEKTY/CNC-Tools/CNCTOOLS/ \
+    /opt/PROJEKTY/CNC/CNC-Tools/CNCTOOLS/ \
     user@192.168.1.226:/tmp/CNCTOOLS/
 ```
 
@@ -77,13 +82,13 @@ Podmień stary katalog na nowy:
 
 ```bash
 # Usuń starą wersję (zachowaj backup jeśli potrzebny)
-sudo rm -rf /sciezka/do/CNCTOOLS
+sudo rm -rf /opt/CNC/CNCTOOLS/CNCTOOLS
 
 # Skopiuj nową wersję
-sudo cp -r /tmp/CNCTOOLS /sciezka/do/
+sudo cp -r /tmp/CNCTOOLS /opt/CNC/CNCTOOLS/
 
 # Ustaw właściciela (dopasuj do konfiguracji Apache)
-sudo chown -R www-data:www-data /sciezka/do/CNCTOOLS
+sudo chown -R www-data:www-data /opt/CNC/CNCTOOLS/CNCTOOLS
 ```
 
 ---
@@ -91,7 +96,7 @@ sudo chown -R www-data:www-data /sciezka/do/CNCTOOLS
 ### Krok 4: Setup produkcyjny na SERWERZE
 
 ```bash
-cd /sciezka/do/CNCTOOLS
+cd /opt/CNC/CNCTOOLS/CNCTOOLS
 ./setup_prod.py
 ```
 
@@ -165,7 +170,7 @@ sudo tail -50 /var/log/apache2/error.log
 
 **Sprawdź logi Django:**
 ```bash
-cd /sciezka/do/CNCTOOLS
+cd /opt/CNC/CNCTOOLS/CNCTOOLS
 ./run_prod.py
 # Sprawdź output w terminalu
 ```
@@ -174,12 +179,12 @@ cd /sciezka/do/CNCTOOLS
 
 **Sprawdź czy collectstatic się wykonał:**
 ```bash
-ls -la /sciezka/do/CNCTOOLS/staticfiles/
+ls -la /opt/CNC/CNCTOOLS/CNCTOOLS/staticfiles/
 ```
 
 **Wykonaj ponownie:**
 ```bash
-cd /sciezka/do/CNCTOOLS
+cd /opt/CNC/CNCTOOLS/CNCTOOLS
 python manage.py collectstatic --noinput
 ```
 
@@ -195,16 +200,16 @@ python manage.py collectstatic --noinput
 
 ```bash
 # === LAPTOP ===
-cd /opt/PROJEKTY/CNC-Tools/CNCTOOLS
+cd /opt/PROJEKTY/CNC/CNC-Tools/CNCTOOLS
 ./lap_prod.py
-scp -r /opt/PROJEKTY/CNC-Tools/CNCTOOLS user@192.168.1.226:/tmp/
+scp -r /opt/PROJEKTY/CNC/CNC-Tools/CNCTOOLS user@192.168.1.226:/tmp/
 
 # === SERWER ===
 ssh user@192.168.1.226
-sudo rm -rf /sciezka/do/CNCTOOLS
-sudo cp -r /tmp/CNCTOOLS /sciezka/do/
-sudo chown -R www-data:www-data /sciezka/do/CNCTOOLS
-cd /sciezka/do/CNCTOOLS
+sudo rm -rf /opt/CNC/CNCTOOLS/CNCTOOLS
+sudo cp -r /tmp/CNCTOOLS /opt/CNC/CNCTOOLS/
+sudo chown -R www-data:www-data /opt/CNC/CNCTOOLS/CNCTOOLS
+cd /opt/CNC/CNCTOOLS/CNCTOOLS
 ./setup_prod.py
 sudo systemctl restart apache2
 
