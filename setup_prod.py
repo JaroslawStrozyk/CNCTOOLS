@@ -48,6 +48,8 @@ CYAN = '\033[0;36m'
 NC = '\033[0m'
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Paczka cnc_wspolne na serwerze (ARCHITEKTURA „Serwer”); nadpisanie: zmienna CNC_WSPOLNE_DIR
+CNC_WSPOLNE_DIR = os.environ.get('CNC_WSPOLNE_DIR', '/opt/CNC/CNCWSPOLNE/CNCWSPOLNE')
 
 
 def get_version_from_settings():
@@ -128,6 +130,18 @@ def main():
         f"{sys.executable} -m pip install -r requirements.txt --quiet",
         "Instalacja zaleznosci Python"
     )
+
+    # 3b. Paczka wspólna systemu CNC (token Portalu) — CNC-Wspolne/KONTRAKTY.md
+    if os.path.isfile(os.path.join(CNC_WSPOLNE_DIR, "pyproject.toml")):
+        if not run_command(
+            f"{sys.executable} -m pip install --quiet --upgrade {CNC_WSPOLNE_DIR}",
+            f"Instalacja cnc_wspolne z {CNC_WSPOLNE_DIR}"
+        ):
+            sys.exit(1)
+    else:
+        print(f"{RED}[!] BLAD: Brak paczki cnc_wspolne w {CNC_WSPOLNE_DIR}{NC}")
+        print(f"{YELLOW}    Skopiuj zawartosc CNC-Wspolne/cnc_wspolne (pyproject + pakiet) do tego katalogu{NC}")
+        sys.exit(1)
 
     # 4. Usuń stary katalog staticfiles
     staticfiles_dir = os.path.join(PROJECT_DIR, "staticfiles")

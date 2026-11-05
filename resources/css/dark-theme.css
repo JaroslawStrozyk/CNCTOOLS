@@ -431,7 +431,7 @@
 /* === PRZYCISKI W MODALACH === */
 
 /* Przycisk główny (niebieski) */
-.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.btn-modal-close) {
+.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.btn-modal-close):not(.p-datepicker-trigger) {
     background-color: #0d6efd !important;
     border-color: #0d6efd !important;
     color: #fff !important;
@@ -441,7 +441,7 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
 }
 
-.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.btn-modal-close):hover {
+.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.btn-modal-close):not(.p-datepicker-trigger):hover {
     background-color: #0b5ed7 !important;
     border-color: #0a58ca !important;
 }
@@ -1252,3 +1252,77 @@
     color: var(--dark-text-primary);
 }
 
+
+/* Kalendarz (PrimeVue Calendar) — stonowany, czcionka jak w formularzach */
+.p-calendar .p-datepicker-trigger {
+    background: #495057 !important;
+    border-color: #495057 !important;
+    color: #dee2e6 !important;
+}
+.p-calendar .p-datepicker-trigger:hover {
+    background: #5a6268 !important;
+    border-color: #5a6268 !important;
+}
+.p-calendar .p-datepicker-trigger .p-icon,
+.p-calendar .p-datepicker-trigger .p-button-icon {
+    width: 1rem !important;
+    height: 1rem !important;
+    flex-shrink: 0;
+}
+.p-datepicker {
+    font-size: 13px !important;
+    background: #2d3238 !important;
+    border: 1px solid #495057 !important;
+    color: #dee2e6 !important;
+    padding: 6px !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
+.p-datepicker .p-datepicker-header {
+    background: transparent !important;
+    border-bottom: 1px solid #495057 !important;
+    color: #dee2e6 !important;
+    padding: 4px 6px !important;
+}
+.p-datepicker .p-datepicker-title button {
+    font-size: 13px !important;
+    color: #dee2e6 !important;
+    padding: 2px 4px !important;
+}
+.p-datepicker table {
+    font-size: 13px !important;
+    margin: 4px 0 0 0 !important;
+}
+.p-datepicker table th {
+    color: #adb5bd !important;
+    font-weight: 500 !important;
+    padding: 4px !important;
+}
+.p-datepicker table td {
+    padding: 2px !important;
+}
+.p-datepicker table td > span {
+    width: 30px !important;
+    height: 30px !important;
+    color: #dee2e6;
+}
+.p-datepicker table td.p-datepicker-other-month > span {
+    color: #6c757d !important;
+}
+.p-datepicker table td > span:not(.p-highlight):not(.p-disabled):hover {
+    background: #3d444d !important;
+}
+.p-datepicker table td.p-datepicker-today > span {
+    background: transparent !important;
+    border: 1px solid #6c757d !important;
+    color: #dee2e6 !important;
+}
+.p-datepicker table td > span.p-highlight {
+    background: rgba(13, 110, 253, 0.35) !important;
+    color: #f8f9fa !important;
+}
+.p-datepicker .p-datepicker-prev,
+.p-datepicker .p-datepicker-next {
+    width: 28px !important;
+    height: 28px !important;
+    color: #adb5bd !important;
+}

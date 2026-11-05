@@ -11,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from .models import Pracownik, HistoriaUzyciaNarzedzia, Uszkodzenie
 from .logging_service import app_logger, get_user_display_name
+from cnc_wspolne.middleware import wyloguj_do_portalu
 
 
 # ============================================================================
@@ -144,6 +145,8 @@ def get_auth_data(request):
         'isMagazyn': is_magazyn,
         'isProdukcjaMagazyn': is_produkcja_magazyn,
         'isAdministrator': is_administrator,
+        # Konta/hasła/karty/grupy zarządzane w Portalu (Ustawienia → Użytkownicy tylko podgląd)
+        'kontaWPortalu': getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') != 'wylaczony',
     }
 
 
@@ -342,6 +345,30 @@ def logi_view(request):
 
 
 # ===== Logowanie/Wylogowanie =====
+# Logowanie przez Portal (CNC-Wspolne/KONTRAKTY.md): tryb settings.CNC_TOKEN_TRYB.
+#   wylaczony  — stare logowanie Tools (rollback)
+#   rownolegly — token Portalu loguje (middleware), lokalne logowanie działa dalej
+#   wymagany   — lokalne logowanie wyłączone, wszystko przez Portal
+
+def _portal_aktywny():
+    return getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') != 'wylaczony'
+
+
+def _tylko_portal():
+    return getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') == 'wymagany'
+
+
+def _do_portalu():
+    return redirect(settings.CNC_PORTAL_URL_LOGOWANIA)
+
+
+def start_view(request):
+    """Wejście z Portalu: przekierowanie wg grupy. Na serwerze „/” należy do Portalu,
+    więc Portal wpuszcza do Tools tutaj (Modul.sciezka_startowa = 'start/')."""
+    if request.user.is_authenticated:
+        return redirect(get_redirect_url_for_user(request.user))
+    return _do_portalu() if _portal_aktywny() else redirect('login')
+
 
 @ensure_csrf_cookie
 def login_view(request):
@@ -349,6 +376,8 @@ def login_view(request):
     if request.user.is_authenticated:
         redirect_url = get_redirect_url_for_user(request.user)
         return redirect(redirect_url)
+    if _tylko_portal():
+        return _do_portalu()
 
     return render(request, 'Login')
 
@@ -356,6 +385,8 @@ def login_view(request):
 @require_http_methods(["POST"])
 def login_submit(request):
     """Obsługa POST logowania"""
+    if _tylko_portal():
+        return _do_portalu()
     try:
         data = json.loads(request.body)
         username = data.get('username')
@@ -390,6 +421,10 @@ def logout_view(request):
     user_name = get_user_display_name(request.user)
     app_logger.info(user_name, "Wylogowano z systemu")
 
+    if _portal_aktywny():
+        # Wylogowanie lokalne + skasowanie tokena + ekran logowania Portalu
+        return wyloguj_do_portalu(request)
+
     auth_logout(request)
     response = redirect('login')
     response.delete_cookie('csrftoken')
@@ -399,6 +434,9 @@ def logout_view(request):
 @require_http_methods(["POST"])
 def login_by_card(request):
     """Logowanie kartą zbliżeniową"""
+    if _tylko_portal():
+        return JsonResponse({'error': 'Logowanie kartą odbywa się w Portalu',
+                             'portal': settings.CNC_PORTAL_URL_LOGOWANIA}, status=410)
     try:
         data = json.loads(request.body)
         card_number = data.get('card_number', '').strip()

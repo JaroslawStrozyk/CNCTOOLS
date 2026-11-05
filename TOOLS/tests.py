@@ -65,7 +65,7 @@ MagazynTestCase:
 from unittest import mock
 from decimal import Decimal
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.db import IntegrityError
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -234,6 +234,7 @@ class UstawieniaTestCase(APITestCase):
         self.assertEqual(Pracownik.objects.filter(karta='12345').count(), 2)
 
 
+@override_settings(CNC_TOKEN_TRYB='wylaczony')  # niezależnie od app_settings.json maszyny dev
 class ZespolKartaTestCase(APITestCase):
     """Testy logiki is_active + reuse karty (ZespolSerializer + login_by_card)."""
 
@@ -2659,3 +2660,150 @@ def run_all_tests():
         print("\n✅ Wszystkie testy przeszły pomyślnie!")
 
     return failures
+
+# ===== Logowanie przez CNC-Portal (cnc_wspolne, KONTRAKTY „Token logowania (v1)”) =====
+
+SEKRET_TESTOWY = 'x' * 60
+
+
+@override_settings(CNC_TOKEN_TRYB='rownolegly', CNC_TOKEN_SECRET=SEKRET_TESTOWY,
+                   CNC_PORTAL_URL_LOGOWANIA='/portal-test/')
+class PortalTokenTestCase(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        for nazwa in ('logistyka', 'tokarz', 'administrator'):
+            Group.objects.get_or_create(name=nazwa)
+
+    def _token(self, login, grupy, st=False, su=False):
+        from cnc_wspolne import token as cnc_token
+        dane = {'v': 1, 'u': login, 'im': 'Jan', 'nz': 'Test', 'em': '', 'm': 'tools', 'g': grupy,
+                'st': st, 'su': su, 'zal': int(__import__('time').time())}
+        self.client.cookies['cnc_token'] = cnc_token.wystaw(dane)
+
+    def test_start_wg_grupy(self):
+        self._token('jan', ['logistyka'])
+        self.assertRedirects(self.client.get('/start/'), '/zakupy/', fetch_redirect_response=False)
+        self.assertEqual(list(User.objects.get(username='jan').groups.values_list('name', flat=True)),
+                         ['logistyka'])
+
+    def test_start_bez_tokena_do_portalu(self):
+        self.assertRedirects(self.client.get('/start/'), '/portal-test/', fetch_redirect_response=False)
+
+    def test_wylogowanie_kasuje_token(self):
+        self._token('jan', ['tokarz'])
+        self.client.get('/start/')
+        r = self.client.get('/logout/')
+        self.assertRedirects(r, '/portal-test/', fetch_redirect_response=False)
+        self.assertEqual(r.cookies['cnc_token'].value, '')
+
+    def test_login_required_do_portalu(self):
+        # LOGIN_URL liczony w settings przy starcie; tu sprawdzamy tylko, że nie ma /accounts/login/
+        from django.conf import settings as s
+        self.assertNotIn('accounts', s.LOGIN_URL)
+
+    def test_zespol_tylko_pobieranie_narzedzi(self):
+        self._token('szef', ['administrator'])
+        self.client.get('/start/')
+        u = User.objects.create_user('robotnik', password='x', first_name='R', last_name='K')
+        Pracownik.objects.create(user=u, imie='R', nazwisko='K')
+        self.assertEqual(self.client.post('/api/zespol/', {'username': 'nowy'},
+                                          content_type='application/json').status_code, 403)
+        self.assertEqual(self.client.delete(f'/api/zespol/{u.id}/').status_code, 403)
+        self.assertEqual(self.client.patch(f'/api/zespol/{u.id}/', {'first_name': 'Zmiana'},
+                                           content_type='application/json').status_code, 403)
+        r = self.client.patch(f'/api/zespol/{u.id}/', {'pobieranie_narzedzi': True, 'first_name': 'Zmiana'},
+                              content_type='application/json')
+        self.assertEqual(r.status_code, 200)
+        u.refresh_from_db()
+        self.assertEqual(u.first_name, 'R')
+        self.assertTrue(u.pracownik.pobieranie_narzedzi)
+
+    def test_admin_login_przez_portal(self):
+        r = self.client.get('/admin/login/?next=/admin/TOOLS/')
+        self.assertRedirects(r, '/portal-test/?next=/admin/TOOLS/', fetch_redirect_response=False)
+        self._token('serwis', [], st=True, su=True)
+        self.assertRedirects(self.client.get('/admin/login/?next=/admin/'), '/admin/',
+                             fetch_redirect_response=False)
+
+    @override_settings(CNC_TOKEN_TRYB='wymagany')
+    def test_wymagany_bez_lokalnego_logowania(self):
+        self.assertEqual(self.client.get('/').status_code, 302)
+        r = self.client.post('/api/login-card/', {'card_number': '0000000001'}, content_type='application/json')
+        self.assertIn(r.status_code, (401, 410))
+
+    @override_settings(CNC_TOKEN_TRYB='wylaczony')
+    def test_wylaczony_stare_logowanie(self):
+        self.assertEqual(self.client.get('/').status_code, 200)
+        self.assertRedirects(self.client.get('/start/'), '/', fetch_redirect_response=False)
+
+
+# ===== Stan konta Portal ↔ Tools (cnc_wspolne.konta, KONTRAKTY „Stan konta”) =====
+@override_settings(CNC_TOKEN_TRYB='rownolegly', CNC_TOKEN_SECRET=SEKRET_TESTOWY,
+                   CNC_PORTAL_URL_LOGOWANIA='/portal-test/')
+class StanKontaPortalTestCase(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import Group
+        Group.objects.get_or_create(name='logistyka')
+        PortalTokenTestCase._token(self, 'lucyna', ['logistyka'])
+        self.client.get('/start/')
+        self.u = User.objects.create_user('robotnik', password='x', first_name='R', last_name='K')
+        Pracownik.objects.create(user=self.u, imie='R', nazwisko='K')
+
+    def patch(self, dane):
+        return self.client.patch(f'/api/zespol/{self.u.id}/', dane, content_type='application/json')
+
+    def test_aktywny_zmienia_portal(self):
+        from unittest import mock
+        with mock.patch('cnc_wspolne.konta.zglos', return_value=(True, '')) as zglos:
+            r = self.patch({'is_active': False, 'pobieranie_narzedzi': False})
+        self.assertEqual(r.status_code, 200, r.content)
+        zglos.assert_called_once_with('robotnik', False, 'Jan Test')
+        self.u.refresh_from_db()
+        self.assertFalse(self.u.is_active)
+        self.assertFalse(self.u.pracownik.pobieranie_narzedzi)
+
+    def test_portal_odmawia_nic_sie_nie_zmienia(self):
+        from unittest import mock
+        with mock.patch('cnc_wspolne.konta.zglos', return_value=(False, 'brak połączenia')):
+            r = self.patch({'is_active': False, 'pobieranie_narzedzi': False})
+        self.assertEqual(r.status_code, 502)
+        self.assertIn('brak połączenia', r.json()['detail'])
+        self.u.refresh_from_db()
+        self.assertTrue(self.u.is_active)
+        self.assertTrue(self.u.pracownik.pobieranie_narzedzi)
+
+    def test_bez_zmiany_aktywnosci_bez_portalu(self):
+        from unittest import mock
+        with mock.patch('cnc_wspolne.konta.zglos') as zglos:
+            self.assertEqual(self.patch({'is_active': True, 'pobieranie_narzedzi': False}).status_code, 200)
+        zglos.assert_not_called()
+
+    def _stan(self, username, aktywny, modul='tools'):
+        import json
+        from cnc_wspolne import konta as cnc_konta
+        return self.client.post('/api/portal/konto/', json.dumps({'wpis': cnc_konta.podpisz_stan(modul, username, aktywny)}),
+                                content_type='application/json')
+
+    def test_odbior_stanu_z_portalu(self):
+        self.assertEqual(self._stan('robotnik', False).json(), {'ok': True, 'zmienione': True})
+        self.assertFalse(User.objects.get(username='robotnik').is_active)
+        self.assertEqual(self._stan('robotnik', True).status_code, 200)
+        self.assertTrue(User.objects.get(username='robotnik').is_active)
+        self.assertEqual(self._stan('nieznany', False).json(), {'ok': True, 'zmienione': False})
+        self.assertEqual(self._stan('robotnik', False, modul='handel').status_code, 400)
+        self.assertEqual(self.client.post('/api/portal/konto/', '{"wpis":"zly"}',
+                                          content_type='application/json').status_code, 400)
+        self.assertTrue(User.objects.get(username='robotnik').is_active)
+
+    @override_settings(CNC_TOKEN_TRYB='wymagany')
+    def test_odbior_stanu_bez_tokena_w_trybie_wymaganym(self):
+        self.client.cookies.clear()
+        self.assertEqual(self._stan('robotnik', False).status_code, 200)
+
+    def test_zablokowany_nie_wchodzi_tokenem(self):
+        self.u.is_active = False
+        self.u.save()
+        self.client.cookies.clear()
+        PortalTokenTestCase._token(self, 'robotnik', ['tokarz'])
+        self.assertEqual(self.client.get('/start/').status_code, 403)
+        self.assertFalse(User.objects.get(username='robotnik').is_active)

@@ -262,9 +262,6 @@
                 <div class="mt-2">
                     <Button label="Dodaj pozycję" icon="pi pi-plus" class="p-button-sm p-button-secondary" style="width: auto;" @click="dodajPozycjeOferty()" />
                 </div>
-                <small class="text-muted mt-2" style="display: block;">
-                    Cena za sztukę (także dla kompletów). Po zatwierdzeniu oferta staje się najnowszym wpisem w historii — następne zamówienie weźmie jej cenę i dostawcę.
-                </small>
                 <Message v-if="ofertaError" severity="error" :closable="false">{{ ofertaError }}</Message>
             </div>
             <template #footer>

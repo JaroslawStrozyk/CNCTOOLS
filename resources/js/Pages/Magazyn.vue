@@ -3435,7 +3435,7 @@ onUnmounted(() => {
 /* === PRZYCISKI W MODALACH - STYL JAK W GŁÓWNYM OKNIE === */
 
 /* Przycisk główny (niebieski) */
-.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary) {
+.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.p-datepicker-trigger) {
     background-color: #0d6efd !important;
     border-color: #0d6efd !important;
     color: #fff !important;
@@ -3445,7 +3445,7 @@ onUnmounted(() => {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
 }
 
-.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):hover {
+.p-dialog .p-button:not(.p-button-text):not(.p-button-secondary):not(.p-button-success):not(.p-button-danger):not(.btn-modal-secondary):not(.p-datepicker-trigger):hover {
     background-color: #0b5ed7 !important;
     border-color: #0a58ca !important;
 }

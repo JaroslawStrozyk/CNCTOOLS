@@ -104,6 +104,7 @@ MIDDLEWARE = [
     'inertia.middleware.InertiaMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'cnc_wspolne.middleware.CncTokenMiddleware',  # logowanie przez Portal (CNC_TOKEN_TRYB)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -231,9 +232,47 @@ try:
         _app_settings = _json.load(_f)
     ZAMOWIENIA_TESTOWE = _app_settings.get('zamowienia_testowe', False)
     SPOSOB_LICZENIA_ZAMOWIEN = _app_settings.get('sposob_liczenia_zamowien', 'standardowa')
+    CNC_TOKEN_TRYB = _app_settings.get('logowanie_portal', 'wylaczony')
 except (FileNotFoundError, ValueError):
     ZAMOWIENIA_TESTOWE = False
     SPOSOB_LICZENIA_ZAMOWIEN = 'standardowa'
+    CNC_TOKEN_TRYB = 'wylaczony'
+
+# ========== SYSTEM CNC — logowanie przez Portal ==========
+# Kontrakt: /opt/PROJEKTY/CNC/CNC-Wspolne/KONTRAKTY.md („Token logowania (v1)”, „Middleware modułu”).
+# Tryb (app_settings.json, klucz 'logowanie_portal'): 'wylaczony' (stare logowanie, rollback)
+# | 'rownolegly' (token Portalu loguje, lokalne logowanie działa) | 'wymagany' (tylko Portal).
+if CNC_TOKEN_TRYB not in ('wylaczony', 'rownolegly', 'wymagany'):
+    CNC_TOKEN_TRYB = 'wylaczony'
+CNC_MODUL = 'tools'
+
+
+def _czytaj_sekret_tokena():
+    from pathlib import Path as _Path
+    for _sciezka in (_Path('/etc/cnc/token_secret'), _Path.home() / '.config' / 'cnc' / 'token_secret'):
+        try:
+            return _sciezka.read_text(encoding='utf-8').strip()
+        except OSError:
+            continue
+    return ''
+
+
+CNC_TOKEN_SECRET = _czytaj_sekret_tokena()
+if not CNC_TOKEN_SECRET:
+    CNC_TOKEN_TRYB = 'wylaczony'  # bez sekretu token nie zadziała — zostaje stare logowanie
+# Ekran logowania Portalu: dev — osobny port, serwer — ten sam origin („/” należy do Portalu)
+CNC_PORTAL_URL_LOGOWANIA = 'http://localhost:1972/' if DEBUG else '/'
+# Ścieżki bez wymogu tokena (oprócz domyślnych /static/, /media/, PWA)
+CNC_TOKEN_WYJATKI = ('/install/', '/dokumentacja/', '/api/portal/')  # /api/portal/ — wywołania serwer-serwer z Portalu
+# Stan konta (KONTRAKTY „Stan konta”, cnc_wspolne.konta): „Aktywny” w Ustawieniach → zgłoszenie do Portalu.
+# Serwer: Portal w tym samym Apache — vhost 192.168.1.226:443 (IP-owy), certyfikat samopodpisany.
+CNC_PORTAL_URL_KONTA = ('http://localhost:1972/portal/api/konta/stan/' if DEBUG
+                        else 'https://192.168.1.226/portal/api/konta/stan/')
+CNC_KONTA_WERYFIKUJ_SSL = False
+CNC_KONTA_TIMEOUT = 3
+# @login_required: bez tego Django odsyła na nieistniejące /accounts/login/ (404).
+# Tryb Portalu → ekran Portalu z ?next= (Portal wraca do modułu); inaczej ekran logowania Tools.
+LOGIN_URL = CNC_PORTAL_URL_LOGOWANIA if CNC_TOKEN_TRYB != 'wylaczony' else '/'
 
 # Auto-wylogowanie po bezczynności (minuty) — dotyczy grup produkcja / produkcja-magazyn
 AUTO_LOGOUT_IDLE_MINUTES = 2
@@ -242,8 +281,8 @@ PAGE_SIZE = 25
 
 INFO_PROGRAM = [
     {
-        'WERSJA'     : '1.18.1g',
-        'MODYFIKACJA': '30.10.2026r.',
+        'WERSJA'     : '1.19.0g',
+        'MODYFIKACJA': '05.11.2026r.',
         'FIRMA'      : 'EDATABIT',
         'AUTOR'      : 'Jarosław Stróżyk',
         'EMAIL'      : 'mailto:biuro@edatabit.pl',

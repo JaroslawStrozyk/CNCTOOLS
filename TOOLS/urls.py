@@ -9,6 +9,7 @@ from .views_inertia import (
     login_submit,
     login_by_card,
     logout_view as logout_inertia_view,
+    start_view,
     magazyn_view as magazyn_inertia_view,
     uzycie_view as uzycie_inertia_view,
     zakupy_view as zakupy_inertia_view,
@@ -66,6 +67,7 @@ urlpatterns = [
     path('login/', login_submit, name='login-submit'),
     path('api/login-card/', login_by_card, name='login-card'),
     path('logout/', logout_inertia_view, name='logout'),
+    path('start/', start_view, name='start'),  # wejście z Portalu (przekierowanie wg grupy)
     path('magazyn/', magazyn_inertia_view, name='magazyn'),
     path('magazyn/update', magazyn_update_view, name='magazyn-update'),
     path('uzycie/', uzycie_inertia_view, name='uzycie'),
@@ -110,6 +112,7 @@ urlpatterns = [
     path('api/zamowienia/zmien-dostawce/', views.zmien_dostawce_api,
          name='zamowienia-zmien-dostawce'),
 
+    path('api/portal/konto/', views.portal_konto_stan, name='portal-konto-stan'),  # stan konta z Portalu
     path('api/', include(router.urls)),
     path('api/generator-zamowien/', views.generator_zamowien_api, name='generator-zamowien'),
     path('api/generator-zamowien/add/', views.generator_zamowien_add_api, name='generator-zamowien-add'),

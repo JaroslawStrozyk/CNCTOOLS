@@ -4385,6 +4385,49 @@ class ZespolViewSet(LoggingMixin, viewsets.ModelViewSet):
             .order_by("last_name", "first_name", "username")
         )
 
+    # Logowanie przez Portal (CNC_TOKEN_TRYB ≠ wylaczony): konta należą do Portalu — bez zakładania/usuwania.
+    # Z edycji przechodzi: pobieranie_narzedzi (dana Tools) oraz is_active („pracuje”) — to drugie
+    # zmienia Portal (cnc_wspolne.konta.zglos), Tools zapisuje u siebie dopiero po jego zgodzie.
+    @staticmethod
+    def _konta_w_portalu():
+        return getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') != 'wylaczony'
+
+    def create(self, request, *args, **kwargs):
+        if self._konta_w_portalu():
+            return Response({'detail': 'Konta zakłada się w Portalu (Administracja).'},
+                            status=status.HTTP_403_FORBIDDEN)
+        return super().create(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if self._konta_w_portalu():
+            if not {'pobieranie_narzedzi', 'is_active'} & set(request.data):
+                return Response({'detail': 'Konta edytuje się w Portalu (Administracja).'},
+                                status=status.HTTP_403_FORBIDDEN)
+            instance = self.get_object()
+            if 'is_active' in request.data:
+                aktywny = str(request.data['is_active']).lower() in ('true', '1')
+                if aktywny != instance.is_active:
+                    from cnc_wspolne import konta as cnc_konta
+                    kto = f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username
+                    ok, komunikat = cnc_konta.zglos(instance.username, aktywny, kto)
+                    if not ok:
+                        return Response({'detail': f'Portal nie przyjął zmiany „Aktywny”: {komunikat}'},
+                                        status=status.HTTP_502_BAD_GATEWAY)
+                    instance.is_active = aktywny
+                    instance.save(update_fields=['is_active'])
+            dane = {k: request.data[k] for k in ('pobieranie_narzedzi',) if k in request.data}
+            serializer = self.get_serializer(instance, data=dane, partial=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if self._konta_w_portalu():
+            return Response({'detail': 'Konta usuwa się w Portalu (Administracja).'},
+                            status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         # OneToOne Pracownik.user = SET_NULL → kasujemy Pracownika ręcznie
         # (FK z HistoriaUzyciaNarzedzia/Uszkodzenie na Pracownika mogą zablokować — wtedy 500)
@@ -4393,3 +4436,27 @@ class ZespolViewSet(LoggingMixin, viewsets.ModelViewSet):
             if pracownik is not None:
                 pracownik.delete()
             instance.delete()
+
+
+# === Stan konta z Portalu (KONTRAKTY „Stan konta”, cnc_wspolne.konta, od 1.19.0g) ===
+from django.views.decorators.csrf import csrf_exempt  # noqa: E402
+@csrf_exempt
+@require_http_methods(["POST"])
+def portal_konto_stan(request):
+    """POST /api/portal/konto/ — Portal przesyła stan konta (aktywne w Tools: konto aktywne i z dostępem).
+    Bez sesji i CSRF, treść podpisana wspólnym sekretem. Konta jeszcze nieznanego w Tools nie zakłada
+    (powstanie przy pierwszym wejściu z tokenem)."""
+    import json as _json
+    from django.http import JsonResponse
+    from cnc_wspolne import konta as cnc_konta
+    try:
+        stan = cnc_konta.odczytaj_stan(_json.loads(request.body or b'{}').get(cnc_konta.POLE))
+    except (ValueError, AttributeError, cnc_konta.WpisNiewazny) as e:
+        app_logger.warning('Portal', f'Odrzucony stan konta z Portalu ({e})')
+        return JsonResponse({'error': 'Stan odrzucony'}, status=400)
+    zmienione = User.objects.filter(username=stan['username']).exclude(is_active=stan['aktywny']) \
+        .update(is_active=stan['aktywny'])
+    if zmienione:
+        (app_logger.success if stan['aktywny'] else app_logger.warning)(
+            'Portal', f'Konto {stan["username"]}: {"aktywne" if stan["aktywny"] else "ZABLOKOWANE"} (z Portalu)')
+    return JsonResponse({'ok': True, 'zmienione': bool(zmienione)})

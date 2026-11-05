@@ -11,8 +11,26 @@ import os
 # Nadpisujemy logout admina żeby przekierowywał na stronę główną
 def admin_logout(request):
     from django.contrib.auth import logout
+    if getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') != 'wylaczony':
+        from cnc_wspolne.middleware import wyloguj_do_portalu
+        return wyloguj_do_portalu(request)
     logout(request)
     return redirect('/')
+
+
+def admin_login(request):
+    """Panel serwisowy: przy logowaniu przez Portal — ekran Portalu zamiast logowania Django admin.
+    Portal wpuszcza tu kontami ze `staff` (flagi st/su w tokenie)."""
+    if getattr(settings, 'CNC_TOKEN_TRYB', 'wylaczony') == 'wylaczony':
+        return admin.site.login(request)
+    from urllib.parse import quote
+    from django.utils.http import url_has_allowed_host_and_scheme
+    nastepny = request.GET.get('next') or '/admin/'
+    if not url_has_allowed_host_and_scheme(nastepny, allowed_hosts=None) or not nastepny.startswith('/'):
+        nastepny = '/admin/'
+    if request.user.is_authenticated and request.user.is_staff:
+        return redirect(nastepny)
+    return redirect(f"{settings.CNC_PORTAL_URL_LOGOWANIA}?next={quote(nastepny)}")
 
 
 def serve_install_file(request, filename):
@@ -47,6 +65,7 @@ def serve_install_file(request, filename):
 
 urlpatterns = [
     path('admin/logout/', admin_logout, name='admin_logout'),  # Przed admin/
+    path('admin/login/', admin_login, name='admin_login'),  # Przed admin/
     path('admin/', admin.site.urls),
     path('install/<str:filename>', serve_install_file, name='serve_install'),  # Pliki instalacyjne
     path('', include('pwa.urls')),  # PWA manifest i service worker

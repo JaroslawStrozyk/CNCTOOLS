@@ -3,8 +3,8 @@
 const CACHE_NAME = 'cnctools-1.18.1g';
 
 // Zasoby do cache'owania przy instalacji
+// "/" to ekran logowania CNC-Portal (inny moduł) — nie cache'ujemy go.
 const STATIC_CACHE = [
-    '/',
     '/static/images/icons/icon-192x192.png',
     '/static/images/icons/icon-512x512.png',
     '/static/images/cnc-logo.png',
@@ -64,9 +64,9 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Inne moduły systemu CNC (wspólny origin) - nie obsługujemy ich requestów.
-    // Ekran logowania "/" to dziś strona Tools; po wejściu Portalu też trzeba go tu dopisać.
+    // Dokładnie "/" = ekran logowania CNC-Portal.
     const INNE_MODULY = ['/portal/', '/handel/', '/spedycja/'];
-    if (INNE_MODULY.some((prefix) => url.pathname.startsWith(prefix))) {
+    if (url.pathname === '/' || INNE_MODULY.some((prefix) => url.pathname.startsWith(prefix))) {
         return;
     }
 
@@ -89,9 +89,11 @@ self.addEventListener('fetch', (event) => {
                     if (cachedResponse) {
                         return cachedResponse;
                     }
-                    // Dla nawigacji - zwroc strone glowna z cache
+                    // Dla nawigacji - komunikat offline (strona "/" należy do Portalu)
                     if (event.request.mode === 'navigate') {
-                        return caches.match('/');
+                        return new Response('<h3>Brak połączenia z serwerem CNC</h3>', {
+                            status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' },
+                        });
                     }
                 });
             })

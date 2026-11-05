@@ -1,6 +1,9 @@
 # CNC-Tools - Requirements
 # Django + Vue/Inertia stack
 
+# === WSPÓLNE (CNC-Wspolne) ===
+# cnc_wspolne==0.3.0 (CNC-Wspolne, instalacja -e; serwer: /opt/CNC/CNCWSPOLNE/CNCWSPOLNE przez setup_prod.py)
+
 # === CORE ===
 Django==4.2.23
 asgiref==3.9.1

@@ -340,7 +340,7 @@
                                     <InputText v-model="userSearchQuery" placeholder="Szukaj..." class="user-search-input" />
                                     <i v-if="userSearchQuery" class="pi pi-times user-search-clear" @click="userSearchQuery = ''" title="Wyczyść" />
                                 </div>
-                                <button class="btn btn-primary" @click="openUserModal()">
+                                <button v-if="!kontaWPortalu" class="btn btn-primary" @click="openUserModal()">
                                     <i class="pi pi-plus"></i> Dodaj użytkownika
                                 </button>
                             </div>
@@ -383,7 +383,7 @@
                                         <button class="btn btn-secondary btn-icon mr-1" @click="openUserModal(data)" title="Edytuj">
                                             <i class="pi pi-pencil"></i>
                                         </button>
-                                        <button class="btn btn-danger btn-icon" @click="confirmDeleteUser(data)" title="Usuń">
+                                        <button v-if="!kontaWPortalu" class="btn btn-danger btn-icon" @click="confirmDeleteUser(data)" title="Usuń">
                                             <i class="pi pi-trash"></i>
                                         </button>
                                     </template>
@@ -680,18 +680,18 @@
                 <div class="field-row">
                     <div class="field">
                         <label>Imię</label>
-                        <InputText v-model="currentUser.first_name" autocomplete="off" />
+                        <InputText v-model="currentUser.first_name" :disabled="kontaWPortalu" autocomplete="off" />
                     </div>
                     <div class="field">
                         <label>Nazwisko</label>
-                        <InputText v-model="currentUser.last_name" autocomplete="off" />
+                        <InputText v-model="currentUser.last_name" :disabled="kontaWPortalu" autocomplete="off" />
                     </div>
                 </div>
                 <div class="field">
                     <label>Email</label>
-                    <InputText v-model="currentUser.email" autocomplete="off" />
+                    <InputText v-model="currentUser.email" :disabled="kontaWPortalu" autocomplete="off" />
                 </div>
-                <div class="field">
+                <div v-if="!kontaWPortalu" class="field">
                     <label>
                         Hasło
                         <span v-if="!isEditUserMode" class="required">*</span>
@@ -701,11 +701,11 @@
                 </div>
                 <div class="field">
                     <label>Grupa</label>
-                    <Dropdown v-model="currentUser.group_id" :options="grupyDoWyboru" optionLabel="name" optionValue="id" placeholder="Wybierz grupę" class="user-group-dropdown" />
+                    <Dropdown v-model="currentUser.group_id" :options="grupyDoWyboru" optionLabel="name" optionValue="id" placeholder="Wybierz grupę" class="user-group-dropdown" :disabled="kontaWPortalu" />
                 </div>
                 <div class="field">
                     <label>Karta RFID (opcjonalnie)</label>
-                    <InputText v-model="currentUser.karta" placeholder="np. 1234567890" autocomplete="off" />
+                    <InputText v-model="currentUser.karta" placeholder="np. 1234567890" :disabled="kontaWPortalu" autocomplete="off" />
                 </div>
                 <div class="field">
                     <div class="checkbox-row">
@@ -878,6 +878,8 @@ const props = defineProps({
 });
 
 const canManageUsers = computed(() => !!(props.auth?.isAdministrator || props.auth?.isLogistyka));
+// Logowanie przez Portal: konta/hasła/karty/grupy należą do Portalu — tu tylko podgląd + pobieranie narzędzi
+const kontaWPortalu = computed(() => !!props.auth?.kontaWPortalu);
 
 // Oblicz URL powrotu na podstawie referrer lub parametru URL
 const backUrl = computed(() => {
@@ -1559,6 +1561,19 @@ const openUserModal = (user = null) => {
 const saveUser = async () => {
     userModalError.value = '';
     const u = currentUser.value;
+    if (kontaWPortalu.value) {
+        isSavingUser.value = true;
+        try {
+            await axios.patch(`${API_URL}/zespol/${u.id}/`, { pobieranie_narzedzi: !!u.pobieranie_narzedzi, is_active: !!u.is_active });
+            userModalVisible.value = false;
+            await fetchUsersAndGroups();
+        } catch (error) {
+            userModalError.value = error.response?.data?.detail || 'Nie udało się zapisać zmian.';
+        } finally {
+            isSavingUser.value = false;
+        }
+        return;
+    }
     if (!u.username || !u.username.trim()) {
         userModalError.value = 'Login jest wymagany.';
         return;
