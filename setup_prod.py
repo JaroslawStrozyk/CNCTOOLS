@@ -13,28 +13,70 @@ import re
 import subprocess
 import sys
 
+# Stara instalacja (stan przejściowy, ARCHITEKTURA „Serwer”) — tylko ODCZYT: źródło plików serwera
+# i wersji Pythona przy pierwszym wdrożeniu w /opt/CNC/CNCTOOLS. Nic w niej nie zmieniamy.
+STARA_INSTALACJA = '/opt/CNCTOOLS'
+
+
+def _python_bazowy():
+    """Interpreter dla nowego env: ta sama wersja co stary env Tools (mod_wsgi = jedna wersja Pythona)."""
+    cfg = os.path.join(STARA_INSTALACJA, 'env', 'pyvenv.cfg')
+    try:
+        with open(cfg, encoding='utf-8') as f:
+            pola = {k.strip(): v.strip() for k, v in (l.split('=', 1) for l in f.read().splitlines() if '=' in l)}
+        wersja = '.'.join(pola.get('version', pola.get('version_info', '')).split('.')[:2])
+        kandydat = os.path.join(pola.get('home', ''), f'python{wersja}')
+        if wersja and os.path.isfile(kandydat):
+            return kandydat
+    except OSError:
+        pass
+    return sys.executable
+
+
+def _ma_pip(py):
+    return subprocess.run([py, '-m', 'pip', '--version'], capture_output=True).returncode == 0
+
+
+def _utworz_env(interpreter, venv_dir, venv_python):
+    import shutil
+    if subprocess.run([interpreter, '-m', 'venv', venv_dir]).returncode == 0 and _ma_pip(venv_python):
+        return True
+    shutil.rmtree(venv_dir, ignore_errors=True)  # niepełny env (bez pip) nie może udawać gotowego
+    return False
+
+
 # Automatyczne wykrywanie i użycie virtualenv
 def ensure_virtualenv():
-    """Sprawdza czy działa w virtualenv, jeśli nie - re-wykonuje się z właściwym interpreterem"""
+    """Re-exec w ../env. Brak env albo env bez pip → tworzy na miejscu (venv ma ścieżki bezwzględne);
+    brak pakietu pythonX.Y-venv a uruchomione jako root → apt-get install i ponowna próba."""
+    import shutil
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
-    venv_python = os.path.join(project_root, "env", "bin", "python3")
+    venv_dir = os.path.join(project_root, "env")
+    venv_python = os.path.join(venv_dir, "bin", "python3")
 
-    # Brak virtualenv (pierwsze wdrożenie) - tworzymy go na miejscu.
-    # venv ma ścieżki bezwzględne, więc musi powstać w katalogu docelowym, nie być kopiowany.
+    if os.path.isfile(venv_python) and not _ma_pip(venv_python):
+        print(f"Virtualenv {venv_dir} bez pip (niepełny) - tworzę od nowa ...")
+        shutil.rmtree(venv_dir, ignore_errors=True)
     if not os.path.isfile(venv_python):
-        venv_dir = os.path.join(project_root, "env")
-        print(f"Brak virtualenv - tworzę {venv_dir} ...")
-        wynik = subprocess.run([sys.executable, "-m", "venv", venv_dir])
-        if wynik.returncode != 0 or not os.path.isfile(venv_python):
-            print(f"BLAD: Nie udało się utworzyć virtualenv w {venv_dir}")
-            print("Sprawdź pakiet systemowy: sudo apt install python3-venv")
-            sys.exit(1)
+        interpreter = _python_bazowy()
+        pakiet = f"{os.path.basename(interpreter)}-venv" if os.path.basename(interpreter).startswith('python3.') \
+            else 'python3-venv'
+        print(f"Brak virtualenv - tworzę {venv_dir} z {interpreter} ...")
+        if not _utworz_env(interpreter, venv_dir, venv_python):
+            if os.geteuid() == 0:
+                print(f"Instaluję pakiet systemowy {pakiet} (apt-get update && apt-get install -y {pakiet}) ...")
+                subprocess.run(['apt-get', 'update'])
+                subprocess.run(['apt-get', 'install', '-y', pakiet])
+            if not _utworz_env(interpreter, venv_dir, venv_python):
+                print(f"BLAD: Nie udało się utworzyć virtualenv z pip w {venv_dir}")
+                print(f"Pakiet systemowy: apt-get update && apt install {pakiet} — potem ponownie ./setup_prod.py")
+                sys.exit(1)
         print("Virtualenv utworzony - zależności zainstaluje krok pip install.")
 
     # Porównujemy sys.prefix, nie realpath interpretera - python w venv to dowiązanie
     # do systemowego, więc realpath byłby identyczny i re-exec nigdy by nie nastąpił.
-    if os.path.realpath(sys.prefix) != os.path.realpath(os.path.join(project_root, "env")):
+    if os.path.realpath(sys.prefix) != os.path.realpath(venv_dir):
         os.execv(venv_python, [venv_python] + sys.argv)
 
 ensure_virtualenv()
@@ -92,6 +134,51 @@ def run_command(cmd, description):
         return False
 
 
+# Pliki serwera. Transfer z laptopa niesie komplet (także laptopowe pass_file.py, app_settings.json, media/, logs/).
+# Pierwsze wdrożenie w nowym katalogu (brak znacznika ../.pliki_serwera): wersje laptopowe → *.laptop,
+# na ich miejsce kopie ze starej instalacji (tylko odczyt). Kolejne wydania: znacznik jest — nic nie podmieniamy.
+PLIKI_SERWERA = ['CNCTOOLS/pass_file.py', 'app_settings.json', 'media', 'logs', 'install/cnctools.crt']
+ZNACZNIK = os.path.join(os.path.dirname(PROJECT_DIR), '.pliki_serwera')
+
+
+def pliki_serwera():
+    stary = os.path.join(STARA_INSTALACJA, 'CNCTOOLS')
+    pierwsze = not os.path.exists(ZNACZNIK) and os.path.isdir(stary) \
+        and os.path.realpath(stary) != os.path.realpath(PROJECT_DIR)
+    if pierwsze:
+        print(f"{BLUE}[*] Pierwsze wdrożenie w {os.path.dirname(PROJECT_DIR)}: pliki serwera z {stary}{NC}")
+        for wzgl in PLIKI_SERWERA:
+            zrodlo, cel = os.path.join(stary, wzgl), os.path.join(PROJECT_DIR, wzgl)
+            if not os.path.exists(zrodlo):
+                print(f"{YELLOW}[i] {wzgl}: brak w starej instalacji — zostaje wersja z transferu{NC}")
+                continue
+            if os.path.lexists(cel):
+                odlozony = cel + '.laptop'
+                subprocess.run(['rm', '-rf', odlozony])
+                os.rename(cel, odlozony)
+            os.makedirs(os.path.dirname(cel), exist_ok=True)
+            # cp -a: właściciel i prawa jak w starej instalacji (Apache pisze do media/, logs/)
+            if subprocess.run(['cp', '-a', zrodlo, cel]).returncode != 0:
+                print(f"{RED}[!] BLAD: kopia {zrodlo} → {cel}{NC}")
+                sys.exit(1)
+            print(f"{GREEN}[OK] {wzgl} ← {zrodlo} (laptopowa: {wzgl}.laptop){NC}")
+        with open(ZNACZNIK, 'w', encoding='utf-8') as f:
+            f.write(f'Pliki serwera skopiowane z {stary} przez setup_prod.py; wersje z laptopa: *.laptop\n')
+        print()
+    if not os.path.isfile(os.path.join(PROJECT_DIR, 'CNCTOOLS', 'pass_file.py')):
+        print(f"{RED}[!] BLAD: brak CNCTOOLS/pass_file.py{NC}")
+        sys.exit(1)
+
+
+def apache_wskazuje():
+    """Czy vhost Apache serwuje Tools z tego katalogu (informacja na koniec — konfiguracji nie zmieniamy)."""
+    try:
+        with open('/etc/apache2/sites-available/000-default.conf', encoding='utf-8') as f:
+            return os.path.dirname(PROJECT_DIR) + '/' in f.read()
+    except OSError:
+        return None
+
+
 def main():
     version = get_version_from_settings()
     cache_name = get_cache_name()
@@ -106,6 +193,9 @@ def main():
     print()
 
     os.chdir(PROJECT_DIR)
+
+    # 0. Pliki serwera (pass_file.py, app_settings.json, media/, logs/, certyfikat)
+    pliki_serwera()
 
     # 1. Sprawdź czy są zbudowane pliki
     dist_dir = os.path.join(PROJECT_DIR, "static_dev", "dist")
@@ -197,9 +287,17 @@ def main():
     print(f"{YELLOW}Osierocone pozycje zapotrzebowan (krok 7c) - jesli lista nie jest pusta,{NC}")
     print(f"{YELLOW}po uzgodnieniu z logistyka: python manage.py napraw_zapotrzebowania_osierocone --apply{NC}")
     print()
-    print(f"{CYAN}Teraz zrestartuj Apache:{NC}")
-    print()
-    print(f"  {YELLOW}sudo systemctl restart apache2{NC}")
+    if apache_wskazuje() is False:
+        stary, nowy = STARA_INSTALACJA + '/', os.path.dirname(PROJECT_DIR) + '/'
+        print(f"{CYAN}Apache serwuje jeszcze Tools ze starej ścieżki — przepięcie na {nowy} (rollback: kopia pliku):{NC}")
+        print()
+        print(f"  {YELLOW}cp -a /etc/apache2/sites-available/000-default.conf /root/000-default.conf.$(date +%Y%m%d_%H%M){NC}")
+        print(f"  {YELLOW}sed -i 's#{stary}#{nowy}#g' /etc/apache2/sites-available/000-default.conf{NC}")
+        print(f"  {YELLOW}apache2ctl configtest && systemctl restart apache2{NC}")
+    else:
+        print(f"{CYAN}Teraz zrestartuj Apache:{NC}")
+        print()
+        print(f"  {YELLOW}sudo systemctl restart apache2{NC}")
     print()
     print(f"{CYAN}Po restarcie sprawdz aplikacje w przegladarce.{NC}")
     print()
